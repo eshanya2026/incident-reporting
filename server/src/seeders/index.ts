@@ -5,6 +5,7 @@ import { Role } from '../modules/roles/role.model.js';
 import { Department } from '../modules/departments/department.model.js';
 import { Location } from '../modules/locations/location.model.js';
 import { User } from '../modules/users/user.model.js';
+import { IncidentCategory } from '../modules/categories/category.model.js';
 import { hashPassword } from '../modules/auth/auth.utils.js';
 import { PERMISSIONS } from '../common/enums/permissions.js';
 
@@ -182,7 +183,106 @@ export const seedDatabase = async (): Promise<void> => {
     }
     logger.info('✅ Locations seeded');
 
-    // 4. Seed Initial Users
+    // 4. Seed Incident Categories
+    const categoriesData = [
+      {
+        code: 'PATIENT_SAFETY',
+        name: 'Patient Safety',
+        subcategories: [
+          { code: 'FALL', name: 'Patient Fall', active: true },
+          { code: 'WRONG_PATIENT', name: 'Wrong Patient Identification', active: true },
+          { code: 'WRONG_SITE', name: 'Wrong Site / Procedure', active: true },
+          { code: 'PRESSURE_INJURY', name: 'Pressure Injury', active: true },
+          { code: 'ELOPEMENT', name: 'Patient Elopement / Absconding', active: true },
+          { code: 'RESTRAINT_INJURY', name: 'Restraint Related Injury', active: true },
+          { code: 'CONSENT_ISSUE', name: 'Consent Related Issue', active: true },
+        ],
+      },
+      {
+        code: 'MEDICATION',
+        name: 'Medication Error',
+        subcategories: [
+          { code: 'WRONG_DRUG', name: 'Wrong Drug Administered', active: true },
+          { code: 'WRONG_DOSE', name: 'Wrong Dose', active: true },
+          { code: 'WRONG_ROUTE', name: 'Wrong Route', active: true },
+          { code: 'WRONG_TIME', name: 'Wrong Time', active: true },
+          { code: 'OMISSION', name: 'Drug Omission', active: true },
+          { code: 'ADR', name: 'Adverse Drug Reaction', active: true },
+          { code: 'DRUG_INTERACTION', name: 'Drug Interaction', active: true },
+          { code: 'LOOK_ALIKE', name: 'Look-Alike Sound-Alike (LASA)', active: true },
+        ],
+      },
+      {
+        code: 'INFECTION_CONTROL',
+        name: 'Infection Control',
+        subcategories: [
+          { code: 'HAI', name: 'Hospital Acquired Infection', active: true },
+          { code: 'NEEDLE_STICK', name: 'Needle Stick Injury', active: true },
+          { code: 'BIOMEDICAL_WASTE', name: 'Biomedical Waste Mismanagement', active: true },
+          { code: 'HAND_HYGIENE', name: 'Hand Hygiene Non-Compliance', active: true },
+          { code: 'SSI', name: 'Surgical Site Infection', active: true },
+        ],
+      },
+      {
+        code: 'FACILITY_EQUIPMENT',
+        name: 'Facility & Equipment',
+        subcategories: [
+          { code: 'EQUIP_MALFUNCTION', name: 'Equipment Malfunction', active: true },
+          { code: 'POWER_FAILURE', name: 'Power / UPS Failure', active: true },
+          { code: 'FIRE', name: 'Fire / Smoke Incident', active: true },
+          { code: 'WATER_SUPPLY', name: 'Water Supply Issue', active: true },
+          { code: 'STRUCTURAL', name: 'Structural / Civil Damage', active: true },
+          { code: 'GAS_SUPPLY', name: 'Medical Gas Supply Issue', active: true },
+        ],
+      },
+      {
+        code: 'CLINICAL_PROCESS',
+        name: 'Clinical Process',
+        subcategories: [
+          { code: 'DIAGNOSTIC_ERROR', name: 'Diagnostic Error / Delay', active: true },
+          { code: 'LAB_ERROR', name: 'Laboratory Error', active: true },
+          { code: 'BLOOD_TRANSFUSION', name: 'Blood Transfusion Reaction', active: true },
+          { code: 'HANDOVER_FAILURE', name: 'Clinical Handover Failure', active: true },
+          { code: 'DOCUMENTATION', name: 'Documentation Error', active: true },
+        ],
+      },
+      {
+        code: 'BEHAVIORAL',
+        name: 'Behavioral / Security',
+        subcategories: [
+          { code: 'VIOLENCE', name: 'Violence / Aggression', active: true },
+          { code: 'HARASSMENT', name: 'Staff / Patient Harassment', active: true },
+          { code: 'THEFT', name: 'Theft / Missing Property', active: true },
+          { code: 'UNAUTHORIZED_ACCESS', name: 'Unauthorized Access', active: true },
+        ],
+      },
+      {
+        code: 'OCCUPATIONAL_HEALTH',
+        name: 'Occupational Health & Safety',
+        subcategories: [
+          { code: 'SLIP_TRIP', name: 'Slip / Trip / Fall (Staff)', active: true },
+          { code: 'CHEMICAL_EXPOSURE', name: 'Chemical Exposure', active: true },
+          { code: 'ERGONOMIC', name: 'Ergonomic Injury', active: true },
+          { code: 'RADIATION', name: 'Radiation Exposure', active: true },
+        ],
+      },
+      {
+        code: 'INFO_SECURITY',
+        name: 'Information Security',
+        subcategories: [
+          { code: 'DATA_BREACH', name: 'Patient Data Breach', active: true },
+          { code: 'SYSTEM_DOWNTIME', name: 'IT System Downtime', active: true },
+          { code: 'UNAUTHORIZED_DISCLOSURE', name: 'Unauthorized Information Disclosure', active: true },
+        ],
+      },
+    ];
+
+    for (const cat of categoriesData) {
+      await IncidentCategory.findOneAndUpdate({ code: cat.code }, cat, { upsert: true, new: true });
+    }
+    logger.info('✅ Incident Categories seeded (8 categories with subcategories)');
+
+    // 5. Seed Initial Users
     const defaultPassword = await hashPassword('Admin@123');
     const defaultStaffPassword = await hashPassword('Staff@123');
     const defaultHodPassword = await hashPassword('Hod@123');

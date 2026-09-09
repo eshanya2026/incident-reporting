@@ -158,6 +158,7 @@ export const getMe = async (req: Request, res: Response, next: NextFunction): Pr
     }
 
     const user = await User.findById(req.user.userId)
+      .select('-passwordHash -__v')
       .populate('roles', 'name code permissions')
       .populate('departmentId', 'name code');
 

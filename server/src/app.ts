@@ -32,7 +32,7 @@ app.use(helmet());
 // CORS configuration
 app.use(
   cors({
-    origin: [env.APP_URL, 'http://localhost:5173', 'http://127.0.0.1:5173'],
+    origin: [env.APP_URL, 'http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173', 'http://127.0.0.1:5174'],
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
@@ -74,7 +74,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/roles', roleRoutes);
 app.use('/api/v1/departments', departmentRoutes);
 app.use('/api/v1/locations', locationRoutes);
-app.use('/api/v1/categories', categoryRoutes);
+app.use('/api/v1/incident-categories', categoryRoutes);
 app.use('/api/v1/attachments', attachmentRoutes);
 app.use('/api/v1/incidents', incidentRoutes);
 app.use('/api/v1', investigationRoutes);
