@@ -128,6 +128,13 @@ export const completeInvestigation = async (req: Request, res: Response, next: N
       throw AppError.notFound('Investigation record not found');
     }
 
+    if (req.body) {
+      if (req.body.findings) investigation.findings = req.body.findings;
+      if (req.body.recommendation) investigation.recommendation = req.body.recommendation;
+      if (req.body.contributingFactors) investigation.contributingFactors = req.body.contributingFactors;
+      if (req.body.immediateCorrections) investigation.immediateCorrections = req.body.immediateCorrections;
+    }
+
     if (!investigation.findings || investigation.findings.trim() === '') {
       throw AppError.badRequest('Investigation findings are required to complete investigation');
     }

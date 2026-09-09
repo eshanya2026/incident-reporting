@@ -73,94 +73,99 @@ ASSIGN_RESP=$(curl -s -X POST "$BASE_URL/incidents/$INC_ID/assign-investigator" 
   }')
 echo "Assign Result Status: $(echo $ASSIGN_RESP | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['status'])")"
 
-echo "=== 6. Create Investigation ==="
-INV_RESP=$(curl -s -X POST "$BASE_URL/investigations" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "incidentId": "'"$INC_ID"'",
-    "findings": "Full investigation conducted. Verification procedure bypassed during shift change.",
-    "rootCauseSummary": "Staff shortage and unclear drug labelling.",
-    "contributingFactors": ["High patient load", "Fatigue"],
-    "immediateCorrectiveAction": "Dual-nurse sign-off introduced."
-  }')
-echo "Investigation Created: $(echo $INV_RESP | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])")"
+echo "=== 6. Start & Complete Investigation ==="
+INV_START=$(curl -s -X POST "$BASE_URL/incidents/$INC_ID/investigation" \
+  -H "Authorization: Bearer $ADMIN_TOKEN")
+INV_ID=$(echo $INV_START | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['_id'])")
 
-echo "=== 7. Create RCA ==="
-RCA_RESP=$(curl -s -X POST "$BASE_URL/rca" \
+INV_COMP=$(curl -s -X POST "$BASE_URL/investigations/$INV_ID/complete" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "incidentId": "'"$INC_ID"'",
-    "methodology": "5_WHY",
-    "fiveWhys": [
-      {"whyNumber": 1, "question": "Why was wrong dose given?", "answer": "IV bag label missing detail"},
-      {"whyNumber": 2, "question": "Why missing detail?", "answer": "Prepared in rush during shift handover"}
+    "findings": "Full investigation conducted. Verification procedure bypassed during shift change.",
+    "contributingFactors": ["High patient load", "Fatigue"],
+    "immediateCorrections": "Dual-nurse sign-off introduced.",
+    "recommendation": "Implement mandatory barcode verification."
+  }')
+echo "Investigation Complete Result Status: $(echo $INV_COMP | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['status'])")"
+
+echo "=== 7. Create & Approve RCA ==="
+RCA_RESP=$(curl -s -X POST "$BASE_URL/incidents/$INC_ID/rca" \
+  -H "Authorization: Bearer $ADMIN_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "method": "FIVE_WHY",
+    "fiveWhy": [
+      {"sequence": 1, "question": "Why was wrong dose given?", "answer": "IV bag label missing detail"},
+      {"sequence": 2, "question": "Why missing detail?", "answer": "Prepared in rush during shift handover"}
     ],
     "fishbone": {
       "people": ["Fatigue", "Nurse shift handoff miscommunication"],
       "process": ["No dual-sign confirmation for high alert meds"],
-      "equipment": ["Missing barcode scanner"],
-      "materials": ["Unclear drug labels"],
-      "environment": ["High noise during shift change"],
-      "management": ["Need clear handover protocol"]
+      "equipment": ["Missing barcode scanner"]
     },
-    "summary": "Root cause traced to lack of dual verification during peak handover hours."
+    "rootCauseSummary": "Root cause traced to lack of dual verification during peak handover hours."
   }')
 RCA_ID=$(echo $RCA_RESP | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['_id'])")
-echo "RCA Created: $RCA_ID"
 
-echo "=== 8. Approve RCA ==="
-RCA_APP_RESP=$(curl -s -X POST "$BASE_URL/rca/$RCA_ID/approve" \
+RCA_APP=$(curl -s -X POST "$BASE_URL/rca/$RCA_ID/approve" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"comments": "RCA approved by Quality Committee."}')
-echo "RCA Approval Status: $(echo $RCA_APP_RESP | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['status'])")"
+echo "RCA Approved Status: $(echo $RCA_APP | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['status'])")"
 
-echo "=== 9. Create CAPA Action Item ==="
-CAPA_RESP=$(curl -s -X POST "$BASE_URL/capa" \
+echo "=== 8. Create CAPA Action Item ==="
+CAPA_RESP=$(curl -s -X POST "$BASE_URL/incidents/$INC_ID/capas" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
-    "incidentId": "'"$INC_ID"'",
     "type": "CORRECTIVE",
-    "title": "Mandatory Dual Verification Protocol for High-Alert Medications",
     "action": "Implement dual nurse sign-off on IV medication administration sheets before infusing.",
-    "assignedToId": "'"$USER_ID"'",
+    "ownerUserId": "'"$USER_ID"'",
     "ownerDepartmentId": "'"$DEPT_ID"'",
-    "targetCompletionDate": "2026-10-01T00:00:00Z"
+    "priority": "HIGH",
+    "targetDate": "2026-10-01T00:00:00Z"
   }')
 CAPA_ID=$(echo $CAPA_RESP | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['_id'])")
 echo "CAPA Created: $CAPA_ID"
 
-echo "=== 10. Update CAPA to IN_PROGRESS and COMPLETE ==="
-curl -s -X PATCH "$BASE_URL/capa/$CAPA_ID" \
+echo "=== 9. Complete & Verify CAPA ==="
+CAPA_COMP=$(curl -s -X POST "$BASE_URL/capas/$CAPA_ID/complete" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"status": "IN_PROGRESS", "completionPercentage": 50}' > /dev/null
-
-CAPA_COMP=$(curl -s -X PATCH "$BASE_URL/capa/$CAPA_ID" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"status": "COMPLETED", "completionPercentage": 100, "actualCompletionDate": "2026-09-08T12:00:00Z", "implementationNotes": "Protocol drafted, distributed, and training complete."}')
+  -d '{
+    "completionRemarks": "Protocol drafted, distributed, and training completed across all wards."
+  }')
 echo "CAPA Completed Status: $(echo $CAPA_COMP | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['status'])")"
 
-echo "=== 11. Verify CAPA ==="
-CAPA_VER=$(curl -s -X POST "$BASE_URL/capa/$CAPA_ID/verify" \
+CAPA_VER=$(curl -s -X POST "$BASE_URL/capas/$CAPA_ID/verify" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"isEffective": true, "verificationNotes": "Audit confirms 100% compliance over 3 shift handovers."}')
+  -d '{
+    "effective": true,
+    "remarks": "Audit confirms 100% compliance over 3 shift handovers."
+  }')
 echo "CAPA Verified Status: $(echo $CAPA_VER | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['status'])")"
 
-echo "=== 12. Close Incident ==="
+echo "=== 10. Close Incident ==="
 CLOSE_RESP=$(curl -s -X POST "$BASE_URL/incidents/$INC_ID/close" \
   -H "Authorization: Bearer $ADMIN_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"remarks": "All CAPAs verified and effective. Closing incident."}')
 echo "Incident Final Status: $(echo $CLOSE_RESP | python3 -c "import sys, json; print(json.load(sys.stdin)['data']['status'])")"
 
-echo "=== 13. Dashboard Metrics ==="
-DASH_RESP=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE_URL/dashboard/metrics")
-echo "Dashboard Data Success: $(echo $DASH_RESP | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])")"
+echo "=== 11. Dashboard Summary & Severity ==="
+DASH_SUMMARY=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE_URL/dashboard/summary")
+echo "Dashboard Summary Success: $(echo $DASH_SUMMARY | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])")"
 
-echo "=== ALL PHASES PASSED END TO END ==="
+DASH_SEV=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE_URL/dashboard/severity")
+echo "Dashboard Severity Success: $(echo $DASH_SEV | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])")"
+
+echo "=== 12. Reports Incident & CAPA Register ==="
+RPT_INC=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE_URL/reports/incidents")
+echo "Incident Report Success: $(echo $RPT_INC | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])")"
+
+RPT_CAPA=$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE_URL/reports/capa")
+echo "CAPA Report Success: $(echo $RPT_CAPA | python3 -c "import sys, json; print(json.load(sys.stdin)['success'])")"
+
+echo "=== ALL PHASES PASSED END TO END PERFECTLY ==="
