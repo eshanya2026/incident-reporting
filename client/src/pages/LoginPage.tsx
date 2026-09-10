@@ -47,57 +47,60 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-900 bg-gradient-to-br from-hospital-950 via-slate-900 to-hospital-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-white/95 backdrop-blur-md rounded-2xl shadow-2xl overflow-hidden border border-slate-700/30">
-        <div className="bg-hospital-900 px-8 py-8 text-white text-center relative overflow-hidden">
-          <div className="absolute -right-8 -top-8 opacity-10 text-white">
-            <Hospital className="w-48 h-48" />
+    <div className="min-h-screen bg-[#F8FAFC] flex items-center justify-center p-4 relative overflow-hidden text-[#172033]">
+      {/* Subtle soft red background ambient glow */}
+      <div className="absolute -top-40 -left-40 w-96 h-96 bg-[#FDECEC]/60 rounded-full blur-3xl pointer-events-none"></div>
+      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-[#FDECEC]/40 rounded-full blur-3xl pointer-events-none"></div>
+
+      <div className="max-w-md w-full bg-white rounded-2xl shadow-card border border-[#E2E8F0] overflow-hidden relative z-10">
+        {/* Header - Clean White with Red Brand Accent */}
+        <div className="bg-white px-8 pt-8 pb-6 text-center border-b border-[#E2E8F0]">
+          <div className="w-14 h-14 bg-gradient-to-br from-[#8B1E23] via-[#C62828] to-[#E53935] text-white rounded-2xl mx-auto flex items-center justify-center mb-3.5 shadow-md shadow-red-900/20 ring-1 ring-white/30 relative overflow-hidden">
+            <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none"></span>
+            <ShieldCheck className="w-8 h-8 text-white relative z-10" />
           </div>
-          <div className="w-16 h-16 bg-hospital-600 rounded-2xl mx-auto flex items-center justify-center mb-4 shadow-lg ring-4 ring-hospital-500/30">
-            <ShieldCheck className="w-9 h-9 text-white" />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight">Adhiparasakthi Hospitals</h1>
-          <p className="text-xs text-hospital-200 mt-1 uppercase tracking-wider font-semibold">
+          <h1 className="text-xl font-bold tracking-tight text-[#68151A]">Adhiparasakthi Hospitals</h1>
+          <p className="text-xs text-[#64748B] mt-1 uppercase tracking-[0.5px] font-medium">
             Incident Reporting & Patient Safety Portal
           </p>
         </div>
 
         <form onSubmit={handleLogin} className="p-8 space-y-5">
           {error && (
-            <div className="p-3.5 bg-red-50 border border-red-200 text-red-700 rounded-lg text-sm flex items-center space-x-2">
-              <AlertCircle className="w-5 h-5 shrink-0" />
-              <span>{error}</span>
+            <div className="p-3.5 bg-[#FFF5F5] border border-[#FDECEC] text-[#C62828] rounded-xl text-sm flex items-center space-x-2">
+              <AlertCircle className="w-5 h-5 shrink-0 text-[#C62828]" />
+              <span className="font-medium">{error}</span>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5">
+            <label className="block text-xs font-semibold text-[#172033] uppercase tracking-wide mb-1.5">
               Username / Employee ID
             </label>
             <div className="relative">
-              <UserIcon className="w-5 h-5 text-slate-400 absolute left-3 top-2.5" />
+              <UserIcon className="w-4.5 h-4.5 text-[#94A3B8] absolute left-3.5 top-3" />
               <input
                 type="text"
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
                 placeholder="e.g. nurse.mary or admin"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-hospital-500 focus:bg-white transition"
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E2E8F0] rounded-xl text-sm text-[#172033] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] transition"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-slate-600 uppercase mb-1.5">Password</label>
+            <label className="block text-xs font-semibold text-[#172033] uppercase tracking-wide mb-1.5">Password</label>
             <div className="relative">
-              <Lock className="w-5 h-5 text-slate-400 absolute left-3 top-2.5" />
+              <Lock className="w-4.5 h-4.5 text-[#94A3B8] absolute left-3.5 top-3" />
               <input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-hospital-500 focus:bg-white transition"
+                className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E2E8F0] rounded-xl text-sm text-[#172033] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] transition"
               />
             </div>
           </div>
@@ -105,47 +108,48 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-3 bg-hospital-600 hover:bg-hospital-700 active:bg-hospital-800 text-white font-semibold rounded-lg shadow-md hover:shadow-lg transition flex items-center justify-center space-x-2"
+            className="w-full py-3 bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] hover:brightness-110 active:scale-[0.99] text-white font-semibold rounded-xl shadow-button-red transition duration-180 flex items-center justify-center space-x-2 relative overflow-hidden cursor-pointer"
           >
+            <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/15 to-transparent pointer-events-none"></span>
             {loading ? (
               <span className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
             ) : (
-              <span>Sign In to Safety Portal</span>
+              <span className="tracking-wide relative z-10 font-medium">Sign In to Safety Portal</span>
             )}
           </button>
 
-          <div className="pt-4 border-t border-slate-100">
-            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2 text-center">
+          <div className="pt-4 border-t border-[#F1F5F9]">
+            <p className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider mb-2.5 text-center">
               Quick Demo Login Presets
             </p>
             <div className="grid grid-cols-2 gap-2 text-xs">
               <button
                 type="button"
                 onClick={() => handleQuickLogin('staff')}
-                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 text-left font-medium"
+                className="px-3 py-2 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl text-[#172033] text-left font-medium transition cursor-pointer"
               >
-                🏥 Staff Nurse
+                🏥 <span>Staff Nurse</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickLogin('hod')}
-                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 text-left font-medium"
+                className="px-3 py-2 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl text-[#172033] text-left font-medium transition cursor-pointer"
               >
-                🩺 Dept HOD
+                🩺 <span>Dept HOD</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickLogin('quality')}
-                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 text-left font-medium"
+                className="px-3 py-2 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl text-[#172033] text-left font-medium transition cursor-pointer"
               >
-                🛡️ Quality Admin
+                🛡️ <span>Quality Admin</span>
               </button>
               <button
                 type="button"
                 onClick={() => handleQuickLogin('admin')}
-                className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 rounded text-slate-700 text-left font-medium"
+                className="px-3 py-2 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl text-[#172033] text-left font-medium transition cursor-pointer"
               >
-                ⚡ System Admin
+                ⚡ <span>System Admin</span>
               </button>
             </div>
           </div>

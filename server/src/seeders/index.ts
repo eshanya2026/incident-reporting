@@ -183,104 +183,188 @@ export const seedDatabase = async (): Promise<void> => {
     }
     logger.info('✅ Locations seeded');
 
-    // 4. Seed Incident Categories
+    // 4. Seed Incident Categories (18 Standard Healthcare Categories)
     const categoriesData = [
       {
-        code: 'PATIENT_SAFETY',
-        name: 'Patient Safety',
+        code: 'PATIENT_FALL',
+        name: 'Patient Fall',
         subcategories: [
-          { code: 'FALL', name: 'Patient Fall', active: true },
-          { code: 'WRONG_PATIENT', name: 'Wrong Patient Identification', active: true },
-          { code: 'WRONG_SITE', name: 'Wrong Site / Procedure', active: true },
-          { code: 'PRESSURE_INJURY', name: 'Pressure Injury', active: true },
-          { code: 'ELOPEMENT', name: 'Patient Elopement / Absconding', active: true },
-          { code: 'RESTRAINT_INJURY', name: 'Restraint Related Injury', active: true },
-          { code: 'CONSENT_ISSUE', name: 'Consent Related Issue', active: true },
+          { code: 'NEAR_FALL', name: 'Near Fall', active: true },
+          { code: 'FALL_WITHOUT_INJURY', name: 'Fall Without Injury', active: true },
+          { code: 'FALL_WITH_INJURY', name: 'Fall With Injury', active: true },
         ],
       },
       {
-        code: 'MEDICATION',
-        name: 'Medication Error',
+        code: 'MEDICATION_SAFETY',
+        name: 'Medication Safety',
         subcategories: [
-          { code: 'WRONG_DRUG', name: 'Wrong Drug Administered', active: true },
+          { code: 'WRONG_DRUG', name: 'Wrong Drug', active: true },
           { code: 'WRONG_DOSE', name: 'Wrong Dose', active: true },
-          { code: 'WRONG_ROUTE', name: 'Wrong Route', active: true },
-          { code: 'WRONG_TIME', name: 'Wrong Time', active: true },
-          { code: 'OMISSION', name: 'Drug Omission', active: true },
-          { code: 'ADR', name: 'Adverse Drug Reaction', active: true },
-          { code: 'DRUG_INTERACTION', name: 'Drug Interaction', active: true },
-          { code: 'LOOK_ALIKE', name: 'Look-Alike Sound-Alike (LASA)', active: true },
+          { code: 'WRONG_PATIENT_MED', name: 'Wrong Patient', active: true },
+          { code: 'MISSED_DOSE', name: 'Missed Dose', active: true },
+          { code: 'MEDICATION_DELAY', name: 'Medication Delay', active: true },
         ],
       },
       {
-        code: 'INFECTION_CONTROL',
-        name: 'Infection Control',
+        code: 'PATIENT_IDENTIFICATION',
+        name: 'Patient Identification',
         subcategories: [
-          { code: 'HAI', name: 'Hospital Acquired Infection', active: true },
-          { code: 'NEEDLE_STICK', name: 'Needle Stick Injury', active: true },
-          { code: 'BIOMEDICAL_WASTE', name: 'Biomedical Waste Mismanagement', active: true },
-          { code: 'HAND_HYGIENE', name: 'Hand Hygiene Non-Compliance', active: true },
-          { code: 'SSI', name: 'Surgical Site Infection', active: true },
+          { code: 'WRONG_PATIENT_ID', name: 'Wrong Patient', active: true },
+          { code: 'WRISTBAND_MISSING', name: 'Wristband Missing', active: true },
+          { code: 'ID_MISMATCH', name: 'ID Mismatch', active: true },
         ],
       },
       {
-        code: 'FACILITY_EQUIPMENT',
-        name: 'Facility & Equipment',
+        code: 'CLINICAL_CARE_TREATMENT',
+        name: 'Clinical Care / Treatment',
         subcategories: [
-          { code: 'EQUIP_MALFUNCTION', name: 'Equipment Malfunction', active: true },
-          { code: 'POWER_FAILURE', name: 'Power / UPS Failure', active: true },
-          { code: 'FIRE', name: 'Fire / Smoke Incident', active: true },
-          { code: 'WATER_SUPPLY', name: 'Water Supply Issue', active: true },
-          { code: 'STRUCTURAL', name: 'Structural / Civil Damage', active: true },
-          { code: 'GAS_SUPPLY', name: 'Medical Gas Supply Issue', active: true },
+          { code: 'TREATMENT_DELAY', name: 'Treatment Delay', active: true },
+          { code: 'PROCEDURE_ERROR', name: 'Procedure Error', active: true },
+          { code: 'DETERIORATION_NOT_RECOGNIZED', name: 'Deterioration Not Recognized', active: true },
         ],
       },
       {
-        code: 'CLINICAL_PROCESS',
-        name: 'Clinical Process',
+        code: 'SURGERY_PROCEDURE',
+        name: 'Surgery / Procedure',
         subcategories: [
-          { code: 'DIAGNOSTIC_ERROR', name: 'Diagnostic Error / Delay', active: true },
-          { code: 'LAB_ERROR', name: 'Laboratory Error', active: true },
-          { code: 'BLOOD_TRANSFUSION', name: 'Blood Transfusion Reaction', active: true },
-          { code: 'HANDOVER_FAILURE', name: 'Clinical Handover Failure', active: true },
-          { code: 'DOCUMENTATION', name: 'Documentation Error', active: true },
+          { code: 'WRONG_SITE', name: 'Wrong Site', active: true },
+          { code: 'PROCEDURE_COMPLICATION', name: 'Procedure Complication', active: true },
+          { code: 'SURGICAL_SAFETY_CHECKLIST_ISSUE', name: 'Surgical Safety Checklist Issue', active: true },
         ],
       },
       {
-        code: 'BEHAVIORAL',
-        name: 'Behavioral / Security',
+        code: 'LABORATORY',
+        name: 'Laboratory',
         subcategories: [
-          { code: 'VIOLENCE', name: 'Violence / Aggression', active: true },
-          { code: 'HARASSMENT', name: 'Staff / Patient Harassment', active: true },
-          { code: 'THEFT', name: 'Theft / Missing Property', active: true },
+          { code: 'SAMPLE_MISMATCH', name: 'Sample Mismatch', active: true },
+          { code: 'MISLABELING', name: 'Mislabeling', active: true },
+          { code: 'LOST_SAMPLE', name: 'Lost Sample', active: true },
+          { code: 'DELAYED_RESULT', name: 'Delayed Result', active: true },
+          { code: 'CRITICAL_RESULT_DELAY', name: 'Critical Result Delay', active: true },
+        ],
+      },
+      {
+        code: 'RADIOLOGY_IMAGING',
+        name: 'Radiology / Imaging',
+        subcategories: [
+          { code: 'RAD_WRONG_PATIENT', name: 'Wrong Patient', active: true },
+          { code: 'WRONG_STUDY', name: 'Wrong Study', active: true },
+          { code: 'REPORTING_DELAY', name: 'Reporting Delay', active: true },
+          { code: 'CONTRAST_REACTION', name: 'Contrast Reaction', active: true },
+        ],
+      },
+      {
+        code: 'MEDICATION_PHARMACY',
+        name: 'Medication / Pharmacy',
+        subcategories: [
+          { code: 'DISPENSING_ERROR', name: 'Dispensing Error', active: true },
+          { code: 'STOCK_ISSUE', name: 'Stock Issue', active: true },
+          { code: 'WRONG_MEDICINE_SUPPLIED', name: 'Wrong Medicine Supplied', active: true },
+        ],
+      },
+      {
+        code: 'BLOOD_TRANSFUSION',
+        name: 'Blood & Transfusion',
+        subcategories: [
+          { code: 'TRANSFUSION_REACTION', name: 'Transfusion Reaction', active: true },
+          { code: 'WRONG_COMPONENT', name: 'Wrong Component', active: true },
+          { code: 'IDENTIFICATION_ERROR', name: 'Identification Error', active: true },
+        ],
+      },
+      {
+        code: 'MEDICAL_DEVICE_EQUIPMENT',
+        name: 'Medical Device / Equipment',
+        subcategories: [
+          { code: 'EQUIPMENT_FAILURE', name: 'Equipment Failure', active: true },
+          { code: 'DEVICE_MALFUNCTION', name: 'Device Malfunction', active: true },
+          { code: 'EQUIPMENT_UNAVAILABLE', name: 'Equipment Unavailable', active: true },
+        ],
+      },
+      {
+        code: 'INFECTION_PREVENTION_CONTROL',
+        name: 'Infection Prevention & Control',
+        subcategories: [
+          { code: 'NEEDLE_STICK_INJURY', name: 'Needle-Stick Injury', active: true },
+          { code: 'EXPOSURE', name: 'Exposure', active: true },
+          { code: 'ISOLATION_BREACH', name: 'Isolation Breach', active: true },
+          { code: 'INFECTION_CONTROL_BREACH', name: 'Infection-Control Breach', active: true },
+        ],
+      },
+      {
+        code: 'COMMUNICATION_HANDOVER',
+        name: 'Communication / Handover',
+        subcategories: [
+          { code: 'HANDOVER_FAILURE', name: 'Handover Failure', active: true },
+          { code: 'COMMUNICATION_DELAY', name: 'Communication Delay', active: true },
+          { code: 'CRITICAL_INFO_NOT_COMMUNICATED', name: 'Critical Information Not Communicated', active: true },
+        ],
+      },
+      {
+        code: 'DOCUMENTATION_MEDICAL_RECORDS',
+        name: 'Documentation / Medical Records',
+        subcategories: [
+          { code: 'WRONG_DOCUMENTATION', name: 'Wrong Documentation', active: true },
+          { code: 'MISSING_RECORD', name: 'Missing Record', active: true },
+          { code: 'INCORRECT_PATIENT_RECORD', name: 'Incorrect Patient Record', active: true },
+        ],
+      },
+      {
+        code: 'FACILITY_ENVIRONMENTAL_SAFETY',
+        name: 'Facility / Environmental Safety',
+        subcategories: [
+          { code: 'SLIP_TRIP_HAZARD', name: 'Slip/Trip Hazard', active: true },
+          { code: 'ELECTRICAL_ISSUE', name: 'Electrical Issue', active: true },
+          { code: 'WATER_LEAKAGE', name: 'Water Leakage', active: true },
+          { code: 'FIRE_SMOKE', name: 'Fire/Smoke', active: true },
+        ],
+      },
+      {
+        code: 'SECURITY_WORKPLACE_SAFETY',
+        name: 'Security / Workplace Safety',
+        subcategories: [
+          { code: 'VIOLENCE', name: 'Violence', active: true },
+          { code: 'THEFT', name: 'Theft', active: true },
           { code: 'UNAUTHORIZED_ACCESS', name: 'Unauthorized Access', active: true },
+          { code: 'PATIENT_ELOPEMENT', name: 'Patient Elopement', active: true },
         ],
       },
       {
-        code: 'OCCUPATIONAL_HEALTH',
-        name: 'Occupational Health & Safety',
+        code: 'IT_SYSTEM_FAILURE',
+        name: 'IT / System / Communication Failure',
         subcategories: [
-          { code: 'SLIP_TRIP', name: 'Slip / Trip / Fall (Staff)', active: true },
-          { code: 'CHEMICAL_EXPOSURE', name: 'Chemical Exposure', active: true },
-          { code: 'ERGONOMIC', name: 'Ergonomic Injury', active: true },
-          { code: 'RADIATION', name: 'Radiation Exposure', active: true },
+          { code: 'HIS_DOWNTIME', name: 'HIS Downtime', active: true },
+          { code: 'LIS_DOWNTIME', name: 'LIS Downtime', active: true },
+          { code: 'NETWORK_FAILURE', name: 'Network Failure', active: true },
+          { code: 'SYSTEM_ERROR', name: 'System Error', active: true },
         ],
       },
       {
-        code: 'INFO_SECURITY',
-        name: 'Information Security',
+        code: 'PATIENT_VISITOR_COMPLAINT',
+        name: 'Patient / Visitor Complaint Event',
         subcategories: [
-          { code: 'DATA_BREACH', name: 'Patient Data Breach', active: true },
-          { code: 'SYSTEM_DOWNTIME', name: 'IT System Downtime', active: true },
-          { code: 'UNAUTHORIZED_DISCLOSURE', name: 'Unauthorized Information Disclosure', active: true },
+          { code: 'STAFF_BEHAVIOUR', name: 'Staff Behaviour', active: true },
+          { code: 'SERVICE_DELAY', name: 'Service Delay', active: true },
+          { code: 'SAFETY_CONCERN', name: 'Safety Concern', active: true },
+        ],
+      },
+      {
+        code: 'OTHER',
+        name: 'Other',
+        subcategories: [
+          { code: 'OTHER_REPORTABLE_INCIDENT', name: 'Other reportable incident', active: true },
         ],
       },
     ];
 
-    for (const cat of categoriesData) {
-      await IncidentCategory.findOneAndUpdate({ code: cat.code }, cat, { upsert: true, new: true });
+    for (let i = 0; i < categoriesData.length; i++) {
+      const cat = categoriesData[i];
+      await IncidentCategory.findOneAndUpdate(
+        { code: cat.code },
+        { ...cat, order: i + 1, active: true },
+        { upsert: true, new: true }
+      );
     }
-    logger.info('✅ Incident Categories seeded (8 categories with subcategories)');
+    logger.info('✅ Incident Categories seeded (18 categories with subcategories)');
 
     // 5. Seed Initial Users
     const defaultPassword = await hashPassword('Admin@123');

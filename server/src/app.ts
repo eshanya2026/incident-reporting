@@ -74,6 +74,7 @@ app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/roles', roleRoutes);
 app.use('/api/v1/departments', departmentRoutes);
 app.use('/api/v1/locations', locationRoutes);
+app.use('/api/v1/categories', categoryRoutes);
 app.use('/api/v1/incident-categories', categoryRoutes);
 app.use('/api/v1/attachments', attachmentRoutes);
 app.use('/api/v1/incidents', incidentRoutes);

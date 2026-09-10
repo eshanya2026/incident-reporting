@@ -166,7 +166,28 @@ export const getMe = async (req: Request, res: Response, next: NextFunction): Pr
       throw AppError.notFound('User profile not found');
     }
 
-    sendSuccess(res, user, 'Profile fetched successfully');
+    const populatedRoles = (user.roles as any[]) || [];
+    const roleCodes = populatedRoles.map((r) => (typeof r === 'object' && r.code ? r.code : String(r)));
+    const permissionsSet = new Set<string>();
+    populatedRoles.forEach((r) => {
+      if (typeof r === 'object' && Array.isArray(r.permissions)) {
+        r.permissions.forEach((p: string) => permissionsSet.add(p));
+      }
+    });
+
+    const userProfile = {
+      id: user._id,
+      employeeId: user.employeeId,
+      name: user.name,
+      email: user.email,
+      username: user.username,
+      departmentId: user.departmentId,
+      designation: user.designation,
+      roles: roleCodes,
+      permissions: Array.from(permissionsSet),
+    };
+
+    sendSuccess(res, userProfile, 'Profile fetched successfully');
   } catch (error) {
     next(error);
   }

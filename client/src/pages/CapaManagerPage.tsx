@@ -48,24 +48,25 @@ export default function CapaManagerPage() {
   };
 
   return (
-    <div className="space-y-6">
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="space-y-6 text-clinicalText-primary">
+      {/* Title Card - Separate floating box with light red tint on the left */}
+      <div className="bg-gradient-to-r from-[#FDECEC]/70 via-[#FFFBFB] to-white p-6 rounded-2xl border border-clinicalBorder border-l-4 border-l-[#8B1E23] shadow-[0_4px_20px_rgba(15,23,42,0.06)] flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-slate-800 flex items-center space-x-2">
-            <CheckSquare className="w-6 h-6 text-hospital-600" />
+          <h2 className="text-xl font-bold text-clinicalText-primary flex items-center space-x-2">
+            <CheckSquare className="w-6 h-6 text-maroon-700" />
             <span>CAPA Action Items & Compliance Manager</span>
           </h2>
-          <p className="text-xs text-slate-500 mt-1">
+          <p className="text-xs text-clinicalText-secondary mt-1">
             Track corrective & preventive actions, evidence uploads, target completion dates, and quality verifications.
           </p>
         </div>
       </div>
 
-      <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center space-x-4">
+      <div className="bg-white p-4 rounded-xl border border-clinicalBorder shadow-sm flex items-center space-x-4">
         <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+          className="px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
         >
           <option value="">-- Filter by Status (All) --</option>
           <option value="OPEN">OPEN</option>
@@ -76,11 +77,11 @@ export default function CapaManagerPage() {
         </select>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="bg-slate-50 border-b border-slate-200 text-[11px] font-bold uppercase tracking-wider text-slate-600">
+              <tr className="bg-slate-50/80 border-b border-clinicalBorder text-[11px] font-bold uppercase tracking-wider text-clinicalText-secondary">
                 <th className="py-3 px-4">CAPA ID</th>
                 <th className="py-3 px-4">Type</th>
                 <th className="py-3 px-4">Action Description</th>
@@ -93,13 +94,13 @@ export default function CapaManagerPage() {
             <tbody className="divide-y divide-slate-100 text-xs">
               {isLoading ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-clinicalText-secondary">
                     Loading CAPA register...
                   </td>
                 </tr>
               ) : capas.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-slate-400">
+                  <td colSpan={7} className="py-8 text-center text-clinicalText-secondary">
                     No CAPA items found.
                   </td>
                 </tr>
@@ -108,32 +109,49 @@ export default function CapaManagerPage() {
                   const isOverdue = dayjs().isAfter(dayjs(c.targetDate)) && c.status !== 'VERIFIED';
                   return (
                     <tr key={c._id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3 px-4 font-bold text-hospital-700">{c.capaNumber}</td>
+                      <td className="py-3 px-4 font-mono font-bold text-maroon-700">{c.capaNumber}</td>
                       <td className="py-3 px-4">
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${c.type === 'CORRECTIVE' ? 'bg-orange-100 text-orange-800' : 'bg-blue-100 text-blue-800'}`}>
+                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold border uppercase ${
+                          c.type === 'CORRECTIVE'
+                            ? 'bg-rose-50 text-rose-700 border-rose-200'
+                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
                           {c.type}
                         </span>
                       </td>
-                      <td className="py-3 px-4 font-medium text-slate-800">{c.action}</td>
-                      <td className="py-3 px-4 text-slate-600">
-                        <div>{c.ownerUserId?.name}</div>
-                        <div className="text-[10px] text-slate-400">{c.ownerDepartmentId?.name}</div>
+                      <td className="py-3 px-4 font-medium text-clinicalText-primary">{c.action}</td>
+                      <td className="py-3 px-4 text-clinicalText-secondary">
+                        <div className="font-semibold text-clinicalText-primary">{c.ownerUserId?.name}</div>
+                        <div className="text-[10px] text-clinicalText-muted">{c.ownerDepartmentId?.name}</div>
                       </td>
                       <td className="py-3 px-4">
-                        <div className={`font-semibold ${isOverdue ? 'text-red-600 flex items-center space-x-1' : 'text-slate-700'}`}>
+                        <div className={`font-semibold ${isOverdue ? 'text-brandRed-600 flex items-center space-x-1' : 'text-clinicalText-primary'}`}>
                           {isOverdue && <AlertTriangle className="w-3.5 h-3.5" />}
                           <span>{dayjs(c.targetDate).format('DD MMM YYYY')}</span>
                         </div>
                       </td>
                       <td className="py-3 px-4">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold border bg-amber-50 text-amber-800 border-amber-200 uppercase">
+                        <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold border uppercase tracking-wider ${
+                          c.status === 'VERIFIED'
+                            ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                            : isOverdue || c.status === 'OVERDUE'
+                            ? 'bg-red-50 text-red-700 border-red-200'
+                            : 'bg-blue-50 text-blue-700 border-blue-200'
+                        }`}>
+                          <span className={`w-1.5 h-1.5 rounded-full mr-1.5 ${
+                            c.status === 'VERIFIED'
+                              ? 'bg-emerald-500'
+                              : isOverdue || c.status === 'OVERDUE'
+                              ? 'bg-red-500'
+                              : 'bg-blue-500'
+                          }`}></span>
                           {c.status}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right">
                         <button
                           onClick={() => setSelectedCapa(c)}
-                          className="px-3 py-1 bg-hospital-50 text-hospital-700 hover:bg-hospital-100 rounded-md font-semibold text-xs transition border border-hospital-200"
+                          className="px-3 py-1 bg-white hover:bg-[#FFF5F5] text-clinicalText-primary hover:text-[#8B1E23] hover:border-[#EBA3A7] rounded-md font-semibold text-xs transition border border-clinicalBorder shadow-xs cursor-pointer"
                         >
                           Manage Action
                         </button>
@@ -150,51 +168,51 @@ export default function CapaManagerPage() {
       {/* Action Modal */}
       {selectedCapa && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl border border-slate-200">
-            <h3 className="text-base font-bold text-slate-800">
+          <div className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-4 shadow-2xl border border-clinicalBorder">
+            <h3 className="text-base font-bold text-clinicalText-primary">
               Manage CAPA: {selectedCapa.capaNumber}
             </h3>
-            <p className="text-xs text-slate-600 bg-slate-50 p-3 rounded-lg border border-slate-200">
+            <p className="text-xs text-clinicalText-secondary bg-slate-50 p-3 rounded-lg border border-clinicalBorder">
               {selectedCapa.action}
             </p>
 
             <div className="space-y-3 pt-2">
               <div>
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Completion Remarks (Owner)</label>
+                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Completion Remarks (Owner)</label>
                 <textarea
                   rows={2}
                   placeholder="Steps taken to implement corrective/preventive action..."
                   value={completionRemarks}
                   onChange={(e) => setCompletionRemarks(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  className="w-full px-3 py-2 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
                 ></textarea>
                 <button
                   onClick={handleCompleteCapa}
-                  className="mt-2 px-3 py-1.5 bg-hospital-600 text-white font-semibold text-xs rounded-lg shadow"
+                  className="mt-2 px-5 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-xs rounded-xl shadow-md hover:shadow-lg shadow-emerald-500/20 transition cursor-pointer"
                 >
                   Submit Completion
                 </button>
               </div>
 
-              <div className="pt-4 border-t border-slate-100">
-                <label className="block text-xs font-semibold text-slate-600 mb-1">Quality Verification Remarks</label>
+              <div className="pt-4 border-t border-clinicalBorder">
+                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Quality Verification Remarks</label>
                 <textarea
                   rows={2}
                   placeholder="Verification audit findings..."
                   value={verificationRemarks}
                   onChange={(e) => setVerificationRemarks(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-lg text-xs"
+                  className="w-full px-3 py-2 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
                 ></textarea>
                 <div className="flex space-x-2 mt-2">
                   <button
                     onClick={() => handleVerifyCapa(true)}
-                    className="px-3 py-1.5 bg-emerald-600 text-white font-semibold text-xs rounded-lg shadow"
+                    className="px-4 py-2 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-semibold text-xs rounded-xl shadow-md hover:shadow-lg shadow-emerald-500/20 transition cursor-pointer"
                   >
                     Verify Effective
                   </button>
                   <button
                     onClick={() => handleVerifyCapa(false)}
-                    className="px-3 py-1.5 bg-red-600 text-white font-semibold text-xs rounded-lg shadow"
+                    className="px-4 py-2 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 text-white font-semibold text-xs rounded-xl shadow-md hover:shadow-lg shadow-red-500/20 transition cursor-pointer"
                   >
                     Return Ineffective
                   </button>
@@ -205,7 +223,7 @@ export default function CapaManagerPage() {
             <div className="pt-4 flex justify-end">
               <button
                 onClick={() => setSelectedCapa(null)}
-                className="px-4 py-2 bg-slate-100 text-slate-700 font-semibold text-xs rounded-lg"
+                className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary hover:text-clinicalText-primary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer"
               >
                 Close
               </button>

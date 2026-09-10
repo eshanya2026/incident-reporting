@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import AppLayout from './components/layout/AppLayout';
@@ -10,9 +10,28 @@ import CapaManagerPage from './pages/CapaManagerPage';
 import QualityReportsPage from './pages/QualityReportsPage';
 import AdminMasterPage from './pages/AdminMasterPage';
 import { useAuthStore } from './store/useAuthStore';
+import { api } from './lib/api';
 
 function ProtectedRoute({ children }: { children: React.JSX.Element }) {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const { isAuthenticated, accessToken, setUser, logout } = useAuthStore();
+
+  useEffect(() => {
+    if (accessToken) {
+      api
+        .get('/auth/me')
+        .then((res: any) => {
+          if (res?.data) {
+            setUser(res.data);
+          }
+        })
+        .catch((err: any) => {
+          if (err?.statusCode === 401 || err?.response?.status === 401) {
+            logout();
+          }
+        });
+    }
+  }, [accessToken, setUser, logout]);
+
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }

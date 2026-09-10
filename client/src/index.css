@@ -4,22 +4,54 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 min-h-screen antialiased;
+    background-color: #F8FAFC;
+    color: #172033;
+    @apply min-h-screen antialiased;
+    font-family: 'Inter', system-ui, -apple-system, sans-serif;
+  }
+
+  ::selection {
+    background-color: #FDECEC;
+    color: #8B1E23;
   }
 }
 
-/* Custom scrollbars */
+/* Primary Brand Gradient */
+.brand-gradient {
+  background: linear-gradient(135deg, #68151A 0%, #8B1E23 35%, #C62828 70%, #E53935 100%);
+}
+
+/* Subtle gloss highlight on gradient elements */
+.glossy-red {
+  background: linear-gradient(135deg, #8B1E23 0%, #C62828 55%, #E53935 80%, #FF6B6B 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.glossy-red::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(120deg, transparent 20%, rgba(255, 255, 255, 0.20) 45%, transparent 65%);
+  pointer-events: none;
+}
+
+/* Clean Clinical Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: #F8FAFC;
 }
 ::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: #CBD5E1;
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: #94A3B8;
 }
+
