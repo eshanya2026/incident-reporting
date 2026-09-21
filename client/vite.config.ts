@@ -14,13 +14,9 @@ export default defineConfig({
     port: 5173,
     host: true,
     proxy: {
+      // Override with VITE_API_PROXY to point the dev server at another API instance
       '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true,
-        secure: false,
-      },
-      '/uploads': {
-        target: 'http://localhost:5000',
+        target: process.env.VITE_API_PROXY || 'http://localhost:5000',
         changeOrigin: true,
         secure: false,
       },

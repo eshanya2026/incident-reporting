@@ -36,6 +36,8 @@ services:
       PORT: 5000
       MONGO_URI: mongodb://mongo:27017/incident_db
       REDIS_URL: redis://redis:6379
+      # One reverse proxy (nginx) in front of the API: rate limits apply per user IP, not per proxy
+      TRUST_PROXY: 1
       FILE_STORAGE_PATH: uploads
     volumes:
       - uploads_data:/app/uploads

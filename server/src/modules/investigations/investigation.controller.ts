@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Investigation } from './investigation.model.js';
-import { Incident } from '../incidents/incident.model.js';
+import { RootCauseAnalysis } from '../rca/rca.model.js';
 import { IncidentWorkflowService } from '../incidents/incidentWorkflow.service.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
+import { loadIncidentForView, loadIncidentForWork } from '../../common/helpers/incidentAccess.js';
+import { IIncident } from '../incidents/incident.model.js';
+import { assertAttachmentsUsable, linkAttachments } from '../attachments/attachmentAccess.js';
 
 const saveInvestigationSchema = z.object({
   facts: z.string().optional(),
@@ -25,43 +28,43 @@ const saveInvestigationSchema = z.object({
   recommendation: z.string().optional(),
 });
 
+// The HOD can edit the investigation while working on the incident, not once it is with Quality
+const EDITABLE_STATUSES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'];
+
+const assertEditable = (incident: IIncident): void => {
+  if (!EDITABLE_STATUSES.includes(incident.status)) {
+    throw AppError.conflict(`The investigation cannot be changed while the incident is ${incident.status}`);
+  }
+};
+
+/** Validates evidence files (uploaded by this user, not linked elsewhere) before saving. */
+const checkEvidence = (req: Request, investigation: any, data: z.infer<typeof saveInvestigationSchema>) =>
+  assertAttachmentsUsable(data.evidence, req.user!.userId, 'INVESTIGATION', investigation._id);
+
+const applyInvestigationFields = (investigation: any, data: z.infer<typeof saveInvestigationSchema>): void => {
+  if (data.facts !== undefined) investigation.facts = data.facts;
+  if (data.chronology !== undefined) investigation.chronology = data.chronology;
+  if (data.peopleInterviewed !== undefined) investigation.peopleInterviewed = data.peopleInterviewed;
+  if (data.contributingFactors !== undefined) investigation.contributingFactors = data.contributingFactors;
+  if (data.immediateCorrections !== undefined) investigation.immediateCorrections = data.immediateCorrections;
+  if (data.evidence !== undefined) investigation.evidence = data.evidence;
+  if (data.findings !== undefined) investigation.findings = data.findings;
+  if (data.recommendation !== undefined) investigation.recommendation = data.recommendation;
+};
+
+/** HOD starts the investigation: ASSIGNED → UNDER_INVESTIGATION (creates the investigation record). */
 export const startInvestigation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
-      throw AppError.unauthorized('User not authenticated');
-    }
-
     const { incidentId } = req.params;
+    const incident = await loadIncidentForWork(req, incidentId as string);
 
-    const incident = await Incident.findById(incidentId);
-    if (!incident) {
-      throw AppError.notFound('Incident record not found');
+    if (incident.status === 'ASSIGNED') {
+      await IncidentWorkflowService.perform({ incidentId: incidentId as string, action: 'START_INVESTIGATION', user: req.user!, req });
     }
 
-    let investigation = await Investigation.findOne({ incidentId });
+    const investigation = await Investigation.findOne({ incidentId });
     if (!investigation) {
-      // Due date 7 days from now by default
-      const dueDate = new Date();
-      dueDate.setDate(dueDate.getDate() + 7);
-
-      investigation = await Investigation.create({
-        incidentId,
-        investigatorId: req.user.userId,
-        startedAt: new Date(),
-        dueDate,
-        status: 'IN_PROGRESS',
-      });
-    }
-
-    // Transition incident status to UNDER_INVESTIGATION using workflow engine
-    if (incident.status !== 'UNDER_INVESTIGATION') {
-      await IncidentWorkflowService.transition({
-        incidentId: incidentId as string,
-        targetStatus: 'UNDER_INVESTIGATION',
-        actorUserId: req.user.userId,
-        additionalUpdates: { investigatorId: req.user.userId as any },
-        req,
-      });
+      throw AppError.conflict(`An investigation cannot be started while the incident is ${incident.status}`);
     }
 
     sendSuccess(res, investigation, 'Investigation started successfully', 201);
@@ -77,6 +80,7 @@ export const getInvestigationByIncident = async (
 ): Promise<void> => {
   try {
     const { incidentId } = req.params;
+    await loadIncidentForView(req, incidentId as string);
     const investigation = await Investigation.findOne({ incidentId })
       .populate('investigatorId', 'name email designation')
       .populate('evidence');
@@ -99,17 +103,13 @@ export const updateInvestigation = async (req: Request, res: Response, next: Nex
     if (!investigation) {
       throw AppError.notFound('Investigation record not found');
     }
+    const incident = await loadIncidentForWork(req, investigation.incidentId.toString());
+    assertEditable(incident);
+    const evidenceIds = await checkEvidence(req, investigation, data);
 
-    if (data.facts !== undefined) investigation.facts = data.facts;
-    if (data.chronology !== undefined) investigation.chronology = data.chronology;
-    if (data.peopleInterviewed !== undefined) investigation.peopleInterviewed = data.peopleInterviewed;
-    if (data.contributingFactors !== undefined) investigation.contributingFactors = data.contributingFactors;
-    if (data.immediateCorrections !== undefined) investigation.immediateCorrections = data.immediateCorrections;
-    if (data.evidence !== undefined) investigation.evidence = data.evidence as any;
-    if (data.findings !== undefined) investigation.findings = data.findings;
-    if (data.recommendation !== undefined) investigation.recommendation = data.recommendation;
-
+    applyInvestigationFields(investigation, data);
     await investigation.save();
+    await linkAttachments(evidenceIds, 'INVESTIGATION', investigation._id);
 
     sendSuccess(res, investigation, 'Investigation draft saved successfully');
   } catch (error) {
@@ -117,47 +117,44 @@ export const updateInvestigation = async (req: Request, res: Response, next: Nex
   }
 };
 
+/**
+ * HOD completes the investigation. For severity 4–5 the RCA must be completed first.
+ * When CAPA is required (severity ≥ 3) the incident moves on to CAPA_IN_PROGRESS;
+ * otherwise the HOD can submit it for Quality review next.
+ */
 export const completeInvestigation = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
-      throw AppError.unauthorized('User not authenticated');
-    }
+    const data = saveInvestigationSchema.parse(req.body ?? {});
 
     const investigation = await Investigation.findById(req.params.id);
     if (!investigation) {
       throw AppError.notFound('Investigation record not found');
     }
+    const incident = await loadIncidentForWork(req, investigation.incidentId.toString());
+    assertEditable(incident);
+    const evidenceIds = await checkEvidence(req, investigation, data);
 
-    if (req.body) {
-      if (req.body.findings) investigation.findings = req.body.findings;
-      if (req.body.recommendation) investigation.recommendation = req.body.recommendation;
-      if (req.body.contributingFactors) investigation.contributingFactors = req.body.contributingFactors;
-      if (req.body.immediateCorrections) investigation.immediateCorrections = req.body.immediateCorrections;
-    }
-
+    applyInvestigationFields(investigation, data);
     if (!investigation.findings || investigation.findings.trim() === '') {
       throw AppError.badRequest('Investigation findings are required to complete investigation');
     }
+    if (incident.requiresRca) {
+      const rca = await RootCauseAnalysis.findOne({ incidentId: incident._id });
+      if (rca?.status !== 'COMPLETED') {
+        throw AppError.badRequest('Complete the RCA before completing the investigation (required for severity 4 and 5)');
+      }
+    }
 
     investigation.status = 'COMPLETED';
-    investigation.completedAt = new Date();
+    investigation.completedAt = investigation.completedAt ?? new Date();
     await investigation.save();
+    await linkAttachments(evidenceIds, 'INVESTIGATION', investigation._id);
 
-    const incident = await Incident.findById(investigation.incidentId);
-
-    if (incident) {
-      let targetStatus: any = 'CAPA_IN_PROGRESS';
-      if (incident.requiresRca) {
-        targetStatus = 'RCA_REQUIRED';
-      } else if (!incident.requiresCapa) {
-        targetStatus = 'READY_FOR_CLOSURE';
-      }
-
-      await IncidentWorkflowService.transition({
+    if (incident.status === 'UNDER_INVESTIGATION' && incident.requiresCapa) {
+      await IncidentWorkflowService.perform({
         incidentId: incident._id.toString(),
-        targetStatus,
-        actorUserId: req.user.userId,
-        remarks: 'Investigation completed',
+        action: 'COMPLETE_INVESTIGATION',
+        user: req.user!,
         req,
       });
     }

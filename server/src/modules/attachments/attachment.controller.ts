@@ -7,6 +7,9 @@ import { Attachment, EntityType } from './attachment.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { env } from '../../config/env.js';
+import { canReadAttachment } from './attachmentAccess.js';
+
+const ENTITY_TYPES: EntityType[] = ['INCIDENT', 'INVESTIGATION', 'RCA', 'CAPA'];
 
 const uploadDir = path.resolve(process.cwd(), env.FILE_STORAGE_PATH);
 
@@ -56,20 +59,21 @@ export const uploadFile = async (req: Request, res: Response, next: NextFunction
       throw AppError.unauthorized('User not authenticated');
     }
 
-    const { entityType, entityId } = req.body;
+    // Files are linked to their record when the record is saved (see attachmentAccess.linkAttachments)
+    const entityType: EntityType = ENTITY_TYPES.includes(req.body?.entityType) ? req.body.entityType : 'INCIDENT';
 
     // Calculate MD5 checksum
     const fileBuffer = fs.readFileSync(req.file.path);
     const checksum = crypto.createHash('md5').update(fileBuffer).digest('hex');
 
     const attachment = await Attachment.create({
-      entityType: (entityType as EntityType) || 'INCIDENT',
-      entityId: entityId || null,
+      entityType,
+      entityId: null,
       originalName: req.file.originalname,
       storedName: req.file.filename,
       mimeType: req.file.mimetype,
       size: req.file.size,
-      storagePath: `/uploads/${req.file.filename}`,
+      storagePath: req.file.filename,
       uploadedBy: req.user.userId,
       checksum,
     });
@@ -82,11 +86,40 @@ export const uploadFile = async (req: Request, res: Response, next: NextFunction
 
 export const getAttachmentById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const attachment = await Attachment.findById(req.params.id).populate('uploadedBy', 'name designation');
+    const attachment = await Attachment.findById(req.params.id);
     if (!attachment) {
       throw AppError.notFound('Attachment not found');
     }
+    if (!(await canReadAttachment(req.user, attachment))) {
+      throw AppError.forbidden('You do not have access to this file');
+    }
+    await attachment.populate('uploadedBy', 'name designation');
     sendSuccess(res, attachment, 'Attachment details retrieved');
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Streams the file to users who may read it. Replaces the former public /uploads folder. */
+export const downloadAttachment = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const attachment = await Attachment.findById(req.params.id);
+    if (!attachment) {
+      throw AppError.notFound('Attachment not found');
+    }
+    if (!(await canReadAttachment(req.user, attachment))) {
+      throw AppError.forbidden('You do not have access to this file');
+    }
+
+    const filePath = path.join(uploadDir, path.basename(attachment.storedName));
+    if (!fs.existsSync(filePath)) {
+      throw AppError.notFound('File is missing from storage');
+    }
+
+    res.setHeader('Content-Type', attachment.mimeType);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.originalName)}"`);
+    fs.createReadStream(filePath).on('error', next).pipe(res);
   } catch (error) {
     next(error);
   }

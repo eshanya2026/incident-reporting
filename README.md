@@ -1,24 +1,25 @@
 # 🏥 Adhiparasakthi Hospitals – Incident Reporting & Patient Safety Platform
 
-[![Node.js](https://img.shields.io/badge/Node.js-v22%20LTS-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
-[![React](https://img.shields.io/badge/React-v19-61DAFB?logo=react&logoColor=black)](https://react.dev/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-v5.7-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Vite](https://img.shields.io/badge/Vite-v6-646CFF?logo=vite&logoColor=white)](https://vitejs.dev/)
-[![MongoDB](https://img.shields.io/badge/MongoDB-v7.0-47A248?logo=mongodb&logoColor=white)](https://www.mongodb.com/)
-[![Redis](https://img.shields.io/badge/Redis-v7-DC382D?logo=redis&logoColor=white)](https://redis.io/)
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)](https://www.docker.com/)
-[![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v3.4-06B6D4?logo=tailwindcss&logoColor=white)](https://tailwindcss.com/)
-[![Compliance](https://img.shields.io/badge/Compliance-NABH%20%7C%20JCI%20Ready-008080)](#nabh--jci-patient-safety-alignment)
+![Node.js](https://img.shields.io/badge/Node.js-v22%20LTS-339933?logo=node.js&logoColor=white)
+![React](https://img.shields.io/badge/React-v19-61DAFB?logo=react&logoColor=black)
+![TypeScript](https://img.shields.io/badge/TypeScript-v5.7-3178C6?logo=typescript&logoColor=white)
+![Vite](https://img.shields.io/badge/Vite-v6-646CFF?logo=vite&logoColor=white)
+![MongoDB](https://img.shields.io/badge/MongoDB-v7.0-47A248?logo=mongodb&logoColor=white)
+![Redis](https://img.shields.io/badge/Redis-v7-DC382D?logo=redis&logoColor=white)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker&logoColor=white)
+![Tailwind CSS](https://img.shields.io/badge/TailwindCSS-v3.4-06B6D4?logo=tailwindcss&logoColor=white)
+![Compliance](https://img.shields.io/badge/Compliance-NABH%20%7C%20JCI%20Ready-008080)
 
 An enterprise-grade, hospital-wide Incident Reporting, Clinical Investigation, Root Cause Analysis (RCA), and Corrective & Preventive Action (CAPA) platform engineered for **Adhiparasakthi Hospitals** (1000-bed multi-specialty healthcare facility).
 
-Designed with a **"Just Culture" / Blame-Free Patient Safety philosophy**, this platform streamlines safety event capture, rapid triage, departmental investigations, systematic RCA (5-Why & Ishikawa/Fishbone), actionable CAPA governance, and real-time executive risk intelligence.
+Designed with a **"Just Culture" / Blame-Free Patient Safety philosophy**, this platform streamlines safety event capture by frontline staff, clinical triage by the Quality team, departmental investigations and CAPA execution by Department Heads (HODs), and executive oversight by Hospital Leadership and System Administrators.
 
 ---
 
 ## 📑 Table of Contents
 
 - [Key Features](#-key-features)
+- [The 4-Role Workflow](#-the-4-role-workflow)
 - [Architecture & Tech Stack](#-architecture--tech-stack)
 - [System Architecture Flowchart](#-system-architecture-flowchart)
 - [Incident Lifecycle & State Machine](#-incident-lifecycle--state-machine)
@@ -27,8 +28,9 @@ Designed with a **"Just Culture" / Blame-Free Patient Safety philosophy**, this 
 - [Quick Start with Docker (Recommended)](#-quick-start-with-docker-recommended)
 - [Local Development Setup](#-local-development-setup)
 - [Default Seed Accounts & RBAC](#-default-seed-accounts--rbac)
+- [Role Guides](#-role-guides)
 - [REST API Endpoints Reference](#-rest-api-endpoints-reference)
-- [End-to-End Automated Testing](#-end-to-end-automated-testing)
+- [Automated Testing](#-automated-testing)
 - [Environment Configuration](#-environment-configuration)
 - [NABH & JCI Patient Safety Alignment](#-nabh--jci-patient-safety-alignment)
 
@@ -36,36 +38,60 @@ Designed with a **"Just Culture" / Blame-Free Patient Safety philosophy**, this 
 
 ## 🌟 Key Features
 
-### 1. Rapid Incident Reporting (2–3 Minutes)
-- **Fast clinical entry**: Optimized forms for doctors, nurses, pharmacists, and allied health staff.
-- **Patient identification**: UHID, IP Number, Bed, Ward, and Consultant capture.
-- **Healthcare taxonomy**: 8 primary healthcare categories and specialized subcategories (Patient Safety, Medication Errors, Infection Control, Facility & Equipment, Clinical Process, Behavioral/Security, Occupational Health, Information Security).
-- **Severity grading**: Standardized 5-tier severity classification from Level 1 (*Near Miss*) to Level 5 (*Sentinel Event*).
-- **Evidence uploads**: Direct attachment of clinical photos, charts, and diagnostic files.
+### 1. Rapid Frontline Staff Reporting (2–3 Minutes)
+- **Direct staff reporting**: Any hospital staff member (nurse, technician, pharmacist, resident, attendant) can report safety events and near-misses.
+- **Just Culture visibility (Decision D6)**: Staff can track their reports in **My Reports** (`/incidents/my-reports`) and see the responsible department, current status, and final closure summary, while internal witness statements and RCA fault trees remain protected.
+- **Structured capture**: Department where occurred, specific room/bed, incident category & subcategory, timeline, description, immediate actions, initial severity (Levels 1–5), optional patient details (UHID, IP Number, Bed, Ward, Consultant), and evidence uploads.
 
-### 2. Clinical Triage & Department Routing
-- **Safety committee oversight**: Immediate triage queue for the Quality & Patient Safety team.
-- **Severity re-classification**: Dynamic upgrade/downgrade with mandatory justification remarks.
-- **Automatic routing**: Incidents automatically routed to designated Department HODs.
-- **Investigator delegation**: Assignment of certified investigators based on incident complexity.
+### 2. Clinical Triage & Department Routing (Quality Team)
+- **Triage Inbox (`/incidents/triage-queue`)**: Dedicated inbox for the Quality & Patient Safety team to review newly submitted reports (`SUBMITTED`).
+- **Severity confirmation**: Quality confirms or re-evaluates the reporter's severity on the standard NABH 5-tier harm scale.
+- **Department assignment**: Incidents are routed to the accountable clinical or operational department and its designated Head of Department (`ASSIGNED`).
+- **Information requests (`INFO_REQUESTED`)**: Quality can query the reporter for missing clinical facts before assignment; staff respond directly within the app.
+- **Rejection gate (`REJECTED`)**: Structured rejection with mandatory justification for duplicate reports or non-safety matters.
 
-### 3. Comprehensive Investigation & Root Cause Analysis (RCA)
-- **Structured investigations**: Detailed timeline reconstruction, contributing factor cataloging, immediate corrective measures, and preventive recommendations.
-- **5-Why Analysis**: Step-by-step iterative interrogation of causal chains.
-- **Ishikawa (Fishbone) Diagram Analysis**: Multi-dimensional cause categorization across **People**, **Process**, **Equipment**, **Environment**, **Materials**, and **Management**.
-- **Formal approval gate**: Multi-level safety committee RCA review and sign-off.
+### 3. Investigation & Root Cause Analysis (HOD)
+- **Department Queue (`/incidents/department-queue`)**: HODs manage all active incidents routed to their department.
+- **Wrong assignment handling**: HODs can return misrouted incidents back to Quality with justification notes (`hodReturns`).
+- **Structured clinical investigations**: Timeline chronology, witness interviews, multi-factorial contributing factors, immediate corrections, and recommendations.
+- **5-Why & Fishbone RCA**: Mandatory for major and sentinel events (Severity ≥ 4) covering People, Process, Equipment, Environment, Policy, Training, and Communication.
 
-### 4. CAPA Lifecycle & Effectiveness Verification
-- **Corrective vs. Preventive separation**: Targeted action plans with designated departmental owners and hard deadlines.
-- **Overdue tracking & prioritization**: Priority matrices (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`).
-- **Post-implementation audit**: Effectiveness verification before an incident can be closed.
-- **Zero premature closure**: System prevents incident closure until all linked CAPA items are fully verified.
+### 4. CAPA Governance & Verification
+- **Corrective vs. Preventive separation**: Targeted action items with departmental assignees, priority levels (`LOW`, `MEDIUM`, `HIGH`, `CRITICAL`), and hard deadlines.
+- **Execution & evidence**: HOD marks actions complete and attaches objective verification evidence (`PENDING_VERIFICATION`).
+- **Quality effectiveness verification**: Quality audits implemented changes and verifies effectiveness before sign-off.
+- **Closure review & rework loop**: When an HOD submits an incident for review (`PENDING_QUALITY_REVIEW`), Quality accepts and closes it (`CLOSED`), or returns it for rework (`CAPA_IN_PROGRESS`) with specific guidance.
 
-### 5. Real-Time Hospital Safety Analytics
-- **Executive KPI Dashboard**: Live counts of open, critical, under-investigation incidents and overdue CAPAs.
-- **Severity distribution charts**: Interactive pie and bar breakdowns.
-- **Departmental risk heatmaps**: Incident trend tracking across Emergency, ICU, OT, General Wards, and Pharmacy.
-- **Downloadable registers**: Pre-formatted Incident and CAPA registers for quality audits and NABH/JCI inspections.
+### 5. Hospital-Wide Safety Intelligence & Registers
+- **Dual-perspective analytics**: Quality and Admin see hospital-wide metrics; HODs see department-scoped data.
+- **Turnaround time benchmarks**: Median duration tracking against hospital standards: Submit → Assign (24h target), Assign → Submit for Review (14d target), Review → Close (7d target), Total Cycle (30d target).
+- **Quality rework tracking**: Real-time monitoring of send-back rates and active rework counts.
+- **NABH/JCI compliance registers**: Master Incident Register and CAPA Compliance Register with direct RFC-4180 CSV streaming, Excel (`.xlsx`), and Print/PDF export.
+
+---
+
+## 👥 The 4-Role Workflow
+
+```
+[Staff Reports] ──────► (SUBMITTED) ──────► [Quality Triage & Assignment] ──────► (ASSIGNED)
+       ▲                                              │                                  │
+       │ (Clarification)                              ▼ (Invalid / Duplicate)            ▼
+       └────────────── (INFO_REQUESTED)          (REJECTED)                      [HOD Investigates]
+                                                                                         │
+                                                                                         ▼
+                                                                                (CAPA_IN_PROGRESS)
+                                                                                         │
+                                                                                         ▼
+[Staff Sees Closure Summary] ◄─── (CLOSED) ◄─── [Quality Review] ◄─── (PENDING_QUALITY_REVIEW)
+                                                      │
+                                                      ▼ (Rework Needed)
+                                              (CAPA_IN_PROGRESS)
+```
+
+1. **Staff (`STAFF`):** Submits report (`SUBMITTED`), tracks status in **My Reports**, answers Quality clarification requests (`INFO_REQUESTED`).
+2. **Quality (`QUALITY`):** Reviews triage queue, confirms severity, routes to department HOD (`ASSIGNED`), audits CAPA effectiveness, approves closure (`CLOSED`), or returns for rework (`CAPA_IN_PROGRESS`).
+3. **HOD (`HOD`):** Manages department queue, investigates (`UNDER_INVESTIGATION`), conducts RCA, executes CAPA (`CAPA_IN_PROGRESS`), and submits for review (`PENDING_QUALITY_REVIEW`).
+4. **Admin (`ADMIN`):** Executive safety intelligence, read-only oversight across all incidents, and master data management (Users, Departments, Locations, Categories).
 
 ---
 
@@ -73,11 +99,11 @@ Designed with a **"Just Culture" / Blame-Free Patient Safety philosophy**, this 
 
 | Layer | Technologies |
 |---|---|
-| **Frontend** | React 19, TypeScript, Vite 6, Tailwind CSS, TanStack React Query v5, Zustand, React Hook Form, Zod, Recharts, Lucide React, Axios, Day.js |
-| **Backend API** | Node.js 22 LTS, Express.js, TypeScript, Mongoose ODM, Zod, BullMQ, Pino Logger, Helmet, Express Rate Limit, Cookie Parser |
-| **Database & Cache** | MongoDB 7.0 (Replica-set ready), Redis 7 (Queues, rate limiting, and caching) |
-| **Storage & Reverse Proxy** | Local file storage with streaming / Nginx Reverse Proxy (SSL-ready, static asset caching, API proxying) |
-| **Testing & Tooling** | Vitest, Supertest, cURL / Bash automated end-to-end integration test suite |
+| **Frontend** | React 19, TypeScript, Vite 6, Tailwind CSS 3.4, TanStack React Query v5, Zustand 5, React Router 7, Recharts, Lucide Icons, Axios, Day.js |
+| **Backend API** | Node.js 22 LTS, Express.js 4, TypeScript, Mongoose 8 ODM, Zod, Pino Logger, Helmet, Express Rate Limit, Cookie Parser |
+| **Database & Cache** | MongoDB 7.0 (Replica-set ready), Redis 7 (caching and queues) |
+| **Storage & Reverse Proxy** | Local file storage with streaming / Nginx Reverse Proxy (SSL-ready, API proxying) |
+| **Testing & Tooling** | Vitest 3, Supertest, automated state machine rules suite (177 passing tests) |
 
 ---
 
@@ -86,21 +112,21 @@ Designed with a **"Just Culture" / Blame-Free Patient Safety philosophy**, this 
 ```mermaid
 graph TD
     subgraph Client Tier
-        UI[React 19 + Tailwind SPA\nVite + Zustand + TanStack Query]
+        UI["React 19 SPA<br/>Vite · Tailwind · Zustand · TanStack Query · Recharts"]
     end
 
     subgraph Gateway & Proxy
-        NGINX[Nginx Reverse Proxy\nPort 80 / 443]
+        NGINX["Nginx Reverse Proxy<br/>Port 80 / 443"]
     end
 
     subgraph Application Tier
-        API[Express.js + TypeScript API Server\nPort 5000\nJWT + Zod + Workflow Service]
+        API["Express.js + TypeScript API Server<br/>Port 5000<br/>JWT + Zod + Workflow Service"]
     end
 
     subgraph Data & Storage Tier
-        MONGO[(MongoDB 7\nIncidents, Users, Audits, CAPA)]
-        REDIS[(Redis 7\nBullMQ Queues & Cache)]
-        UPLOADS[Encrypted File Storage\n/uploads]
+        MONGO[("MongoDB 7<br/>Incidents, Users, Audits, CAPA")]
+        REDIS[("Redis 7<br/>Cache & Queues")]
+        UPLOADS[["File Storage<br/>/uploads"]]
     end
 
     UI -->|HTTP / REST| NGINX
@@ -108,7 +134,7 @@ graph TD
     NGINX -->|/api/ -> Node API| API
     NGINX -->|/uploads/ -> Media| UPLOADS
     API -->|Mongoose ODM| MONGO
-    API -->|ioredis / BullMQ| REDIS
+    API -->|ioredis| REDIS
     API -->|Multer| UPLOADS
 ```
 
@@ -116,45 +142,34 @@ graph TD
 
 ## 🚦 Incident Lifecycle & State Machine
 
-Every incident progresses through a verified, audited state machine:
+Every incident transitions through an audited, 8-status state machine:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> DRAFT
-    DRAFT --> SUBMITTED : Staff Submits
-    DRAFT --> CANCELLED : Discarded
-    SUBMITTED --> TRIAGED : Quality Team Reviews
-    SUBMITTED --> HOD_REVIEW : Routed to HOD
-    SUBMITTED --> RETURNED_FOR_INFORMATION : Clarification Needed
-    RETURNED_FOR_INFORMATION --> SUBMITTED : Re-submitted
-    
-    TRIAGED --> UNDER_INVESTIGATION : Assign Investigator
-    HOD_REVIEW --> UNDER_INVESTIGATION : Investigator Assigned
-    
-    UNDER_INVESTIGATION --> RCA_REQUIRED : Severity >= 3 / Sentinel
-    UNDER_INVESTIGATION --> CAPA_IN_PROGRESS : Direct Action Feasible
-    UNDER_INVESTIGATION --> READY_FOR_CLOSURE : Minor / Self-Contained
-    
-    RCA_REQUIRED --> CAPA_IN_PROGRESS : RCA Approved
-    CAPA_IN_PROGRESS --> EFFECTIVENESS_REVIEW : Actions Completed
-    EFFECTIVENESS_REVIEW --> CAPA_IN_PROGRESS : Action Ineffective (Re-work)
-    EFFECTIVENESS_REVIEW --> READY_FOR_CLOSURE : Action Verified Effective
-    
-    READY_FOR_CLOSURE --> CLOSED : Quality Head Sign-Off
-    CLOSED --> REOPENED : Recurrence / Audit Finding
-    REOPENED --> UNDER_INVESTIGATION : Re-investigation
+    [*] --> SUBMITTED : Staff reports
+    SUBMITTED --> INFO_REQUESTED : Quality requests info
+    INFO_REQUESTED --> SUBMITTED : Reporter responds
+    SUBMITTED --> REJECTED : Quality rejects (duplicate / non-incident)
+    SUBMITTED --> ASSIGNED : Quality confirms severity & assigns HOD
+    ASSIGNED --> SUBMITTED : HOD returns (wrong department)
+    ASSIGNED --> UNDER_INVESTIGATION : HOD begins investigation
+    UNDER_INVESTIGATION --> CAPA_IN_PROGRESS : HOD proceeds to CAPA
+    CAPA_IN_PROGRESS --> PENDING_QUALITY_REVIEW : HOD submits for closure
+    PENDING_QUALITY_REVIEW --> CAPA_IN_PROGRESS : Quality returns for rework
+    PENDING_QUALITY_REVIEW --> CLOSED : Quality accepts & completes
+    REJECTED --> [*]
     CLOSED --> [*]
 ```
 
-### Severity Matrix
+### Severity Matrix (NABH 5-Tier Standard)
 
 | Level | Severity Name | Description | Mandatory Actions |
-|:---:|---|---|---|
-| **1** | **Near Miss** | Event caught before reaching patient / no harm done. | Logged, trended, department notification. |
-| **2** | **Minor Harm** | Minimal harm; first-aid or extra monitoring required. | HOD triage, local corrective action. |
-| **3** | **Moderate Harm** | Required medical intervention or extended length of stay. | Detailed investigation, CAPA required. |
-| **4** | **Major Harm** | Significant permanent or long-term impairment / intensive care. | Safety committee alert, 5-Why RCA + CAPA. |
-| **5** | **Sentinel Event** | Death, severe injury, surgery on wrong site/patient, suicide. | Immediate escalation, full Fishbone + 5-Why RCA within 24h. |
+|---|---|---|---|
+| **1** | **Near Miss** | Event caught before reaching patient / zero harm. | Logged, trended, department notification. |
+| **2** | **Minor Harm** | Minimal harm; first-aid or extra monitoring required. | HOD investigation, local corrective action. |
+| **3** | **Moderate Harm** | Required medical intervention or extended length of stay. | Detailed investigation, mandatory CAPA. |
+| **4** | **Major Harm** | Significant permanent or long-term impairment / ICU admission. | Safety committee alert, 5-Why RCA + CAPA within 48h. |
+| **5** | **Sentinel Event** | Death, severe injury, wrong-site surgery, transfusion near-event. | Immediate escalation, full Fishbone + 5-Why RCA within 24h. |
 
 ---
 
@@ -162,303 +177,201 @@ stateDiagram-v2
 
 ```
 ├── client/                     # React 19 Frontend application
-│   ├── Dockerfile              # Multi-stage production build (Node 22 -> Nginx)
-│   ├── index.html              # HTML entry point
-│   ├── package.json            # Client dependencies and build scripts
 │   ├── src/
-│   │   ├── App.tsx             # Root router and route guards
-│   │   ├── components/layout/  # AppLayout, navigation header, sidebar
-│   │   ├── lib/api.ts          # Axios client with JWT interceptor
-│   │   ├── pages/
-│   │   │   ├── LoginPage.tsx           # Authentication page
-│   │   │   ├── DashboardPage.tsx       # Safety analytics & KPI graphs
-│   │   │   ├── ReportIncidentPage.tsx  # Rapid incident reporting form
-│   │   │   ├── IncidentRegisterPage.tsx# Search, filter, and triage list
-│   │   │   ├── IncidentDetailPage.tsx  # Triage, RCA, CAPA, investigation view
-│   │   │   ├── CapaManagerPage.tsx     # CAPA tracking & verification
-│   │   │   ├── QualityReportsPage.tsx  # Audit registers & report downloads
-│   │   │   └── AdminMasterPage.tsx     # Departments, users, and masters
-│   │   └── store/useAuthStore.ts       # Zustand authentication state
-│   ├── tailwind.config.js      # Hospital design system configuration
+│   │   ├── App.tsx             # Root router, auth & role guards
+│   │   ├── components/         # Layout, KPI cards, charts, modals
+│   │   ├── lib/api.ts          # Axios client with JWT auto-refresh
+│   │   ├── lib/rbac.ts         # Client-side permission helpers
+│   │   ├── pages/              # Role-specific screens (Dashboard, Triage, Department Queue, etc.)
+│   │   └── store/useAuthStore  # Zustand authentication state
 │   └── vite.config.ts          # Vite build configuration
 │
 ├── server/                     # Express & TypeScript Backend API
-│   ├── Dockerfile              # Production Node.js runner
-│   ├── package.json            # Backend dependencies and scripts
-│   ├── tsconfig.json           # TypeScript configuration
-│   └── src/
-│       ├── app.ts              # Express application setup, middlewares, routes
-│       ├── server.ts           # Server bootstrap & DB connection
-│       ├── common/             # Errors, enums, response helpers, counters
-│       ├── config/             # DB, Redis, environment, Pino logger
-│       ├── middleware/         # Auth, RBAC permissions, error handler, rate limiter
-│       ├── modules/
-│       │   ├── attachments/    # Multer file upload & metadata records
-│       │   ├── audit/          # Immutable safety audit log service
-│       │   ├── auth/           # JWT login, refresh token, password hashing
-│       │   ├── capa/           # CAPA creation, updates, and verification
-│       │   ├── categories/     # Incident category & subcategory masters
-│       │   ├── dashboard/      # Metrics aggregations & chart data
-│       │   ├── departments/    # Hospital departments (Emergency, ICU, etc.)
-│       │   ├── incidents/      # Incident CRUD, workflow engine, triage
-│       │   ├── investigations/ # Investigator notes, findings, timeline
-│       │   ├── locations/      # Specific hospital rooms, beds, and bays
-│       │   ├── notifications/  # Email and in-app safety alerts
-│       │   ├── rca/            # 5-Why & Fishbone analysis engine
-│       │   ├── reports/        # Incident & CAPA register export queries
-│       │   ├── roles/          # Role & permission definitions
-│       │   └── users/          # Staff and user directory
-│       └── seeders/index.ts    # Database seeding with roles, depts, users, categories
+│   ├── src/
+│   │   ├── app.ts / server.ts  # Express app wiring and server bootstrap
+│   │   ├── config/             # DB, Redis, environment, Pino logger
+│   │   ├── middleware/         # Auth, RBAC permissions, error handler, rate limiter
+│   │   ├── modules/            # Incidents, Investigations, RCA, CAPA, Dashboard, Reports
+│   │   └── seeders/            # Reference data, users, and 26 dummy operational incidents
 │
-├── nginx/                      # Reverse proxy configuration
-│   └── nginx.conf              # Reverse proxy routing rules
+├── docs/                       # Architecture and role operational guides
+│   ├── ARCHITECTURE.md         # Comprehensive system architecture document
+│   ├── FLOW_REWORK_PLAN.md     # 4-role flow specification & design decisions (D1–D11)
+│   └── roles/                  # Role-specific guides (STAFF, QUALITY, HOD, ADMIN)
+│
+├── nginx/nginx.conf            # Reverse proxy routing rules
 ├── docker-compose.yml          # Full-stack Docker orchestration
-├── test_full_lifecycle.sh      # Automated 12-phase E2E integration test
-├── .env.example                # Canonical environment variables template
-└── README.md                   # System documentation
+└── .env.example                # Canonical environment variables template
 ```
 
 ---
 
 ## 💻 Prerequisites
 
-Before running the application locally, ensure you have:
-
 - **Docker & Docker Compose** (Recommended): Docker 24+ and Docker Compose v2+
 - *Or for manual local execution:*
   - **Node.js**: v20.x or v22.x LTS
   - **npm**: v10+
-  - **MongoDB**: v6.0+ or v7.0+ (running locally on port `27017`)
-  - **Redis**: v7.0+ (running locally on port `6379`)
+  - **MongoDB**: v6.0+ or v7.0+ (running on `localhost:27017`)
+  - **Redis**: v7.0+ (running on `localhost:6379`)
 
 ---
 
 ## 🚀 Quick Start with Docker (Recommended)
 
-The easiest way to launch the entire stack (MongoDB, Redis, Node Backend, React Frontend, and Nginx) is using Docker Compose:
-
-### 1. Clone and Configure Environment
-
 ```bash
-# Clone the repository
-git clone <repository_url>
-cd "Insident reporting"
-
-# Copy environment variables
+# 1. Clone the repository and configure environment
 cp .env.example .env
-```
 
-### 2. Build and Start All Containers
-
-```bash
+# 2. Build and start containers
 docker compose up --build -d
-```
 
-### 3. Verify Container Status
-
-```bash
-docker compose ps
-```
-
-All 5 services should be healthy:
-- `adhiparasakthi_nginx` → Listening on `http://localhost:80`
-- `adhiparasakthi_backend` → Listening on `http://localhost:5000`
-- `adhiparasakthi_frontend` → Static production assets served via internal network
-- `adhiparasakthi_mongo` → Bound to `27017:27017`
-- `adhiparasakthi_redis` → Bound to `6379:6379`
-
-### 4. Seed Default Database Data
-
-Run the database seeder inside the running backend container:
-
-```bash
+# 3. Seed default database data (roles, departments, users, 26 demo incidents)
 docker compose exec backend npm run seed
 ```
 
-### 5. Access the Platform
-
-- **Web Application Portal**: [http://localhost](http://localhost) (or [http://localhost:80](http://localhost:80))
-- **Backend Health Check**: [http://localhost:5000/health](http://localhost:5000/health)
-- **API Base URL**: `http://localhost/api/v1` (via Nginx) or `http://localhost:5000/api/v1`
+- **Web Application Portal**: [http://localhost](http://localhost)
+- **API Base URL**: `http://localhost/api/v1`
 
 ---
 
 ## 💻 Local Development Setup
 
-If you prefer running services individually for active development:
-
-### 1. Start MongoDB and Redis
-
-Ensure MongoDB and Redis services are active:
 ```bash
-sudo systemctl start mongod
-sudo systemctl start redis
-```
-
-### 2. Setup and Run Backend Server
-
-```bash
+# Backend setup
 cd server
-
-# Install dependencies
 npm install
+npm run seed      # Seeds roles, departments, locations, categories, users, 26 demo incidents
+npm run dev       # Starts Express API on http://localhost:5000
 
-# Copy environment file
-cp ../.env.example .env
-
-# Run database seeders (creates roles, users, departments, categories)
-npm run seed
-
-# Start server in watch mode with tsx
-npm run dev
-```
-
-*The API server will listen at `http://localhost:5000`.*
-
-### 3. Setup and Run Frontend Client
-
-In a new terminal window:
-
-```bash
+# Frontend setup (in a second terminal)
 cd client
-
-# Install dependencies
 npm install
-
-# Launch Vite development server
-npm run dev
+npm run dev       # Starts Vite dev server on http://localhost:5173
 ```
-
-*The frontend Vite server will be accessible at `http://localhost:5173`.*
 
 ---
 
 ## 👥 Default Seed Accounts & RBAC
 
-The database seeder (`server/src/seeders/index.ts`) initializes standard hospital personas with preset credentials:
+The database seeder initializes hospital personas across all four roles. Default password for all seed accounts: `<RoleName>@123`
 
-| Role | Username | Password | Email | Purpose & Permissions |
+| Role | Username | Password | Email | Persona Details |
 |---|---|---|---|---|
-| **Super Administrator** | `admin` | `Admin@123` | `admin@adhiparasakthi.hospital` | Full system governance, user/role management, system audits. |
-| **Chief Quality Officer** | `quality.admin` | `Quality@123` | `anita.quality@adhiparasakthi.hospital` | Safety triage, re-severity, RCA approval, CAPA verification, closure. |
-| **Emergency HOD** | `hod.emergency` | `Hod@123` | `ramesh.hod@adhiparasakthi.hospital` | Department triage, investigator assignment, CAPA owner. |
-| **Senior Staff Nurse** | `nurse.mary` | `Staff@123` | `mary.staff@adhiparasakthi.hospital` | Fast bedside reporting, near-miss logging, self-incident tracking. |
+| **Staff** | `nurse.mary` | `Staff@123` | `mary.staff@adhiparasakthi.hospital` | Senior Staff Nurse, Emergency Medicine |
+| **Quality** | `quality.anita` | `Quality@123` | `anita.quality@adhiparasakthi.hospital` | Dr. Anita, Chief Quality Officer |
+| **HOD** | `hod.emergency` | `Hod@123` | `ramesh.hod@adhiparasakthi.hospital` | Dr. Ramesh, HOD Emergency Medicine |
+| **HOD** | `hod.icu` | `Hod@123` | `lakshmi.icu@adhiparasakthi.hospital` | Dr. Lakshmi, HOD Intensive Care Unit |
+| **Admin** | `admin` | `Admin@123` | `admin@adhiparasakthi.hospital` | IT System Administrator |
+| **Admin** | `md.director` | `Admin@123` | `suresh.md@adhiparasakthi.hospital` | Dr. Suresh, Medical Director (Executive Oversight) |
 
-> [!WARNING]
-> **Production Notice**: Always update the default passwords and regenerate `JWT_ACCESS_SECRET` and `JWT_REFRESH_SECRET` prior to deploying to a staging or production environment.
+All departmental HODs are seeded: `hod.emergency`, `hod.icu`, `hod.ot`, `hod.ward`, `hod.pharmacy`, `hod.radiology`, `hod.lab`, `hod.quality`.
+
+---
+
+## 📚 Role Guides
+
+Detailed, one-page operational guides for each role are available in `docs/roles/`:
+
+- [🩺 Staff Role Guide](docs/roles/STAFF.md): Rapid incident reporting, tracking submissions in My Reports, responding to information requests, and understanding blame-free visibility.
+- [🛡️ Quality & Patient Safety Role Guide](docs/roles/QUALITY.md): Triage queue management, severity confirmation, department assignment, rejection, review queue, CAPA verification, closure sign-off, and compliance registers.
+- [👨‍⚕️ Head of Department (HOD) Role Guide](docs/roles/HOD.md): Department queue management, returning misrouted incidents, clinical investigations, 5-Why & Fishbone RCA, CAPA execution, and submitting for closure.
+- [⚙️ Administrator & Medical Director Role Guide](docs/roles/ADMIN.md): Executive risk intelligence, hospital-wide incident oversight, user administration, department HOD assignment, locations, and incident categories.
 
 ---
 
 ## 📡 REST API Endpoints Reference
 
-All endpoints are versioned under `/api/v1`. Authenticated requests require the header:  
-`Authorization: Bearer <access_token>`
+All endpoints are versioned under `/api/v1`. Authenticated requests require: `Authorization: Bearer <access_token>`.
 
 ### Authentication
-- `POST /api/v1/auth/login` – Authenticate with username & password; returns tokens and user profile
-- `POST /api/v1/auth/refresh` – Exchange refresh cookie/token for new access token
-- `POST /api/v1/auth/logout` – Clear session cookies
-- `GET /api/v1/auth/me` – Retrieve profile and assigned permissions
+- `POST /auth/login` – Authenticate with username & password; returns access token + sets refresh cookie
+- `POST /auth/refresh` – Exchange refresh cookie for new access token
+- `POST /auth/logout` – Invalidate session and clear cookies
+- `GET /auth/me` – Retrieve current user profile and permissions
 
-### Incidents
-- `GET /api/v1/incidents` – Paginated list of incidents with filters (`status`, `severity`, `departmentId`, `search`)
-- `POST /api/v1/incidents` – Report a new incident or near miss
-- `GET /api/v1/incidents/:id` – Retrieve full incident details including patient, triage, and timeline
-- `POST /api/v1/incidents/:id/triage` – Quality team triage (update severity & workflow status)
-- `POST /api/v1/incidents/:id/assign-investigator` – Assign investigator to the incident
-- `POST /api/v1/incidents/:id/close` – Formally close verified incident (requires closure remarks)
-- `POST /api/v1/incidents/:id/reopen` – Re-open a closed incident with justification
+### Incidents & Workflow
+- `POST /incidents` – Submit a new incident report (Staff)
+- `GET /incidents` – Searchable register of incidents (Quality, Admin)
+- `GET /incidents/my-reports` – Incidents reported by current user (Staff)
+- `GET /incidents/triage-queue` – Triage inbox for unassigned reports (Quality)
+- `GET /incidents/department-queue` – Active incidents assigned to caller's department (HOD)
+- `GET /incidents/review-queue` – Incidents submitted for closure review (Quality)
+- `GET /incidents/:id` – Retrieve incident details (scoped per role)
+- `POST /incidents/:id/assign` – Confirm severity and assign department HOD (Quality)
+- `POST /incidents/:id/reject` – Reject invalid/duplicate report with justification (Quality)
+- `POST /incidents/:id/request-info` – Request information from reporter (Quality)
+- `POST /incidents/:id/respond-info` – Submit response to information request (Reporter Staff)
+- `POST /incidents/:id/return-to-quality` – Return misrouted incident to Quality (Assigned HOD)
+- `POST /incidents/:id/start-investigation` – Begin investigation (Assigned HOD)
+- `POST /incidents/:id/proceed-to-capa` – Transition to CAPA execution (Assigned HOD)
+- `POST /incidents/:id/submit-for-review` – Submit completed incident for review (Assigned HOD)
+- `POST /incidents/:id/quality-review` – Accept & close (`CLOSED`) or return for rework (`CAPA_IN_PROGRESS`) (Quality)
 
-### Clinical Investigations
-- `POST /api/v1/incidents/:incidentId/investigation` – Initiate investigation record
-- `GET /api/v1/incidents/:incidentId/investigation` – Get investigation progress & notes
-- `POST /api/v1/investigations/:id/complete` – Submit findings, contributing factors, recommendations
-
-### Root Cause Analysis (RCA)
-- `POST /api/v1/incidents/:incidentId/rca` – Submit 5-Why and Ishikawa/Fishbone analysis
-- `GET /api/v1/incidents/:incidentId/rca` – Retrieve RCA analysis record
-- `POST /api/v1/rca/:id/approve` – Quality Committee formal approval
+### Investigations & Root Cause Analysis
+- `POST /incidents/:incidentId/investigation` – Save investigation findings, chronology, and interviews (HOD)
+- `GET /incidents/:incidentId/investigation` – Retrieve investigation details
+- `POST /incidents/:incidentId/rca` – Save 5-Why and Fishbone RCA (HOD)
+- `GET /incidents/:incidentId/rca` – Retrieve RCA details
 
 ### Corrective & Preventive Actions (CAPA)
-- `GET /api/v1/incidents/:incidentId/capas` – List CAPAs assigned to an incident
-- `POST /api/v1/incidents/:incidentId/capas` – Create CAPA action item with owner and target date
-- `PATCH /api/v1/capas/:id/status` – Update progress status (`PENDING`, `IN_PROGRESS`)
-- `POST /api/v1/capas/:id/complete` – Mark CAPA implementation complete with notes
-- `POST /api/v1/capas/:id/verify` – Quality verification of CAPA effectiveness (`effective: true/false`)
+- `POST /incidents/:incidentId/capas` – Create a CAPA action item (HOD)
+- `GET /incidents/:incidentId/capas` – List CAPA items for an incident
+- `GET /capas` – List all CAPAs (scoped by role/department)
+- `POST /capas/:id/complete` – Mark CAPA complete with evidence (HOD)
+- `POST /capas/:id/verify` – Verify CAPA effectiveness (Quality)
 
-### Safety Dashboard & Quality Reports
-- `GET /api/v1/dashboard/summary` – Real-time counts (Open, Critical, Near Misses, Overdue CAPAs)
-- `GET /api/v1/dashboard/severity` – Severity level distribution breakdown
-- `GET /api/v1/dashboard/categories` – Category and subcategory frequency
-- `GET /api/v1/dashboard/department-trend` – Incident counts grouped by department
-- `GET /api/v1/reports/incidents` – Formatted tabular register of all hospital incidents
-- `GET /api/v1/reports/capa` – Formatted CAPA tracking register with effectiveness status
+### Analytics & Reports
+- `GET /dashboard/overview` – Safety KPIs, turnaround medians, rework rate (`?period=3m|6m|12m|all`)
+- `GET /reports/incidents` – Master Incident Register (supports `?format=csv` streaming)
+- `GET /reports/capa` – CAPA Compliance Register (supports `?format=csv` streaming)
 
-### Master Data Management
-- `GET /api/v1/departments` – Hospital department directory
-- `GET /api/v1/locations` – Hospital locations, rooms, and bays
-- `GET /api/v1/incident-categories` – Standardized incident categories & subcategories
-- `GET /api/v1/users` – Hospital staff directory with role assignments
+### Master Data Administration
+- `GET/POST/PATCH /departments` – Department directory & HOD assignment (Admin)
+- `GET/POST/PATCH /locations` – Hospital rooms, bays, and suites (Admin)
+- `GET/POST /categories` – Healthcare incident categories & subcategories (Admin)
+- `GET/POST/PATCH /users` – User management and role assignments (Admin)
 
 ---
 
-## 🧪 End-to-End Automated Testing
+## 🧪 Automated Testing
 
-The repository includes a comprehensive 12-phase automated lifecycle script (`test_full_lifecycle.sh`) that tests the entire workflow against a live backend API:
+The platform includes automated Vitest test suites:
 
 ```bash
-# Ensure server is running, then execute:
-chmod +x test_full_lifecycle.sh
-./test_full_lifecycle.sh
+cd server
+npm test
 ```
 
-### Verified Phases:
-1. **Admin Authentication** & JWT generation
-2. **Master Lookup** (Categories, Departments, Locations, Users)
-3. **Incident Creation** (Medication error with patient details)
-4. **Triage Assessment** (Severity upgrade to Level 4)
-5. **Investigator Assignment**
-6. **Investigation Initiation & Completion** (Findings & recommendations)
-7. **RCA Submission & Approval** (5-Why logic + Fishbone parameters)
-8. **CAPA Action Creation** (Dual-check nursing protocol)
-9. **CAPA Completion & Verification** (Compliance audit)
-10. **Formal Incident Closure**
-11. **Dashboard Analytics Verification**
-12. **Quality & CAPA Register Generation**
+- **Workflow State Machine Rules (`incidentWorkflow.rules.test.ts` — 172 tests):** Tests all valid and invalid state transitions, role-based permissions, closure gates, and mandatory payload validations.
+- **Dashboard & Reporting Consistency (`dashboard.test.ts` — 5 tests):** Validates that hospital-wide and department-scoped dashboard metrics match direct MongoDB database counts on seed data, checks all audit register fields, and verifies RFC-4180 CSV export streaming.
 
 ---
 
 ## ⚙️ Environment Configuration
 
-Configuration is managed via `.env` files. Refer to `.env.example`:
+Configuration is managed via `.env` files. Key parameters (see `.env.example`):
 
 | Variable | Default Value | Description |
 |---|---|---|
-| `NODE_ENV` | `development` | Runtime environment (`development` or `production`) |
-| `PORT` | `5000` | Backend Express listening port |
-| `MONGO_URI` | `mongodb://localhost:27017/incident_db` | MongoDB connection string (use `mongodb://mongo:27017/incident_db` in Docker) |
-| `JWT_ACCESS_SECRET` | *(string)* | Secret key for signing short-lived access JWTs |
-| `JWT_REFRESH_SECRET` | *(string)* | Secret key for signing refresh JWTs |
-| `ACCESS_TOKEN_TTL` | `15m` | Access token lifespan (e.g., `15m`) |
-| `REFRESH_TOKEN_TTL` | `12h` | Refresh token lifespan (e.g., `12h`) |
-| `REDIS_URL` | `redis://localhost:6379` | Redis connection URL (use `redis://redis:6379` in Docker) |
-| `FILE_STORAGE_PATH` | `uploads` | Local directory for storing incident attachments |
-| `MAX_FILE_SIZE_MB` | `10` | Maximum allowed attachment size in Megabytes |
-| `SMTP_HOST` | `smtp.gmail.com` | Outgoing email server host |
-| `SMTP_PORT` | `587` | SMTP port (TLS) |
-| `SMTP_USER` | `noreply@...` | SMTP authentication user |
-| `SMTP_PASSWORD` | `...` | SMTP authentication password |
-| `APP_URL` | `http://localhost:5173` | Frontend application URL (for CORS and email links) |
+| `PORT` | `5000` | Backend Express port |
+| `MONGO_URI` | `mongodb://localhost:27017/incident_db` | MongoDB connection URI |
+| `REDIS_URL` | `redis://localhost:6379` | Redis connection URI |
+| `JWT_ACCESS_SECRET` | *(string)* | Secret key for access tokens |
+| `JWT_REFRESH_SECRET` | *(string)* | Secret key for refresh tokens |
+| `ACCESS_TOKEN_TTL` | `15m` | Access token lifespan |
+| `REFRESH_TOKEN_TTL` | `12h` | Refresh token lifespan |
+| `FILE_STORAGE_PATH` | `uploads` | Directory for attachment storage |
+| `MAX_FILE_SIZE_MB` | `10` | Maximum attachment size |
+| `APP_URL` | `http://localhost:5173` | Frontend application URL |
 | `API_URL` | `http://localhost:5000` | Backend API URL |
 
 ---
 
 ## 🛡 NABH & JCI Patient Safety Alignment
 
-This platform is structured in accordance with global hospital quality accreditations:
-
 1. **National Accreditation Board for Hospitals & Healthcare Providers (NABH 5th Edition)**:
-   - **Continuous Quality Improvement (CQI)**: Standardized reporting of all clinical and non-clinical sentinel events.
+   - **Continuous Quality Improvement (CQI.4 & CQI.5)**: Standardized capture, severity categorization, and reporting of all clinical and non-clinical sentinel events.
    - **Patient Safety Goals (PSGs)**: Proactive near-miss capture to identify latent systemic failures before harm reaches the patient.
 2. **Joint Commission International (JCI 7th Edition)**:
    - **QPS.7**: Comprehensive Root Cause Analysis for all sentinel events within predefined institutional timeframes.

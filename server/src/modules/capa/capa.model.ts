@@ -2,14 +2,10 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export type CapaType = 'CORRECTIVE' | 'PREVENTIVE';
 export type CapaPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-export type CapaStatus =
-  | 'NOT_STARTED'
-  | 'OPEN'
-  | 'IN_PROGRESS'
-  | 'PENDING_VERIFICATION'
-  | 'VERIFIED'
-  | 'OVERDUE'
-  | 'CANCELLED';
+// OPEN → DONE (HOD marks it carried out) → EFFECTIVE (Quality accepts at review).
+// A CAPA Quality finds not effective goes back to OPEN, with the review remarks in `verification`.
+export const CAPA_STATUSES = ['OPEN', 'DONE', 'EFFECTIVE'] as const;
+export type CapaStatus = (typeof CAPA_STATUSES)[number];
 
 export interface ICapaVerification {
   verifiedBy?: mongoose.Types.ObjectId;
@@ -34,6 +30,8 @@ export interface ICapa extends Document {
   completedAt?: Date;
   evidence: mongoose.Types.ObjectId[];
   verification?: ICapaVerification;
+  /** When the HOD and Quality were told this CAPA is overdue (cleared if the target date changes). */
+  overdueNotifiedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -59,7 +57,7 @@ const CapaSchema: Schema = new Schema(
     targetDate: { type: Date, required: true, index: true },
     status: {
       type: String,
-      enum: ['NOT_STARTED', 'OPEN', 'IN_PROGRESS', 'PENDING_VERIFICATION', 'VERIFIED', 'OVERDUE', 'CANCELLED'],
+      enum: CAPA_STATUSES,
       default: 'OPEN',
       index: true,
     },
@@ -67,6 +65,7 @@ const CapaSchema: Schema = new Schema(
     completedAt: { type: Date },
     evidence: [{ type: Schema.Types.ObjectId, ref: 'Attachment' }],
     verification: CapaVerificationSchema,
+    overdueNotifiedAt: { type: Date },
   },
   {
     timestamps: true,

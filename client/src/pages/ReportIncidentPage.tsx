@@ -3,6 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { ShieldAlert, Upload, CheckCircle2, User, Building, MapPin, Tag, FileText, AlertTriangle, X } from 'lucide-react';
 import { api } from '../lib/api';
+import dayjs from 'dayjs';
+import { departmentOptions } from '../components/ui/DepartmentOptions';
+import { SearchableSelect } from '../components/ui/SearchableSelect';
+import { toast } from '../store/useToastStore';
+import { errorMessage } from '../lib/useAction';
+
+const FLOORS = ['Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
+const ZONES = ['Zone-1', 'Zone-B', 'Zone-C'] as const;
 
 export default function ReportIncidentPage() {
   const navigate = useNavigate();
@@ -11,8 +19,10 @@ export default function ReportIncidentPage() {
   const [success, setSuccess] = useState('');
 
   // Form State
-  const [incidentDateTime, setIncidentDateTime] = useState(new Date().toISOString().slice(0, 16));
+  const [incidentDateTime, setIncidentDateTime] = useState(dayjs().format('YYYY-MM-DDTHH:mm'));
   const [departmentId, setDepartmentId] = useState('');
+  const [selectedFloor, setSelectedFloor] = useState('');
+  const [selectedZone, setSelectedZone] = useState('');
   const [locationId, setLocationId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [subcategoryCode, setSubcategoryCode] = useState('');
@@ -40,8 +50,8 @@ export default function ReportIncidentPage() {
   });
 
   const { data: locationsData } = useQuery({
-    queryKey: ['locations', departmentId],
-    queryFn: () => api.get(departmentId ? `/locations?departmentId=${departmentId}` : '/locations'),
+    queryKey: ['locations'],
+    queryFn: () => api.get('/locations'),
   });
 
   const { data: categoriesData } = useQuery({
@@ -52,6 +62,22 @@ export default function ReportIncidentPage() {
   const departments = (departmentsData as any)?.data || [];
   const locations = (locationsData as any)?.data || [];
   const categories = (categoriesData as any)?.data || [];
+
+  const matchingLocations = React.useMemo(() => {
+    if (!selectedFloor || !selectedZone) return [];
+    return locations.filter((l: any) => l.floor === selectedFloor && l.zone === selectedZone);
+  }, [locations, selectedFloor, selectedZone]);
+
+  const selectedLocation = locations.find((l: any) => l._id === locationId);
+
+  const categoryOptions = React.useMemo(() => {
+    const hasMultipleDomains = new Set(categories.map((c: any) => c.domain || 'General Categories')).size > 1;
+    return categories.map((c: any) => ({
+      value: c._id,
+      label: c.name,
+      group: hasMultipleDomains ? c.domain || 'General Categories' : undefined,
+    }));
+  }, [categories]);
 
   const selectedCategory = categories.find((c: any) => c._id === categoryId);
   const subcategories = selectedCategory?.subcategories || [];
@@ -138,7 +164,7 @@ export default function ReportIncidentPage() {
         setUploadedFiles((prev) => [...prev, res.data]);
       }
     } catch (err: any) {
-      alert(err?.message || 'File upload failed');
+      toast.error(errorMessage(err, 'File upload failed'));
     } finally {
       setUploading(false);
     }
@@ -183,13 +209,21 @@ export default function ReportIncidentPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    if (!departmentId) return setError('Please select the department where it occurred.');
+    if (!selectedFloor) return setError('Please select the hospital floor.');
+    if (!selectedZone) return setError('Please select the zone.');
+    if (!categoryId) return setError('Please select an incident category.');
+
     setLoading(true);
 
     try {
       const payload: any = {
         incidentDateTime,
-        departmentId,
+        occurredInDepartmentId: departmentId,
         locationId,
+        floor: selectedFloor || undefined,
+        zone: selectedZone || undefined,
         categoryId,
         subcategoryCode: subcategoryCode || undefined,
         patientInvolved,
@@ -225,19 +259,19 @@ export default function ReportIncidentPage() {
   };
 
   return (
-    <div className="max-w-[1100px] mx-auto space-y-6 text-clinicalText-primary">
-      {/* Page Title Header - Floating box with light red tint on the left */}
-      <div className="bg-gradient-to-r from-[#FDECEC]/70 via-[#FFFBFB] to-white p-6 sm:p-7 rounded-2xl border border-clinicalBorder border-l-4 border-l-[#8B1E23] shadow-[0_4px_20px_rgba(15,23,42,0.06)] flex items-center justify-between gap-4">
+    <div className="space-y-6 text-clinicalText-primary">
+      {/* Page Title Header - dark theme */}
+      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] p-6 sm:p-7 rounded-2xl border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h2 className="text-xl font-bold text-clinicalText-primary flex items-center space-x-2">
-            <ShieldAlert className="w-6 h-6 text-maroon-700" />
+          <h2 className="text-xl font-bold text-white flex items-start space-x-2">
+            <ShieldAlert className="w-6 h-6 shrink-0 mt-0.5 text-[#F06B70]" />
             <span>Report Hospital Safety Incident / Near Miss</span>
           </h2>
-          <p className="text-xs text-clinicalText-secondary mt-1">
+          <p className="text-xs text-slate-300/80 mt-1">
             Complete the form below to initiate triage, investigation, and safety management.
           </p>
         </div>
-        <span className="text-xs font-bold px-3.5 py-1 bg-brandRed-50 text-maroon-700 rounded-full border border-brandRed-200 shadow-xs">
+        <span className="self-start sm:self-auto shrink-0 text-xs font-bold px-3.5 py-1 bg-white/10 text-[#F5A5A8] rounded-full border border-white/15">
           Target: &lt; 3 Mins Submission
         </span>
       </div>
@@ -279,38 +313,92 @@ export default function ReportIncidentPage() {
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-clinicalText-secondary uppercase mb-1">Department *</label>
-              <select
-                required
+              <label className="block text-xs font-semibold text-clinicalText-secondary uppercase mb-1">Department Where It Occurred *</label>
+              <SearchableSelect
                 value={departmentId}
-                onChange={(e) => setDepartmentId(e.target.value)}
+                onChange={setDepartmentId}
+                options={[
+                  { value: '', label: '-- Select Department --' },
+                  ...departmentOptions(departments, (d) => `${d.name} (${d.code})`),
+                ]}
+                searchPlaceholder="Search departments..."
                 className="w-full px-3 py-2 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-              >
-                <option value="">-- Select Department --</option>
-                {departments.map((d: any) => (
-                  <option key={d._id} value={d._id}>
-                    {d.name} ({d.code})
-                  </option>
-                ))}
-              </select>
+              />
+              <p className="mt-1 text-[11px] text-clinicalText-muted">
+                Quality reviews every report and assigns it to the responsible department's HOD.
+              </p>
+            </div>
+
+            {/* Two-step Floor and Zone Selection */}
+            <div>
+              <label className="block text-xs font-semibold text-clinicalText-secondary uppercase mb-1">
+                Hospital Floor (Step 1) *
+              </label>
+              <SearchableSelect
+                value={selectedFloor}
+                onChange={(f) => {
+                  setSelectedFloor(f);
+                  setSelectedZone('');
+                  setLocationId('');
+                }}
+                options={[{ value: '', label: '-- Select Floor (1 of 5) --' }, ...FLOORS.map((f) => ({ value: f, label: f }))]}
+                searchPlaceholder="Search floors..."
+                className="w-full px-3 py-2 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+              />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-clinicalText-secondary uppercase mb-1">Location / Ward *</label>
-              <select
-                required
-                value={locationId}
-                onChange={(e) => setLocationId(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-              >
-                <option value="">-- Select Location --</option>
-                {locations.map((l: any) => (
-                  <option key={l._id} value={l._id}>
-                    {l.name} [{l.type}]
-                  </option>
-                ))}
-              </select>
+              <label className="block text-xs font-semibold text-clinicalText-secondary uppercase mb-1">
+                Zone (Step 2) *
+              </label>
+              <SearchableSelect
+                disabled={!selectedFloor}
+                value={selectedZone}
+                onChange={(z) => {
+                  setSelectedZone(z);
+                  const matches = locations.filter((l: any) => l.floor === selectedFloor && l.zone === z);
+                  if (matches.length > 0) {
+                    const exact = matches.find((m: any) => m.code.startsWith('FL')) || matches[0];
+                    setLocationId(exact._id);
+                  } else {
+                    setLocationId('');
+                  }
+                }}
+                options={[
+                  { value: '', label: selectedFloor ? '-- Select Zone (Zone-1, Zone-B, Zone-C) --' : '-- Select Floor First --' },
+                  ...ZONES.map((z) => ({ value: z, label: z })),
+                ]}
+                searchPlaceholder="Search zones..."
+                className="w-full px-3 py-2 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition disabled:opacity-50 disabled:bg-slate-100"
+              />
             </div>
+
+            {/* Optional Specific Room/Ward Sub-selector if multiple locations match */}
+            {selectedFloor && selectedZone && matchingLocations.length > 1 && (
+              <div className="sm:col-span-2 bg-slate-50 p-3 rounded-xl border border-clinicalBorder">
+                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">
+                  Specific Room / Ward / Bay in {selectedFloor} • {selectedZone} (Optional)
+                </label>
+                <SearchableSelect
+                  value={locationId}
+                  onChange={setLocationId}
+                  options={matchingLocations.map((l: any) => ({ value: l._id, label: `${l.name} ${l.type ? `[${l.type}]` : ''}`.trim() }))}
+                  searchPlaceholder="Search rooms..."
+                  className="w-full px-3 py-2 bg-white border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 transition"
+                />
+              </div>
+            )}
+
+            {/* Visual Location Confirmation Badge */}
+            {selectedFloor && selectedZone && (
+              <div className="sm:col-span-2 flex items-center space-x-2 text-xs text-maroon-700 bg-red-50/80 px-3.5 py-2.5 rounded-xl border border-red-100">
+                <MapPin className="w-4 h-4 shrink-0 text-maroon-700" />
+                <span>
+                  Designated Incident Location: <strong>{selectedFloor}</strong> &bull; <strong>{selectedZone}</strong>
+                  {selectedLocation && !selectedLocation.code.startsWith('FL') ? ` (${selectedLocation.name})` : ''}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
@@ -324,39 +412,36 @@ export default function ReportIncidentPage() {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-clinicalText-secondary uppercase mb-1">Incident Category *</label>
-              <select
-                required
+              <SearchableSelect
                 value={categoryId}
-                onChange={(e) => {
-                  setCategoryId(e.target.value);
+                onChange={(v) => {
+                  setCategoryId(v);
                   setSubcategoryCode('');
                 }}
+                options={[{ value: '', label: '-- Select Category --' }, ...categoryOptions]}
+                searchPlaceholder="Search categories..."
                 className="w-full px-3 py-2 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-              >
-                <option value="">-- Select Category --</option>
-                {categories.map((c: any) => (
-                  <option key={c._id} value={c._id}>
-                    {c.name}
-                  </option>
-                ))}
-              </select>
+              />
+              {selectedCategory?.domain && (
+                <p className="text-[11px] text-clinicalText-muted mt-1">
+                  Domain: <span className="font-semibold text-slate-700">{selectedCategory.domain}</span>
+                </p>
+              )}
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-clinicalText-secondary uppercase mb-1">Subcategory</label>
-              <select
+              <SearchableSelect
                 value={subcategoryCode}
-                onChange={(e) => setSubcategoryCode(e.target.value)}
+                onChange={setSubcategoryCode}
                 disabled={!categoryId}
+                options={[
+                  { value: '', label: '-- Select Subcategory --' },
+                  ...subcategories.map((sc: any) => ({ value: sc.code, label: sc.name })),
+                ]}
+                searchPlaceholder="Search subcategories..."
                 className="w-full px-3 py-2 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white disabled:opacity-50 transition"
-              >
-                <option value="">-- Select Subcategory --</option>
-                {subcategories.map((sc: any) => (
-                  <option key={sc.code} value={sc.code}>
-                    {sc.name}
-                  </option>
-                ))}
-              </select>
+              />
             </div>
           </div>
 
@@ -493,15 +578,17 @@ export default function ReportIncidentPage() {
 
               <div>
                 <label className="block text-[11px] font-semibold text-clinicalText-secondary uppercase mb-1">Gender</label>
-                <select
+                <SearchableSelect
                   value={patient.gender}
-                  onChange={(e) => setPatient({ ...patient, gender: e.target.value })}
+                  onChange={(v) => setPatient({ ...patient, gender: v })}
+                  options={[
+                    { value: 'Male', label: 'Male' },
+                    { value: 'Female', label: 'Female' },
+                    { value: 'Other', label: 'Other' },
+                  ]}
+                  searchPlaceholder="Search..."
                   className="w-full px-3 py-1.5 bg-white border border-clinicalBorder rounded text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 transition"
-                >
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Other">Other</option>
-                </select>
+                />
               </div>
 
               <div>
@@ -677,7 +764,7 @@ export default function ReportIncidentPage() {
         <div className="pt-6 border-t border-clinicalBorder flex items-center justify-end space-x-3">
           <button
             type="button"
-            onClick={() => navigate('/incidents')}
+            onClick={() => navigate('/my-reports')}
             className="px-5 py-2.5 bg-white hover:bg-slate-50 border border-clinicalBorder text-clinicalText-secondary hover:text-clinicalText-primary font-semibold text-xs rounded-xl shadow-xs transition cursor-pointer"
           >
             Cancel

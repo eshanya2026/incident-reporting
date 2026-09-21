@@ -13,9 +13,9 @@ const router = Router();
 
 router.use(authenticate);
 
-router.post('/incidents/:incidentId/investigation', requirePermission(PERMISSIONS.INVESTIGATION_CREATE), startInvestigation);
+router.post('/incidents/:incidentId/investigation', requirePermission(PERMISSIONS.INVESTIGATION_WRITE), startInvestigation);
 router.get('/incidents/:incidentId/investigation', requirePermission(PERMISSIONS.INVESTIGATION_READ), getInvestigationByIncident);
-router.patch('/investigations/:id', requirePermission(PERMISSIONS.INVESTIGATION_UPDATE), updateInvestigation);
-router.post('/investigations/:id/complete', requirePermission(PERMISSIONS.INVESTIGATION_COMPLETE), completeInvestigation);
+router.patch('/investigations/:id', requirePermission(PERMISSIONS.INVESTIGATION_WRITE), updateInvestigation);
+router.post('/investigations/:id/complete', requirePermission(PERMISSIONS.INVESTIGATION_WRITE), completeInvestigation);
 
 export default router;

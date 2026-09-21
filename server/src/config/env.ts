@@ -23,8 +23,16 @@ const envSchema = z.object({
   SMTP_USER: z.string().optional().default(''),
   SMTP_PASSWORD: z.string().optional().default(''),
   SMTP_FROM: z.string().default('Adhiparasakthi Safety Portal <noreply@adhiparasakthi.hospital>'),
+  // Also send notifications by email (uses SMTP_*). In-app notifications are always created.
+  EMAIL_NOTIFICATIONS: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true'),
   APP_URL: z.string().default('http://localhost:5173'),
   API_URL: z.string().default('http://localhost:5000'),
+  // Number of reverse proxies in front of the API (1 behind Nginx). Needed so rate limits and
+  // audit logs see each user's own IP instead of the proxy's. Keep 0 when clients connect directly.
+  TRUST_PROXY: z.string().transform((val) => parseInt(val, 10)).default('0'),
 });
 
 const _env = envSchema.safeParse(process.env);

@@ -7,6 +7,7 @@ import { sendSuccess } from '../../common/helpers/response.js';
 const createCategorySchema = z.object({
   code: z.string().min(1, 'Category code is required'),
   name: z.string().min(1, 'Category name is required'),
+  domain: z.string().optional(),
   order: z.number().optional(),
   subcategories: z
     .array(
@@ -40,6 +41,7 @@ export const createCategory = async (req: Request, res: Response, next: NextFunc
     const category = await IncidentCategory.create({
       code: data.code.toUpperCase(),
       name: data.name,
+      domain: data.domain,
       order: data.order ?? 99,
       active: true,
       subcategories: data.subcategories || [],

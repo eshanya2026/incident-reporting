@@ -1,10 +1,13 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { RootCauseAnalysis } from './rca.model.js';
-import { Incident } from '../incidents/incident.model.js';
-import { IncidentWorkflowService } from '../incidents/incidentWorkflow.service.js';
+import { Investigation } from '../investigations/investigation.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
+import { loadIncidentForView, loadIncidentForWork } from '../../common/helpers/incidentAccess.js';
+
+// The HOD writes the RCA while working on the incident; Quality reviews it at the final review
+const EDITABLE_STATUSES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'];
 
 const saveRcaSchema = z.object({
   method: z.enum(['FIVE_WHY', 'FISHBONE', 'BOTH']).default('FIVE_WHY'),
@@ -30,6 +33,8 @@ const saveRcaSchema = z.object({
     })
     .optional(),
   rootCauseSummary: z.string().min(3, 'Root Cause Summary is required'),
+  // Save as a draft or mark the RCA completed (default)
+  status: z.enum(['DRAFT', 'COMPLETED']).default('COMPLETED'),
 });
 
 export const createOrUpdateRca = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -37,26 +42,29 @@ export const createOrUpdateRca = async (req: Request, res: Response, next: NextF
     const { incidentId } = req.params;
     const data = saveRcaSchema.parse(req.body);
 
-    const incident = await Incident.findById(incidentId);
-    if (!incident) {
-      throw AppError.notFound('Incident record not found');
+    const incident = await loadIncidentForWork(req, incidentId as string);
+    if (!EDITABLE_STATUSES.includes(incident.status)) {
+      throw AppError.conflict(`The RCA cannot be changed while the incident is ${incident.status}`);
     }
 
     let rca = await RootCauseAnalysis.findOne({ incidentId });
     if (!rca) {
+      const investigation = await Investigation.findOne({ incidentId }).select('_id');
       rca = await RootCauseAnalysis.create({
         incidentId,
+        investigationId: investigation?._id,
         method: data.method,
         fiveWhy: data.fiveWhy || [],
         fishbone: data.fishbone || {},
         rootCauseSummary: data.rootCauseSummary,
-        status: 'DRAFT',
+        status: data.status,
       });
     } else {
       rca.method = data.method;
       if (data.fiveWhy) rca.fiveWhy = data.fiveWhy;
       if (data.fishbone) rca.fishbone = data.fishbone as any;
       rca.rootCauseSummary = data.rootCauseSummary;
+      rca.status = data.status;
       await rca.save();
     }
 
@@ -69,45 +77,12 @@ export const createOrUpdateRca = async (req: Request, res: Response, next: NextF
 export const getRcaByIncident = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { incidentId } = req.params;
-    const rca = await RootCauseAnalysis.findOne({ incidentId }).populate('approvedBy', 'name designation');
+    await loadIncidentForView(req, incidentId as string);
+    const rca = await RootCauseAnalysis.findOne({ incidentId });
     if (!rca) {
       throw AppError.notFound('No RCA record found for this incident');
     }
     sendSuccess(res, rca, 'RCA record retrieved');
-  } catch (error) {
-    next(error);
-  }
-};
-
-export const approveRca = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
-  try {
-    if (!req.user) {
-      throw AppError.unauthorized('User not authenticated');
-    }
-
-    const { id } = req.params;
-    const rca = await RootCauseAnalysis.findById(id);
-    if (!rca) {
-      throw AppError.notFound('RCA record not found');
-    }
-
-    rca.status = 'APPROVED';
-    rca.approvedBy = req.user.userId as any;
-    rca.approvedAt = new Date();
-    await rca.save();
-
-    const incident = await Incident.findById(rca.incidentId);
-    if (incident && incident.status === 'RCA_REQUIRED') {
-      await IncidentWorkflowService.transition({
-        incidentId: incident._id.toString(),
-        targetStatus: 'CAPA_IN_PROGRESS',
-        actorUserId: req.user.userId,
-        remarks: 'RCA Approved by Quality Admin',
-        req,
-      });
-    }
-
-    sendSuccess(res, rca, 'RCA approved successfully');
   } catch (error) {
     next(error);
   }

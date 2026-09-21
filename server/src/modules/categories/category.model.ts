@@ -9,6 +9,7 @@ export interface ISubcategory {
 export interface IIncidentCategory extends Document {
   code: string;
   name: string;
+  domain?: string;
   order?: number;
   active: boolean;
   subcategories: ISubcategory[];
@@ -26,6 +27,7 @@ const IncidentCategorySchema: Schema = new Schema(
   {
     code: { type: String, required: true, unique: true, uppercase: true, trim: true },
     name: { type: String, required: true, trim: true },
+    domain: { type: String, trim: true },
     order: { type: Number, default: 99 },
     active: { type: Boolean, default: true },
     subcategories: [SubcategorySchema],

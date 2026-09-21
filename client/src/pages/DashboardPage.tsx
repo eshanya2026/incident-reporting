@@ -1,16 +1,22 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Link } from 'react-router-dom';
 import {
   Activity,
   AlertTriangle,
-  FileCheck2,
   Clock,
   CheckCircle2,
   ShieldAlert,
   BarChart2,
+  RotateCw,
+  TrendingUp,
+  Building2,
+  Inbox,
+  ClipboardCheck,
+  Layers,
+  FileCheck,
   PlusCircle,
 } from 'lucide-react';
-import { Link } from 'react-router-dom';
 import {
   BarChart,
   Bar,
@@ -22,298 +28,454 @@ import {
   PieChart,
   Pie,
   Cell,
+  Legend,
 } from 'recharts';
+import dayjs from 'dayjs';
+import relativeTime from 'dayjs/plugin/relativeTime';
 import { api } from '../lib/api';
+import { useAuthStore } from '../store/useAuthStore';
+import { hasPermission } from '../lib/rbac';
 
-const SEVERITY_PALETTE: Record<number, { color: string; label: string }> = {
-  1: { color: '#10B981', label: 'Severity 1 – No Harm' },
-  2: { color: '#0284C7', label: 'Severity 2 – Minor' },
-  3: { color: '#EA580C', label: 'Severity 3 – Moderate' },
-  4: { color: '#DC2626', label: 'Severity 4 – Major' },
-  5: { color: '#6B1418', label: 'Severity 5 – Sentinel' },
-};
+dayjs.extend(relativeTime);
 
-export default function DashboardPage() {
-  const { data: summaryData, isLoading: loadingSummary } = useQuery({
-    queryKey: ['dashboard-summary'],
-    queryFn: () => api.get('/dashboard/summary'),
-  });
-
-  const { data: severityData } = useQuery({
-    queryKey: ['dashboard-severity'],
-    queryFn: () => api.get('/dashboard/severity'),
-  });
-
-  const { data: categoryData } = useQuery({
-    queryKey: ['dashboard-categories'],
-    queryFn: () => api.get('/dashboard/categories'),
-  });
-
-  const { data: departmentData } = useQuery({
-    queryKey: ['dashboard-department-trend'],
-    queryFn: () => api.get('/dashboard/department-trend'),
-  });
-
-  const summary = (summaryData as any)?.data || {
-    totalIncidents: 0,
-    openIncidents: 0,
-    criticalIncidents: 0,
-    nearMissCount: 0,
-    underInvestigationCount: 0,
-    overdueCapas: 0,
-    closedThisMonth: 0,
+/**
+ * A Recharts axis tick that truncates long labels instead of letting them collide with the
+ * chart edge or a neighboring bar. The full label is still reachable: as a native title
+ * tooltip on the tick text, and (for the bar itself) via the chart's own hover tooltip.
+ */
+const truncatedTick =
+  (maxChars: number, opts: { angle?: number; textAnchor?: 'end' | 'middle' | 'start' } = {}) =>
+  ({ x, y, payload }: any) => {
+    const label = String(payload.value ?? '');
+    const short = label.length > maxChars ? `${label.slice(0, maxChars - 1)}…` : label;
+    return (
+      <g transform={`translate(${x},${y})`}>
+        <text
+          dy={opts.angle ? 12 : 4}
+          dx={opts.textAnchor === 'end' && !opts.angle ? -6 : 0}
+          textAnchor={opts.textAnchor ?? 'middle'}
+          transform={opts.angle ? `rotate(${opts.angle})` : undefined}
+          fontSize={opts.textAnchor === 'end' && !opts.angle ? 11 : 10}
+          fill={opts.textAnchor === 'end' && !opts.angle ? '#475569' : '#64748B'}
+        >
+          {short}
+          {short !== label && <title>{label}</title>}
+        </text>
+      </g>
+    );
   };
 
-  const severityChartData =
-    (severityData as any)?.data?.map((item: any) => {
-      const sevNum = Number(item._id.severity || item._id);
-      const conf = SEVERITY_PALETTE[sevNum] || { color: '#CBD5E1', label: `Severity ${sevNum}` };
-      return {
-        severity: sevNum,
-        name: item._id.label || conf.label,
-        value: item.count,
-        color: conf.color,
-      };
-    }) || [];
+/**
+ * Minimal KPI tile: one flat, solid-color icon badge carries the card's identity; the number
+ * stays neutral dark ink unless it's genuinely alert-worthy (valueColor), keeping color reserved
+ * for meaning rather than decoration.
+ */
+function KpiCard({
+  to,
+  icon: Icon,
+  badgeColor,
+  label,
+  value,
+  valueColor = '#1E293B',
+  caption,
+  captionColor = '#94A3B8',
+}: {
+  to?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  badgeColor: string;
+  label: string;
+  value: React.ReactNode;
+  valueColor?: string;
+  caption: React.ReactNode;
+  captionColor?: string;
+}) {
+  const className =
+    'bg-white p-5 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md hover:-translate-y-0.5 transition-all duration-200 group block';
+  const content = (
+    <>
+      <div
+        className="w-10 h-10 rounded-xl flex items-center justify-center mb-4 group-hover:scale-105 transition"
+        style={{ backgroundColor: badgeColor }}
+      >
+        <Icon className="w-5 h-5 text-white" />
+      </div>
+      <div className="text-xs font-semibold text-slate-500">{label}</div>
+      <div className="text-[28px] font-bold leading-none mt-2 tracking-tight" style={{ color: valueColor }}>
+        {value}
+      </div>
+      <div className="text-[11px] mt-2 font-medium truncate" style={{ color: captionColor }}>
+        {caption}
+      </div>
+    </>
+  );
+  return to ? (
+    <Link to={to} className={className}>
+      {content}
+    </Link>
+  ) : (
+    <div className={className}>{content}</div>
+  );
+}
 
-  const totalSeverityCount = severityChartData.reduce((acc: number, cur: any) => acc + cur.value, 0);
+const SEVERITY_CONFIG: Record<number, { color: string; label: string; short: string }> = {
+  1: { color: '#10B981', label: 'Severity 1 – Near Miss / No Harm', short: 'Near Miss' },
+  2: { color: '#0284C7', label: 'Severity 2 – Minor Harm', short: 'Minor' },
+  3: { color: '#EA580C', label: 'Severity 3 – Moderate Harm', short: 'Moderate' },
+  4: { color: '#DC2626', label: 'Severity 4 – Major Harm', short: 'Major' },
+  5: { color: '#6B1418', label: 'Severity 5 – Sentinel / Critical', short: 'Sentinel' },
+};
 
-  const departmentChartData =
-    (departmentData as any)?.data?.map((item: any) => ({
-      name: item._id,
-      count: item.count,
-    })) || [];
+const PERIOD_OPTIONS: Array<{ key: '3m' | '6m' | '12m' | 'all'; label: string }> = [
+  { key: '3m', label: '3 Months' },
+  { key: '6m', label: '6 Months' },
+  { key: '12m', label: '12 Months' },
+  { key: 'all', label: 'All Time' },
+];
+
+export default function DashboardPage() {
+  const user = useAuthStore((state) => state.user);
+  const [period, setPeriod] = useState<'3m' | '6m' | '12m' | 'all'>('12m');
+
+  const isHospitalWide = hasPermission(user, 'incident.read_all');
+  const isHod = hasPermission(user, 'incident.read_assigned') && !isHospitalWide;
+  const canReport = hasPermission(user, 'incident.create');
+
+  const { data, isLoading, refetch, isFetching } = useQuery({
+    queryKey: ['dashboard-overview', period],
+    queryFn: () => api.get(`/dashboard/overview?period=${period}`),
+    staleTime: 30_000,
+  });
+
+  const overview = (data as any)?.data;
+  const nowStats = overview?.now || {
+    byStatus: {},
+    open: 0,
+    oldestAwaitingTriage: null,
+    oldestAwaitingReview: null,
+    activeRework: 0,
+    capa: { OPEN: 0, DONE: 0, EFFECTIVE: 0, overdue: 0 },
+  };
+  const inPeriod = overview?.inPeriod || {
+    reported: 0,
+    rejected: 0,
+    closed: 0,
+    turnaroundDays: { reportToAssign: null, assignToSubmit: null, submitToClose: null, reportToClose: null },
+    rework: { closed: 0, sentBack: 0, rate: null, activeRework: 0 },
+    severity: [],
+    categories: [],
+    departments: [],
+    monthly: [],
+  };
+
+  // Severity Chart Data
+  const severityChartData = [1, 2, 3, 4, 5].map((lvl) => {
+    const found = inPeriod.severity?.find((s: any) => s.severity === lvl);
+    const conf = SEVERITY_CONFIG[lvl];
+    return {
+      severity: lvl,
+      name: conf.short,
+      fullName: conf.label,
+      value: found?.count || 0,
+      color: conf.color,
+    };
+  });
+  const totalSeverityCount = severityChartData.reduce((acc, cur) => acc + cur.value, 0);
+
+  // Monthly Trend Data
+  const monthlyChartData = (inPeriod.monthly || []).map((m: any) => ({
+    month: m.month,
+    Reported: m.reported,
+    Closed: m.closed,
+  }));
+
+  // Departments Chart Data (Top 8 for clarity)
+  const departmentChartData = (inPeriod.departments || []).slice(0, 8);
+
+  // Categories Chart Data (Top 8)
+  const categoryChartData = (inPeriod.categories || []).slice(0, 8);
+
+  const formatAge = (dateStr: string | null | undefined) => {
+    if (!dateStr) return 'None waiting';
+    return `Oldest: ${dayjs(dateStr).fromNow()}`;
+  };
 
   return (
     <div className="space-y-7 text-[#172033]">
-      {/* Hero Banner - Separate floating box with light red tint on the left */}
-      <div className="bg-gradient-to-r from-[#FDECEC]/70 via-[#FFFBFB] to-white rounded-2xl p-6 sm:p-8 border border-clinicalBorder border-l-4 border-l-[#8B1E23] shadow-[0_4px_20px_rgba(15,23,42,0.06)] relative overflow-hidden flex flex-col md:flex-row md:items-center justify-between gap-6">
-        {/* Soft flowing decorative wave background on right */}
-        <div className="absolute right-0 top-0 bottom-0 w-1/3 bg-gradient-to-l from-[#FFF5F5] via-[#FDECEC]/25 to-transparent pointer-events-none rounded-r-2xl"></div>
-        <svg
-          className="absolute -right-10 -bottom-10 w-80 h-80 opacity-[0.05] text-[#8B1E23] pointer-events-none"
-          viewBox="0 0 200 200"
-          fill="currentColor"
-        >
-          <path
-            d="M42.7,-72.4C54.9,-66.1,64,-54.6,71.2,-41.8C78.4,-29,83.7,-14.5,82.8,-0.5C81.9,13.4,74.7,26.8,66.4,38.8C58.1,50.7,48.6,61.1,36.8,68.4C25,75.7,10.8,79.8,-3.1,85.2C-17,90.5,-30.7,97.1,-43.3,92.7C-55.9,88.4,-67.4,73,-74.6,58.2C-81.8,43.4,-84.7,29.1,-84.8,15.1C-84.9,1.1,-82.2,-12.7,-76.3,-25.1C-70.4,-37.5,-61.3,-48.5,-49.9,-55.1C-38.6,-61.7,-25.1,-63.9,-12.1,-65.7C0.9,-67.5,27.5,-78.7,42.7,-72.4Z"
-            transform="translate(100 100)"
-          />
-        </svg>
-
-        {/* Left Side: Editorial Content */}
-        <div className="relative z-10 max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#FDECEC] text-[#8B1E23] border border-[#FCDADA] text-[11px] font-bold tracking-wide uppercase mb-3.5">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#C62828] animate-pulse"></span>
-            <span>QUALITY & PATIENT SAFETY OVERVIEW</span>
+      {/* Hero Banner with Role-Specific Title and Period Controls - dark theme */}
+      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] rounded-2xl p-6 sm:p-7 border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+        {/* Editorial Content */}
+        <div className="max-w-2xl">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-[#F5A5A8] text-[11px] font-bold tracking-wide uppercase mb-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#F06B70]"></span>
+            <span>
+              {isHod
+                ? `${overview?.department?.name || 'Department'} Incident Tracking`
+                : 'Hospital-Wide Safety & Compliance Overview'}
+            </span>
           </div>
-          <h2 className="text-2xl sm:text-[30px] font-bold tracking-tight text-[#68151A] leading-tight">
-            Hospital Safety & Incident Dashboard
+          <h2 className="text-2xl sm:text-[28px] font-bold tracking-tight text-white leading-tight">
+            {isHod ? `${overview?.department?.name || 'Department'} Safety Dashboard` : 'Quality & Incident Analytics Dashboard'}
           </h2>
-          <p className="text-sm text-[#64748B] mt-2 leading-relaxed">
-            Real-time incident monitoring, root cause investigation tracking, and CAPA compliance analytics.
+          <p className="text-xs sm:text-sm text-slate-300/80 mt-1.5 leading-relaxed">
+            {isHod
+              ? 'Real-time investigation progress, root cause analysis, and CAPA resolution for incidents assigned to your department.'
+              : 'Continuous monitoring of hospital incidents across triage, investigation, RCA, CAPA closure, and NABH compliance.'}
           </p>
         </div>
 
-        {/* Right Side: Micro-tag & Glossy CTA Button */}
-        <div className="relative z-10 flex flex-col items-start md:items-end space-y-3 shrink-0">
-          <div className="text-[11px] font-bold uppercase tracking-[1.5px] text-[#94A3B8] hidden sm:block">
-            PATIENT SAFETY | OUR PRIORITY
+        {/* Right Controls: Period Selector & Refresh */}
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 shrink-0">
+          <div className="inline-flex p-1 bg-white/10 border border-white/15 rounded-xl">
+            {PERIOD_OPTIONS.map((opt) => (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => setPeriod(opt.key)}
+                className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition duration-150 cursor-pointer ${
+                  period === opt.key ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-300 hover:text-white hover:bg-white/10'
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
           </div>
-          <Link
-            to="/incidents/new"
-            className="px-6 py-3.5 bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] hover:brightness-110 active:scale-[0.99] text-white font-semibold text-sm rounded-xl shadow-button-red transition-all duration-180 flex items-center space-x-2.5 relative overflow-hidden group cursor-pointer"
+
+          <button
+            type="button"
+            onClick={() => refetch()}
+            disabled={isFetching}
+            className="p-2.5 rounded-xl bg-white/10 border border-white/15 text-slate-300 hover:text-white hover:bg-white/15 transition duration-180 cursor-pointer disabled:opacity-50"
+            title="Refresh dashboard metrics"
           >
-            <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none"></span>
-            <PlusCircle className="w-4.5 h-4.5 text-white stroke-[2.5] transition-transform duration-200 group-hover:rotate-90" />
-            <span className="relative z-10 tracking-wide font-medium">Report New Incident</span>
-          </Link>
+            <RotateCw className={`w-4 h-4 ${isFetching ? 'animate-spin text-white' : ''}`} />
+          </button>
+
+          {canReport && (
+            <Link
+              to="/incidents/new"
+              className="px-4 py-2.5 bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] hover:brightness-110 active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red transition duration-180 flex items-center space-x-2 shrink-0 cursor-pointer"
+            >
+              <PlusCircle className="w-4 h-4 text-white" />
+              <span>Report Incident</span>
+            </Link>
+          )}
         </div>
       </div>
 
-      {/* KPI Cards Grid - 6 Clean White Cards with Status Indicators */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-5">
-        {/* Card 1: Total Incidents */}
-        <div className="bg-white p-5 rounded-[14px] border border-[#E2E8F0] border-t-[3px] border-t-[#8B1E23] shadow-card hover:-translate-y-0.5 hover:shadow-md transition-all duration-180 group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#64748B]">Total Incidents</span>
-            <div className="w-9 h-9 rounded-full bg-[#FDECEC] flex items-center justify-center group-hover:scale-105 transition">
-              <Activity className="w-4.5 h-4.5 text-[#8B1E23]" />
+      {/* Loading Skeleton */}
+      {isLoading && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
+            <div key={i} className="bg-white p-5 rounded-2xl border border-slate-100 animate-pulse h-32">
+              <div className="h-4 bg-slate-200 rounded w-24 mb-3"></div>
+              <div className="h-8 bg-slate-200 rounded w-16 mb-2"></div>
+              <div className="h-3 bg-slate-100 rounded w-20"></div>
             </div>
-          </div>
-          <div className="text-[32px] font-bold text-[#172033] leading-none mt-3.5 tracking-tight">
-            {summary.totalIncidents}
-          </div>
-          <div className="text-[11px] text-[#94A3B8] mt-2 font-medium">Hospital-wide records</div>
+          ))}
         </div>
+      )}
 
-        {/* Card 2: Critical / Sentinel */}
-        <div className="bg-white p-5 rounded-[14px] border border-[#E2E8F0] border-t-[3px] border-t-[#C62828] shadow-card hover:-translate-y-0.5 hover:shadow-md transition-all duration-180 group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#64748B]">Critical / Sentinel</span>
-            <div className="w-9 h-9 rounded-full bg-[#FDECEC] flex items-center justify-center group-hover:scale-105 transition">
-              <ShieldAlert className="w-4.5 h-4.5 text-[#C62828]" />
+      {/* Main KPI Grid - Role-Tailored */}
+      {!isLoading && (
+        <>
+          {isHospitalWide ? (
+            /* Quality & Admin KPI Cards */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-5">
+              <KpiCard
+                to="/triage"
+                icon={Inbox}
+                badgeColor="#8B1E23"
+                label="Awaiting Triage"
+                value={nowStats.byStatus?.SUBMITTED || 0}
+                caption={formatAge(nowStats.oldestAwaitingTriage)}
+              />
+              <KpiCard
+                to="/review"
+                icon={ClipboardCheck}
+                badgeColor="#D97706"
+                label="Awaiting Review"
+                value={nowStats.byStatus?.PENDING_QUALITY_REVIEW || 0}
+                caption={formatAge(nowStats.oldestAwaitingReview)}
+              />
+              <KpiCard
+                to="/incidents"
+                icon={Activity}
+                badgeColor="#2563EB"
+                label="Active Incidents"
+                value={nowStats.open || 0}
+                caption="Hospital-wide pipeline"
+              />
+              <KpiCard
+                to="/capas"
+                icon={AlertTriangle}
+                badgeColor="#DC2626"
+                label="Overdue CAPA"
+                value={nowStats.capa?.overdue || 0}
+                valueColor="#DC2626"
+                caption={`${nowStats.capa?.OPEN || 0} open actions`}
+                captionColor="#DC2626"
+              />
+              <KpiCard
+                icon={Layers}
+                badgeColor="#7C3AED"
+                label="Rework Rate"
+                value={inPeriod.rework?.rate !== null ? `${inPeriod.rework.rate}%` : '0%'}
+                caption={`${inPeriod.rework?.sentBack || 0} sent back of ${inPeriod.rework?.closed || 0}`}
+              />
+              <KpiCard
+                icon={CheckCircle2}
+                badgeColor="#059669"
+                label="Closed in Period"
+                value={inPeriod.closed || 0}
+                valueColor="#059669"
+                caption={
+                  inPeriod.reported ? `${Math.round(((inPeriod.closed || 0) / inPeriod.reported) * 100)}% resolution` : 'Completed'
+                }
+                captionColor="#059669"
+              />
             </div>
-          </div>
-          <div className="text-[32px] font-bold text-[#C62828] leading-none mt-3.5 tracking-tight">
-            {summary.criticalIncidents}
-          </div>
-          <div className="text-[11px] text-[#C62828] mt-2 font-semibold">Severity 4 & 5</div>
-        </div>
-
-        {/* Card 3: Near Misses */}
-        <div className="bg-white p-5 rounded-[14px] border border-[#E2E8F0] border-t-[3px] border-t-[#94A3B8] shadow-card hover:-translate-y-0.5 hover:shadow-md transition-all duration-180 group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#64748B]">Near Misses</span>
-            <div className="w-9 h-9 rounded-full bg-[#F1F5F9] flex items-center justify-center group-hover:scale-105 transition">
-              <AlertTriangle className="w-4.5 h-4.5 text-[#64748B]" />
+          ) : (
+            /* HOD Role-Specific KPI Cards */
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4 sm:gap-5">
+              <KpiCard
+                to="/my-department"
+                icon={Building2}
+                badgeColor="#8B1E23"
+                label="Assigned to Dept"
+                value={nowStats.open || 0}
+                caption="Active department load"
+              />
+              <KpiCard
+                icon={Clock}
+                badgeColor="#2563EB"
+                label="Investigation / RCA"
+                value={(nowStats.byStatus?.ASSIGNED || 0) + (nowStats.byStatus?.UNDER_INVESTIGATION || 0)}
+                caption={`${nowStats.byStatus?.ASSIGNED || 0} new, ${nowStats.byStatus?.UNDER_INVESTIGATION || 0} investigating`}
+              />
+              <KpiCard
+                icon={Layers}
+                badgeColor="#D97706"
+                label="CAPA in Progress"
+                value={nowStats.byStatus?.CAPA_IN_PROGRESS || 0}
+                caption="Corrective actions ongoing"
+              />
+              <KpiCard
+                icon={ClipboardCheck}
+                badgeColor="#0D9488"
+                label="Quality Review"
+                value={nowStats.byStatus?.PENDING_QUALITY_REVIEW || 0}
+                caption="Submitted for closure"
+              />
+              <KpiCard
+                to="/capas"
+                icon={AlertTriangle}
+                badgeColor="#DC2626"
+                label="Dept Overdue CAPA"
+                value={nowStats.capa?.overdue || 0}
+                valueColor="#DC2626"
+                caption={`${nowStats.capa?.OPEN || 0} open CAPAs`}
+                captionColor="#DC2626"
+              />
+              <KpiCard
+                icon={FileCheck}
+                badgeColor="#7C3AED"
+                label="Quality Returns"
+                value={inPeriod.rework?.sentBack || 0}
+                caption={inPeriod.rework?.rate !== null ? `${inPeriod.rework.rate}% rework rate` : 'Zero returns'}
+              />
             </div>
-          </div>
-          <div className="text-[32px] font-bold text-[#172033] leading-none mt-3.5 tracking-tight">
-            {summary.nearMissCount}
-          </div>
-          <div className="text-[11px] text-[#64748B] mt-2 font-medium">Level 1 No Harm</div>
-        </div>
+          )}
 
-        {/* Card 4: Under Investigation */}
-        <div className="bg-white p-5 rounded-[14px] border border-[#E2E8F0] border-t-[3px] border-t-[#4677B8] shadow-card hover:-translate-y-0.5 hover:shadow-md transition-all duration-180 group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#64748B]">Under Investigation</span>
-            <div className="w-9 h-9 rounded-full bg-[#EFF6FF] flex items-center justify-center group-hover:scale-105 transition">
-              <Clock className="w-4.5 h-4.5 text-[#4677B8]" />
-            </div>
-          </div>
-          <div className="text-[32px] font-bold text-[#172033] leading-none mt-3.5 tracking-tight">
-            {summary.underInvestigationCount}
-          </div>
-          <div className="text-[11px] text-[#4677B8] mt-2 font-medium">Active investigations</div>
-        </div>
-
-        {/* Card 5: Overdue CAPAs */}
-        <div className="bg-white p-5 rounded-[14px] border border-[#E2E8F0] border-t-[3px] border-t-[#C62828] shadow-card hover:-translate-y-0.5 hover:shadow-md transition-all duration-180 group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#64748B]">Overdue CAPAs</span>
-            <div className="w-9 h-9 rounded-full bg-[#FDECEC] flex items-center justify-center group-hover:scale-105 transition">
-              <AlertTriangle className="w-4.5 h-4.5 text-[#C62828]" />
-            </div>
-          </div>
-          <div className="text-[32px] font-bold text-[#C62828] leading-none mt-3.5 tracking-tight">
-            {summary.overdueCapas}
-          </div>
-          <div className="text-[11px] text-[#C62828] mt-2 font-semibold">Action Required</div>
-        </div>
-
-        {/* Card 6: Closed This Month */}
-        <div className="bg-white p-5 rounded-[14px] border border-[#E2E8F0] border-t-[3px] border-t-[#159A68] shadow-card hover:-translate-y-0.5 hover:shadow-md transition-all duration-180 group">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-semibold text-[#64748B]">Closed This Month</span>
-            <div className="w-9 h-9 rounded-full bg-[#E8F7F0] flex items-center justify-center group-hover:scale-105 transition">
-              <CheckCircle2 className="w-4.5 h-4.5 text-[#159A68]" />
-            </div>
-          </div>
-          <div className="text-[32px] font-bold text-[#159A68] leading-none mt-3.5 tracking-tight">
-            {summary.closedThisMonth}
-          </div>
-          <div className="text-[11px] text-[#159A68] mt-2 font-medium">Verified & Closed</div>
-        </div>
-      </div>
-
-      {/* Analytics Charts Row */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Department Distribution Bar Chart */}
-        <div className="bg-white p-6 sm:p-7 rounded-[16px] border border-[#E2E8F0] shadow-chart flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-bold text-[#172033] text-base flex items-center space-x-2.5">
-              <BarChart2 className="w-5 h-5 text-[#8B1E23]" />
-              <span>Incidents by Department</span>
-            </h3>
-            <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-3 py-1 rounded-lg border border-[#E2E8F0]">
-              Hospital Trend
-            </span>
-          </div>
-
-          <div className="h-72">
-            {departmentChartData.length === 0 ? (
-              <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
-                No department data available
+          {/* Turnaround Time Metric Strip (NABH Turnaround Benchmarks) */}
+          <div className="bg-white rounded-2xl border border-[#E2E8F0] p-5 shadow-card">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F1F5F9] pb-3 mb-4">
+              <div className="flex items-center space-x-2">
+                <Clock className="w-4.5 h-4.5 text-[#8B1E23]" />
+                <h3 className="font-bold text-sm text-[#172033]">
+                  Workflow Turnaround Times (Median Days over Closed Incidents)
+                </h3>
               </div>
-            ) : (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={departmentChartData} margin={{ top: 10, right: 10, left: -20, bottom: 25 }}>
-                  <defs>
-                    <linearGradient id="deptBarGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#E53935" />
-                      <stop offset="100%" stopColor="#8B1E23" />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                  <XAxis
-                    dataKey="name"
-                    tick={{ fontSize: 11, fill: '#64748B' }}
-                    interval={0}
-                    angle={-15}
-                    textAnchor="end"
-                    axisLine={{ stroke: '#E2E8F0' }}
-                    tickLine={false}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: '#64748B' }}
-                    allowDecimals={false}
-                    axisLine={false}
-                    tickLine={false}
-                  />
-                  <Tooltip
-                    contentStyle={{
-                      backgroundColor: '#FFFFFF',
-                      borderRadius: '10px',
-                      border: '1px solid #E2E8F0',
-                      boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                      fontSize: '12px',
-                    }}
-                  />
-                  <Bar dataKey="count" fill="url(#deptBarGrad)" radius={[5, 5, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            )}
-          </div>
-        </div>
+              <span className="text-xs text-[#64748B] font-medium">
+                Hospital Benchmark: Total Cycle &lt; 14 Days
+              </span>
+            </div>
 
-        {/* Severity Breakdown Donut Chart with Desktop Side Legend */}
-        <div className="bg-white p-6 sm:p-7 rounded-[16px] border border-[#E2E8F0] shadow-chart flex flex-col justify-between">
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-bold text-[#172033] text-base flex items-center space-x-2.5">
-              <ShieldAlert className="w-5 h-5 text-[#8B1E23]" />
-              <span>Severity Breakdown</span>
-            </h3>
-            <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-3 py-1 rounded-lg border border-[#E2E8F0]">
-              NABH Scale
-            </span>
-          </div>
-
-          <div className="h-72 flex flex-col sm:flex-row items-center justify-between gap-4">
-            {severityChartData.length === 0 ? (
-              <div className="w-full h-full flex items-center justify-center text-xs text-[#94A3B8]">
-                No severity data recorded
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+                  1. Staff Report → Quality Assign
+                </span>
+                <div className="text-2xl font-bold text-[#172033] mt-2">
+                  {inPeriod.turnaroundDays?.reportToAssign !== null
+                    ? `${inPeriod.turnaroundDays.reportToAssign} days`
+                    : '—'}
+                </div>
+                <span className="text-[10px] text-[#94A3B8] mt-1">Triage & HOD routing</span>
               </div>
-            ) : (
-              <>
-                {/* Donut graphic */}
-                <div className="w-full sm:w-1/2 h-56 relative flex items-center justify-center">
+
+              <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+                  2. HOD Assign → Submit for Review
+                </span>
+                <div className="text-2xl font-bold text-[#172033] mt-2">
+                  {inPeriod.turnaroundDays?.assignToSubmit !== null
+                    ? `${inPeriod.turnaroundDays.assignToSubmit} days`
+                    : '—'}
+                </div>
+                <span className="text-[10px] text-[#94A3B8] mt-1">Investigation, RCA & CAPA completion</span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+                  3. Quality Review → Final Closure
+                </span>
+                <div className="text-2xl font-bold text-[#172033] mt-2">
+                  {inPeriod.turnaroundDays?.submitToClose !== null
+                    ? `${inPeriod.turnaroundDays.submitToClose} days`
+                    : '—'}
+                </div>
+                <span className="text-[10px] text-[#94A3B8] mt-1">Effectiveness audit & sign-off</span>
+              </div>
+
+              <div className="p-3.5 rounded-xl bg-[#FFF5F5] border border-[#FCDADA] flex flex-col justify-between">
+                <span className="text-[11px] font-semibold text-[#8B1E23] uppercase tracking-wider">
+                  Total End-to-End Cycle
+                </span>
+                <div className="text-2xl font-bold text-[#8B1E23] mt-2">
+                  {inPeriod.turnaroundDays?.reportToClose !== null
+                    ? `${inPeriod.turnaroundDays.reportToClose} days`
+                    : '—'}
+                </div>
+                <span className="text-[10px] text-[#C62828] mt-1">Report submission to closure</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Analytics Charts Grid */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Monthly Trend: Reported vs Closed */}
+            <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                  <TrendingUp className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <span>Monthly Trend — Reported vs Closed</span>
+                </h3>
+                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                  {period.toUpperCase()} View
+                </span>
+              </div>
+
+              <div className="h-72">
+                {monthlyChartData.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
+                    No monthly incident history in this period
+                  </div>
+                ) : (
                   <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie
-                        data={severityChartData}
-                        cx="50%"
-                        cy="50%"
-                        innerRadius={55}
-                        outerRadius={85}
-                        paddingAngle={3}
-                        dataKey="value"
-                      >
-                        {severityChartData.map((entry: any, index: number) => (
-                          <Cell key={`cell-${index}`} fill={entry.color} />
-                        ))}
-                      </Pie>
+                    <BarChart data={monthlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={{ stroke: '#E2E8F0' }} />
+                      <YAxis tick={{ fontSize: 11, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
                       <Tooltip
                         contentStyle={{
                           backgroundColor: '#FFFFFF',
@@ -323,45 +485,181 @@ export default function DashboardPage() {
                           fontSize: '12px',
                         }}
                       />
-                    </PieChart>
+                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                      <Bar dataKey="Reported" fill="#8B1E23" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Closed" fill="#10B981" radius={[4, 4, 0, 0]} />
+                    </BarChart>
                   </ResponsiveContainer>
-                  {/* Central Donut Count Display */}
-                  <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
-                    <span className="text-2xl font-bold text-[#172033] leading-none">{totalSeverityCount}</span>
-                    <span className="text-[10px] text-[#64748B] uppercase font-semibold mt-0.5">Total</span>
+                )}
+              </div>
+            </div>
+
+            {/* Severity Breakdown Donut Chart */}
+            <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                  <ShieldAlert className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <span>Severity Distribution (NABH Scale)</span>
+                </h3>
+                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                  Levels 1 – 5
+                </span>
+              </div>
+
+              <div className="h-72 flex flex-col sm:flex-row items-center justify-between gap-4">
+                {totalSeverityCount === 0 ? (
+                  <div className="w-full h-full flex items-center justify-center text-xs text-[#94A3B8]">
+                    No incident severity records found in this period
                   </div>
-                </div>
-
-                {/* Side Legend with Clean Statistics */}
-                <div className="w-full sm:w-1/2 space-y-2.5 px-2">
-                  {[5, 4, 3, 2, 1].map((lvl) => {
-                    const item = severityChartData.find((d: any) => d.severity === lvl);
-                    const conf = SEVERITY_PALETTE[lvl];
-                    const count = item?.value || 0;
-                    const percent = totalSeverityCount > 0 ? Math.round((count / totalSeverityCount) * 100) : 0;
-
-                    return (
-                      <div key={lvl} className="flex items-center justify-between text-xs py-0.5">
-                        <div className="flex items-center space-x-2">
-                          <span
-                            className="w-2.5 h-2.5 rounded-full shrink-0"
-                            style={{ backgroundColor: conf.color }}
-                          ></span>
-                          <span className="font-medium text-[#475569] truncate">{conf.label}</span>
-                        </div>
-                        <div className="flex items-center space-x-2 font-mono">
-                          <span className="font-bold text-[#172033]">{count}</span>
-                          <span className="text-[11px] text-[#94A3B8]">({percent}%)</span>
-                        </div>
+                ) : (
+                  <>
+                    <div className="w-full sm:w-1/2 h-56 relative flex items-center justify-center">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={severityChartData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={55}
+                            outerRadius={85}
+                            paddingAngle={3}
+                            dataKey="value"
+                          >
+                            {severityChartData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{
+                              backgroundColor: '#FFFFFF',
+                              borderRadius: '10px',
+                              border: '1px solid #E2E8F0',
+                              boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
+                              fontSize: '12px',
+                            }}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                      <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                        <span className="text-2xl font-bold text-[#172033] leading-none">{totalSeverityCount}</span>
+                        <span className="text-[10px] text-[#64748B] uppercase font-semibold mt-0.5">Total</span>
                       </div>
-                    );
-                  })}
+                    </div>
+
+                    <div className="w-full sm:w-1/2 space-y-2 px-1">
+                      {[5, 4, 3, 2, 1].map((lvl) => {
+                        const item = severityChartData.find((d) => d.severity === lvl);
+                        const conf = SEVERITY_CONFIG[lvl];
+                        const count = item?.value || 0;
+                        const percent = totalSeverityCount > 0 ? Math.round((count / totalSeverityCount) * 100) : 0;
+
+                        return (
+                          <div key={lvl} className="flex items-center justify-between text-xs py-0.5">
+                            <div className="flex items-center space-x-2 truncate">
+                              <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: conf.color }}></span>
+                              <span className="font-medium text-[#475569] truncate">{conf.short}</span>
+                            </div>
+                            <div className="flex items-center space-x-1.5 font-mono shrink-0">
+                              <span className="font-bold text-[#172033]">{count}</span>
+                              <span className="text-[11px] text-[#94A3B8]">({percent}%)</span>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* Department Distribution (Hospital-Wide) */}
+            {isHospitalWide && (
+              <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                    <Building2 className="w-4.5 h-4.5 text-[#8B1E23]" />
+                    <span>Incidents by Responsible Department</span>
+                  </h3>
+                  <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                    Top Departments
+                  </span>
                 </div>
-              </>
+
+                <div className="h-72">
+                  {departmentChartData.length === 0 ? (
+                    <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
+                      No department data available
+                    </div>
+                  ) : (
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={departmentChartData} margin={{ top: 10, right: 10, left: 4, bottom: 25 }}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                        <XAxis
+                          dataKey="name"
+                          tick={truncatedTick(14, { angle: -35, textAnchor: 'end' })}
+                          interval={0}
+                          axisLine={{ stroke: '#E2E8F0' }}
+                          tickLine={false}
+                        />
+                        <YAxis tick={{ fontSize: 11, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{
+                            backgroundColor: '#FFFFFF',
+                            borderRadius: '10px',
+                            border: '1px solid #E2E8F0',
+                            boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
+                            fontSize: '12px',
+                          }}
+                        />
+                        <Bar dataKey="count" fill="#C62828" radius={[4, 4, 0, 0]} />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  )}
+                </div>
+              </div>
             )}
+
+            {/* Incident Categories Breakdown */}
+            <div className={`bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between ${!isHospitalWide ? 'lg:col-span-2' : ''}`}>
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                  <BarChart2 className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <span>Top Incident Categories</span>
+                </h3>
+                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                  Frequency Analysis
+                </span>
+              </div>
+
+              <div className="h-72">
+                {categoryChartData.length === 0 ? (
+                  <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
+                    No category data recorded in this period
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={categoryChartData} layout="vertical" margin={{ top: 5, right: 20, left: 40, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+                      <XAxis type="number" tick={{ fontSize: 11, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
+                      <YAxis type="category" dataKey="name" tick={truncatedTick(18, { textAnchor: 'end' })} width={120} axisLine={{ stroke: '#E2E8F0' }} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: '10px',
+                          border: '1px solid #E2E8F0',
+                          boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
+                          fontSize: '12px',
+                        }}
+                      />
+                      <Bar dataKey="count" fill="#475569" radius={[0, 4, 4, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
+        </>
+      )}
     </div>
   );
 }

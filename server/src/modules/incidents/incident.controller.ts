@@ -1,28 +1,36 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
-import { Incident, IncidentStatus } from './incident.model.js';
+import mongoose from 'mongoose';
+import { Incident, IIncident, INCIDENT_STATUSES, severityRequirements } from './incident.model.js';
 import { Department } from '../departments/department.model.js';
-import { Investigation } from '../investigations/investigation.model.js';
-import { RootCauseAnalysis } from '../rca/rca.model.js';
-import { Capa } from '../capa/capa.model.js';
-import { IncidentWorkflowService } from './incidentWorkflow.service.js';
+import { Location } from '../locations/location.model.js';
+import { IncidentWorkflowService, WorkflowInput } from './incidentWorkflow.service.js';
+import { WorkflowAction } from './incidentWorkflow.rules.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { getNextSequence } from '../../common/models/counter.model.js';
+import {
+  canViewIncident,
+  hasPermission,
+  incidentScopeFilter,
+  loadIncidentForView,
+} from '../../common/helpers/incidentAccess.js';
+import { PERMISSIONS } from '../../common/enums/permissions.js';
+import { JwtPayload } from '../auth/auth.utils.js';
+import { assertAttachmentsUsable, linkAttachments } from '../attachments/attachmentAccess.js';
 
-const severityLabels: Record<number, string> = {
-  1: 'Near Miss',
-  2: 'Minor Harm',
-  3: 'Moderate Harm',
-  4: 'Major Harm',
-  5: 'Critical / Sentinel Event',
-};
+const objectId = (what: string) =>
+  z.string().refine((v) => mongoose.Types.ObjectId.isValid(v), `${what} is not a valid ID`);
+const requiredText = (what: string) => z.string().trim().min(1, `${what} is required`).max(5000);
 
 const createIncidentSchema = z.object({
   incidentDateTime: z.string().or(z.date()),
-  departmentId: z.string().min(1, 'Department is required'),
-  locationId: z.string().min(1, 'Location is required'),
-  categoryId: z.string().min(1, 'Incident Category is required'),
+  // Where the incident happened. The responsible department is chosen later by Quality.
+  occurredInDepartmentId: objectId('Department where the incident occurred'),
+  locationId: objectId('Location'),
+  floor: z.string().optional(),
+  zone: z.string().optional(),
+  categoryId: objectId('Incident category'),
   subcategoryCode: z.string().optional(),
   patientInvolved: z.boolean().default(false),
   patient: z
@@ -38,54 +46,137 @@ const createIncidentSchema = z.object({
       admissionDate: z.string().or(z.date()).optional(),
     })
     .optional(),
-  title: z.string().min(3, 'Incident title is required'),
-  description: z.string().min(5, 'Incident description is required'),
+  title: z.string().trim().min(3, 'Incident title is required'),
+  description: z.string().trim().min(5, 'Incident description is required'),
   immediateAction: z.string().optional(),
-  severity: z.number().min(1).max(5).default(1),
+  severity: z.number().int().min(1).max(5).default(1),
   attachments: z.array(z.string()).optional(),
 });
 
-const triageSchema = z.object({
-  severity: z.number().min(1).max(5),
-  remarks: z.string().optional(),
+// ---------- Response shaping ----------
+
+const populateDetail = (query: any) =>
+  query
+    .populate('reportedBy', 'name email designation employeeId phone')
+    .populate('departmentId', 'name code hodUserId')
+    .populate('reportingDepartmentId', 'name code')
+    .populate('occurredInDepartmentId', 'name code')
+    .populate('locationId', 'name code type floor zone')
+    .populate('categoryId', 'name code subcategories')
+    .populate('assignedHod', 'name email designation')
+    .populate('assignedBy', 'name designation')
+    .populate('assignments.departmentId', 'name code')
+    .populate('assignments.hodUserId', 'name')
+    .populate('assignments.by', 'name')
+    .populate('infoRequests.askedBy', 'name')
+    .populate('hodReturns.by', 'name')
+    .populate('closureSubmission.by', 'name')
+    .populate('qualityReviews.by', 'name')
+    .populate('rejection.by', 'name')
+    .populate('closedBy', 'name email designation')
+    .populate('attachments', 'originalName mimeType size createdAt');
+
+const populateList = (query: any) =>
+  query
+    .populate('reportedBy', 'name designation employeeId')
+    .populate('departmentId', 'name code')
+    .populate('occurredInDepartmentId', 'name code')
+    .populate('locationId', 'name code floor zone')
+    .populate('categoryId', 'name code')
+    .populate('assignedHod', 'name email');
+
+/** Staff only see the parts of an incident listed here (decision D6). */
+const isStaffView = (user: JwtPayload | undefined) =>
+  hasPermission(user, PERMISSIONS.INCIDENT_READ_OWN) && !hasPermission(user, PERMISSIONS.INCIDENT_READ_ALL);
+
+const pick = (obj: any, keys: string[]) => Object.fromEntries(keys.filter((k) => obj?.[k] !== undefined).map((k) => [k, obj[k]]));
+
+const toStaffView = (incident: any) => ({
+  ...pick(incident, [
+    '_id',
+    'incidentNumber',
+    'reportedAt',
+    'incidentDateTime',
+    'reportedBy',
+    'reportingDepartmentId',
+    'occurredInDepartmentId',
+    'locationId',
+    'floor',
+    'zone',
+    'categoryId',
+    'subcategoryCode',
+    'patientInvolved',
+    'patient',
+    'title',
+    'description',
+    'immediateAction',
+    'initialSeverity',
+    'status',
+    'attachments',
+    'availableActions',
+    'createdAt',
+    'updatedAt',
+  ]),
+  // Current owner: the responsible department's name only
+  departmentId: incident.departmentId ? pick(incident.departmentId, ['_id', 'name', 'code']) : undefined,
+  infoRequests: (incident.infoRequests || []).map((r: any) => pick(r, ['_id', 'question', 'askedAt', 'response', 'respondedAt'])),
+  rejection: incident.rejection ? pick(incident.rejection, ['reason', 'at']) : undefined,
+  // Final closure summary (Quality's closing remarks)
+  ...(incident.status === 'CLOSED' ? pick(incident, ['closureRemarks', 'closedAt']) : {}),
 });
 
-const assignInvestigatorSchema = z.object({
-  investigatorId: z.string().min(1, 'Investigator user ID is required'),
-});
+/** Full incident as returned by the API, with the actions this user can take now. */
+const incidentDetail = async (id: string, user: JwtPayload): Promise<any> => {
+  const incident: IIncident | null = await populateDetail(Incident.findById(id));
+  if (!incident) {
+    throw AppError.notFound('Incident record not found');
+  }
+  if (!canViewIncident(user, incident)) {
+    throw AppError.forbidden('You do not have access to this incident');
+  }
+  const detail = { ...incident.toObject(), availableActions: IncidentWorkflowService.availableActions(incident, user) };
+  return isStaffView(user) ? toStaffView(detail) : detail;
+};
 
-const closeIncidentSchema = z.object({
-  remarks: z.string().min(3, 'Closure remarks are required'),
-});
+const shapeList = (incidents: any[], user: JwtPayload | undefined) =>
+  isStaffView(user) ? incidents.map((i) => toStaffView(i.toObject())) : incidents;
 
+// ---------- Reporting and reading ----------
+
+/** Staff reports an incident. It goes to Quality's triage inbox (SUBMITTED). */
 export const createIncident = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
-      throw AppError.unauthorized('User not authenticated');
-    }
-
+    const user = req.user!;
     const data = createIncidentSchema.parse(req.body);
+
+    if (!(await Department.exists({ _id: data.occurredInDepartmentId }))) {
+      throw AppError.badRequest('Department where the incident occurred was not found');
+    }
+    const loc = await Location.findById(data.locationId);
+    if (!loc) {
+      throw AppError.badRequest('Location not found');
+    }
+    const attachmentIds = await assertAttachmentsUsable(data.attachments, user.userId, 'INCIDENT');
 
     const year = new Date().getFullYear();
     const seq = await getNextSequence(`incident_${year}`);
     const incidentNumber = `INC-${year}-${seq.toString().padStart(6, '0')}`;
 
-    const dept = await Department.findById(data.departmentId);
-    const assignedHod = dept?.hodUserId || undefined;
-
-    const severity = data.severity || 1;
-    const severityLabel = severityLabels[severity] || 'Near Miss';
-
-    const requiresRca = severity >= 4;
-    const requiresCapa = severity >= 3;
+    // The reporter's severity is provisional until Quality confirms it at assignment
+    const severity = data.severity;
+    const floor = data.floor || loc.floor;
+    const zone = data.zone || loc.zone;
 
     const incident = await Incident.create({
       incidentNumber,
-      reportedBy: req.user.userId,
+      reportedBy: user.userId,
       reportedAt: new Date(),
       incidentDateTime: new Date(data.incidentDateTime),
-      departmentId: data.departmentId,
+      reportingDepartmentId: user.departmentId,
+      occurredInDepartmentId: data.occurredInDepartmentId,
       locationId: data.locationId,
+      floor,
+      zone,
       categoryId: data.categoryId,
       subcategoryCode: data.subcategoryCode,
       patientInvolved: data.patientInvolved,
@@ -93,23 +184,17 @@ export const createIncident = async (req: Request, res: Response, next: NextFunc
       title: data.title,
       description: data.description,
       immediateAction: data.immediateAction,
+      initialSeverity: severity,
       severity,
-      severityLabel,
+      ...severityRequirements(severity),
       status: 'SUBMITTED',
-      assignedHod,
-      requiresRca,
-      requiresCapa,
-      attachments: data.attachments || [],
+      attachments: attachmentIds,
     });
 
-    const populated = await Incident.findById(incident._id)
-      .populate('reportedBy', 'name email designation employeeId')
-      .populate('departmentId', 'name code')
-      .populate('locationId', 'name code type')
-      .populate('categoryId', 'name code')
-      .populate('attachments');
+    await linkAttachments(attachmentIds, 'INCIDENT', incident._id);
+    await IncidentWorkflowService.recordSubmission(incident, user, req);
 
-    sendSuccess(res, populated, 'Incident reported successfully', 201);
+    sendSuccess(res, await incidentDetail(incident._id.toString(), user), 'Incident reported successfully', 201);
   } catch (error) {
     next(error);
   }
@@ -118,53 +203,38 @@ export const createIncident = async (req: Request, res: Response, next: NextFunc
 export const getIncidents = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 25;
-    const status = req.query.status as IncidentStatus;
-    const departmentId = req.query.departmentId as string;
-    const categoryId = req.query.categoryId as string;
+    const limit = Math.min(parseInt(req.query.limit as string) || 25, 200);
+    const { status, departmentId, categoryId, search, mine } = req.query as Record<string, string>;
     const severity = req.query.severity ? parseInt(req.query.severity as string) : undefined;
-    const search = req.query.search as string;
 
-    const query: any = {};
-
-    const userPermissions = req.user?.permissions || [];
-    if (!userPermissions.includes('incident.read_all')) {
-      if (userPermissions.includes('incident.read_department') && req.user?.departmentId) {
-        query.departmentId = req.user.departmentId;
-      } else if (userPermissions.includes('incident.read_own')) {
-        query.reportedBy = req.user?.userId;
-      }
-    }
+    const query: any = { $and: [incidentScopeFilter(req.user)] };
 
     if (status) query.status = status;
-    if (departmentId) query.departmentId = departmentId;
+    if (departmentId) query.departmentId = departmentId; // responsible department
     if (categoryId) query.categoryId = categoryId;
     if (severity) query.severity = severity;
+    if (mine === 'true') query.reportedBy = req.user?.userId;
 
     if (search) {
-      query.$or = [
-        { incidentNumber: { $regex: search, $options: 'i' } },
-        { title: { $regex: search, $options: 'i' } },
-        { description: { $regex: search, $options: 'i' } },
-        { 'patient.uhid': { $regex: search, $options: 'i' } },
-        { 'patient.ipNumber': { $regex: search, $options: 'i' } },
-        { 'patient.name': { $regex: search, $options: 'i' } },
-      ];
+      query.$and.push({
+        $or: [
+          { incidentNumber: { $regex: search, $options: 'i' } },
+          { title: { $regex: search, $options: 'i' } },
+          { description: { $regex: search, $options: 'i' } },
+          { 'patient.uhid': { $regex: search, $options: 'i' } },
+          { 'patient.ipNumber': { $regex: search, $options: 'i' } },
+          { 'patient.name': { $regex: search, $options: 'i' } },
+        ],
+      });
     }
 
     const total = await Incident.countDocuments(query);
-    const incidents = await Incident.find(query)
-      .populate('reportedBy', 'name designation employeeId')
-      .populate('departmentId', 'name code')
-      .populate('locationId', 'name code')
-      .populate('categoryId', 'name code')
-      .populate('assignedHod', 'name email')
-      .populate('investigatorId', 'name email')
+    const incidents = await populateList(Incident.find(query))
       .sort({ createdAt: -1 })
       .skip((page - 1) * limit)
       .limit(limit);
 
-    sendSuccess(res, incidents, 'Incidents retrieved successfully', 200, {
+    sendSuccess(res, shapeList(incidents, req.user), 'Incidents retrieved successfully', 200, {
       total,
       page,
       limit,
@@ -177,142 +247,176 @@ export const getIncidents = async (req: Request, res: Response, next: NextFuncti
 
 export const getIncidentById = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const incident = await Incident.findById(req.params.id)
-      .populate('reportedBy', 'name email designation employeeId phone')
-      .populate('departmentId', 'name code hodUserId')
-      .populate('locationId', 'name code type')
-      .populate('categoryId', 'name code subcategories')
-      .populate('assignedHod', 'name email designation')
-      .populate('investigatorId', 'name email designation')
-      .populate('closedBy', 'name email designation')
-      .populate('attachments');
-
-    if (!incident) {
-      throw AppError.notFound('Incident record not found');
-    }
-
-    sendSuccess(res, incident, 'Incident details retrieved');
+    sendSuccess(res, await incidentDetail(req.params.id as string, req.user!), 'Incident details retrieved');
   } catch (error) {
     next(error);
   }
 };
 
-export const triageIncident = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+/** Status history (from the audit log). Staff see status changes and their own Q&A only. */
+export const getIncidentTimeline = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
-      throw AppError.unauthorized('User not authenticated');
+    const incident = await loadIncidentForView(req, req.params.id as string);
+    let timeline: Array<Record<string, any>> = await IncidentWorkflowService.timeline(incident._id.toString());
+
+    if (isStaffView(req.user)) {
+      // Staff see milestones only (D6): no investigation, CAPA or review steps, no names,
+      // and text only for their own Q&A, a rejection reason and the final closure remarks
+      const milestonesForStaff = ['SUBMITTED', 'REQUEST_INFO', 'RESPOND_INFO', 'REJECT', 'ASSIGN', 'REVIEW_ACCEPT'];
+      const textVisibleToStaff = ['REQUEST_INFO', 'RESPOND_INFO', 'REJECT', 'REVIEW_ACCEPT'];
+      timeline = timeline
+        .filter((t) => milestonesForStaff.includes(t.action))
+        .map((t) => ({
+          ...t,
+          by: undefined,
+          text: textVisibleToStaff.includes(t.action) ? t.text : undefined,
+        }));
     }
 
-    const { id } = req.params;
-    const { severity, remarks } = triageSchema.parse(req.body);
-
-    const incident = await Incident.findById(id);
-    if (!incident) {
-      throw AppError.notFound('Incident record not found');
-    }
-
-    const requiresRca = severity >= 4;
-    const requiresCapa = severity >= 3;
-    const severityLabel = severityLabels[severity] || 'Near Miss';
-
-    const updated = await IncidentWorkflowService.transition({
-      incidentId: id as string,
-      targetStatus: 'TRIAGED',
-      actorUserId: req.user.userId,
-      remarks,
-      additionalUpdates: {
-        severity,
-        severityLabel,
-        requiresRca,
-        requiresCapa,
-      },
-      req,
-    });
-
-    sendSuccess(res, updated, 'Incident triaged successfully');
+    sendSuccess(res, timeline, 'Incident timeline retrieved');
   } catch (error) {
     next(error);
   }
 };
 
-export const assignInvestigator = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+// ---------- Work queues ----------
+
+const QUEUE_LIMIT = 200;
+
+/** Quality's triage inbox: new reports (default) or those waiting for the reporter (status=INFO_REQUESTED). */
+export const getTriageQueue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
-      throw AppError.unauthorized('User not authenticated');
-    }
-
-    const { id } = req.params;
-    const { investigatorId } = assignInvestigatorSchema.parse(req.body);
-
-    const incident = await Incident.findById(id);
-    if (!incident) {
-      throw AppError.notFound('Incident record not found');
-    }
-
-    const updated = await IncidentWorkflowService.transition({
-      incidentId: id as string,
-      targetStatus: 'UNDER_INVESTIGATION',
-      actorUserId: req.user.userId,
-      additionalUpdates: { investigatorId: investigatorId as any },
-      req,
-    });
-
-    sendSuccess(res, updated, 'Investigator assigned successfully');
+    const status = req.query.status === 'INFO_REQUESTED' ? 'INFO_REQUESTED' : 'SUBMITTED';
+    const incidents = await populateList(Incident.find({ status })).sort({ reportedAt: 1 }).limit(QUEUE_LIMIT);
+    sendSuccess(res, incidents, 'Triage queue retrieved', 200, { total: incidents.length });
   } catch (error) {
     next(error);
   }
 };
 
-export const closeIncident = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+/** Quality's review queue: incidents the HOD submitted for closure, oldest first. */
+export const getReviewQueue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
-      throw AppError.unauthorized('User not authenticated');
-    }
-
-    const { id } = req.params;
-    const { remarks } = closeIncidentSchema.parse(req.body);
-
-    const incident = await Incident.findById(id);
-    if (!incident) {
-      throw AppError.notFound('Incident record not found');
-    }
-
-    // Check 1: Investigation must be completed
-    const inv = await Investigation.findOne({ incidentId: id });
-    if (!inv || inv.status !== 'COMPLETED') {
-      throw AppError.badRequest('Cannot close incident before investigation is completed');
-    }
-
-    // Check 2: If RCA required, RCA must be approved
-    if (incident.requiresRca) {
-      const rca = await RootCauseAnalysis.findOne({ incidentId: id });
-      if (!rca || rca.status !== 'APPROVED') {
-        throw AppError.badRequest('Cannot close incident before RCA is approved by Quality Admin');
-      }
-    }
-
-    // Check 3: If CAPA required, all CAPAs must be VERIFIED
-    if (incident.requiresCapa) {
-      const capas = await Capa.find({ incidentId: id });
-      if (capas.length === 0) {
-        throw AppError.badRequest('Cannot close incident: at least one CAPA is required for this severity level');
-      }
-      const unverified = capas.filter((c) => c.status !== 'VERIFIED');
-      if (unverified.length > 0) {
-        throw AppError.badRequest(`Cannot close incident: ${unverified.length} CAPA action(s) are not yet verified`);
-      }
-    }
-
-    const updated = await IncidentWorkflowService.transition({
-      incidentId: id as string,
-      targetStatus: 'CLOSED',
-      actorUserId: req.user.userId,
-      remarks,
-      req,
-    });
-
-    sendSuccess(res, updated, 'Incident closed successfully');
+    const incidents = await populateList(Incident.find({ status: 'PENDING_QUALITY_REVIEW' }))
+      .sort({ 'closureSubmission.at': 1 })
+      .limit(QUEUE_LIMIT);
+    sendSuccess(res, incidents, 'Review queue retrieved', 200, { total: incidents.length });
   } catch (error) {
     next(error);
   }
 };
+
+/** HOD's queue: incidents currently assigned to their department (optionally one status). */
+export const getMyDepartmentIncidents = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    if (!req.user?.departmentId) {
+      throw AppError.badRequest('Your account has no department');
+    }
+    const query: any = { departmentId: req.user.departmentId };
+    const status = req.query.status as string;
+    if (status) {
+      if (!(INCIDENT_STATUSES as readonly string[]).includes(status)) {
+        throw AppError.badRequest('Unknown status');
+      }
+      query.status = status;
+    }
+    const incidents = await populateList(Incident.find(query)).sort({ assignedAt: 1 }).limit(QUEUE_LIMIT);
+    sendSuccess(res, incidents, 'Department incidents retrieved', 200, { total: incidents.length });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// ---------- Workflow actions ----------
+
+/**
+ * Builds an endpoint for one workflow action: validates the body, checks the user may see the
+ * incident (so its status is not revealed to others), performs the action through the workflow
+ * service (which checks role, status and conditions) and returns the updated incident.
+ */
+const workflowEndpoint =
+  <S extends z.ZodTypeAny>(
+    schema: S,
+    toAction: (body: z.infer<S>) => { action: WorkflowAction; input: WorkflowInput },
+    message: string
+  ) =>
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const body = schema.parse(req.body ?? {});
+      const incidentId = req.params.id as string;
+      await loadIncidentForView(req, incidentId);
+      const { action, input } = toAction(body);
+      await IncidentWorkflowService.perform({ incidentId, action, user: req.user!, input, req });
+      sendSuccess(res, await incidentDetail(incidentId, req.user!), message);
+    } catch (error) {
+      next(error);
+    }
+  };
+
+/** Quality asks the reporter for more information: SUBMITTED → INFO_REQUESTED. */
+export const requestInfo = workflowEndpoint(
+  z.object({ question: requiredText('A question for the reporter') }),
+  (b) => ({ action: 'REQUEST_INFO', input: { text: b.question } }),
+  'Information requested from the reporter'
+);
+
+/** Reporter answers: INFO_REQUESTED → SUBMITTED. */
+export const respondToInfoRequest = workflowEndpoint(
+  z.object({ response: requiredText('A response') }),
+  (b) => ({ action: 'RESPOND_INFO', input: { text: b.response } }),
+  'Response sent to Quality'
+);
+
+/** Quality rejects the report: SUBMITTED → REJECTED. */
+export const rejectIncident = workflowEndpoint(
+  z.object({ reason: requiredText('A rejection reason') }),
+  (b) => ({ action: 'REJECT', input: { text: b.reason } }),
+  'Incident rejected'
+);
+
+/** Quality confirms severity and assigns the responsible department's HOD: SUBMITTED → ASSIGNED. */
+export const assignIncident = workflowEndpoint(
+  z.object({
+    departmentId: objectId('Responsible department'),
+    severity: z.number().int().min(1).max(5),
+    remarks: z.string().trim().max(5000).optional(),
+  }),
+  (b) => ({ action: 'ASSIGN', input: { departmentId: b.departmentId, severity: b.severity, text: b.remarks } }),
+  'Incident assigned to the department HOD'
+);
+
+/** HOD returns a wrongly assigned incident: ASSIGNED → SUBMITTED. */
+export const returnToQuality = workflowEndpoint(
+  z.object({ reason: requiredText('A reason') }),
+  (b) => ({ action: 'RETURN_TO_QUALITY', input: { text: b.reason } }),
+  'Incident returned to Quality'
+);
+
+/** HOD submits for Quality review: UNDER_INVESTIGATION / CAPA_IN_PROGRESS → PENDING_QUALITY_REVIEW. */
+export const submitForClosure = workflowEndpoint(
+  z.object({ summary: requiredText('A closure summary') }),
+  (b) => ({ action: 'SUBMIT_CLOSURE', input: { text: b.summary } }),
+  'Incident submitted for Quality review'
+);
+
+/** Quality reviews: ACCEPT → CLOSED, RETURN → CAPA_IN_PROGRESS. A verdict is required per completed CAPA. */
+export const reviewIncident = workflowEndpoint(
+  z.object({
+    decision: z.enum(['ACCEPT', 'RETURN']),
+    remarks: requiredText('Review remarks'),
+    capaResults: z
+      .array(
+        z.object({
+          capaId: objectId('CAPA'),
+          effective: z.boolean(),
+          remarks: z.string().trim().max(5000).optional(),
+        })
+      )
+      .default([]),
+  }),
+  (b) => ({
+    action: b.decision === 'ACCEPT' ? 'REVIEW_ACCEPT' : 'REVIEW_RETURN',
+    input: { text: b.remarks, capaResults: b.capaResults },
+  }),
+  'Review recorded'
+);

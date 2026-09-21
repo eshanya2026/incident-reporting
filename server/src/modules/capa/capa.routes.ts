@@ -3,8 +3,8 @@ import {
   createCapa,
   getCapasByIncident,
   getAllCapas,
-  completeCapa,
-  verifyCapa,
+  updateCapa,
+  markCapaDone,
 } from './capa.controller.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requirePermission } from '../../middleware/authorize.js';
@@ -14,10 +14,10 @@ const router = Router();
 
 router.use(authenticate);
 
-router.post('/incidents/:incidentId/capas', requirePermission(PERMISSIONS.CAPA_CREATE), createCapa);
+router.post('/incidents/:incidentId/capas', requirePermission(PERMISSIONS.CAPA_WRITE), createCapa);
 router.get('/incidents/:incidentId/capas', requirePermission(PERMISSIONS.CAPA_READ), getCapasByIncident);
 router.get('/capas', requirePermission(PERMISSIONS.CAPA_READ), getAllCapas);
-router.post('/capas/:id/complete', requirePermission(PERMISSIONS.CAPA_COMPLETE), completeCapa);
-router.post('/capas/:id/verify', requirePermission(PERMISSIONS.CAPA_VERIFY), verifyCapa);
+router.patch('/capas/:id', requirePermission(PERMISSIONS.CAPA_WRITE), updateCapa);
+router.post('/capas/:id/done', requirePermission(PERMISSIONS.CAPA_WRITE), markCapaDone);
 
 export default router;

@@ -1,0 +1,17 @@
+# Adhiparasakthi Hospitals - HR Staff Bulk Onboarding Template
+# Notes for HR:
+# 1. departmentCode must match active department codes: EMERGENCY, ICU, OT, WARD, PHARMACY, RADIOLOGY, LAB, QUALITY
+# 2. roleCode must be one of: STAFF, HOD, QUALITY, ADMIN (defaults to STAFF if omitted)
+# 3. If password is left blank, the system assigns the default temporary password: Staff@123
+# 4. Lines starting with # are ignored.
+employeeId,name,email,username,departmentCode,roleCode,designation,phone,password
+EMP-EMG-101,Dr. Ananya Nair,ananya.nair@adhiparasakthi.org,dr.ananya,EMERGENCY,STAFF,Emergency Medical Officer,9840112345,Staff@123
+EMP-EMG-102,Staff Nurse Rajesh,rajesh.k@adhiparasakthi.org,nurse.rajesh,EMERGENCY,STAFF,Senior Staff Nurse,9840112346,Staff@123
+EMP-ICU-201,Dr. Karthik Sundar,karthik.sundar@adhiparasakthi.org,dr.karthik,ICU,STAFF,Intensivist / Registrar,9840112347,Staff@123
+EMP-ICU-202,Sister Mary Thomas,mary.thomas@adhiparasakthi.org,sister.mary,ICU,STAFF,ICU Charge Nurse,9840112348,Staff@123
+EMP-OT-301,Dr. Vikram Seth,vikram.seth@adhiparasakthi.org,dr.vikram,OT,STAFF,Anaesthetist,9840112349,Staff@123
+EMP-OT-302,Technician Ramesh,ramesh.t@adhiparasakthi.org,tech.ramesh,OT,STAFF,OT Technician,9840112350,Staff@123
+EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,STAFF,Ward Staff Nurse,9840112351,Staff@123
+EMP-PHM-501,Pharmacist Deepa,deepa.v@adhiparasakthi.org,pharm.deepa,PHARMACY,STAFF,Clinical Pharmacist,9840112352,Staff@123
+EMP-RAD-601,Dr. Sanjay Rao,sanjay.rao@adhiparasakthi.org,dr.sanjay,RADIOLOGY,STAFF,Radiology Registrar,9840112353,Staff@123
+EMP-LAB-701,Technician Meera,meera.s@adhiparasakthi.org,tech.meera,LAB,STAFF,Biochemistry Lab Tech,9840112354,Staff@123

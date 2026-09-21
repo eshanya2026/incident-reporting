@@ -1,7 +1,8 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
 export type RcaMethod = 'FIVE_WHY' | 'FISHBONE' | 'BOTH';
-export type RcaStatus = 'DRAFT' | 'SUBMITTED' | 'APPROVED';
+// Written by the HOD; Quality reviews it as part of the final incident review (no separate approval).
+export type RcaStatus = 'DRAFT' | 'COMPLETED';
 
 export interface IFiveWhy {
   sequence: number;
@@ -27,8 +28,6 @@ export interface IRootCauseAnalysis extends Document {
   fiveWhy: IFiveWhy[];
   fishbone: IFishbone;
   rootCauseSummary: string;
-  approvedBy?: mongoose.Types.ObjectId;
-  approvedAt?: Date;
   status: RcaStatus;
   createdAt: Date;
   updatedAt: Date;
@@ -59,9 +58,7 @@ const RootCauseAnalysisSchema: Schema = new Schema(
     fiveWhy: [FiveWhySchema],
     fishbone: { type: FishboneSchema, default: {} },
     rootCauseSummary: { type: String, required: true, trim: true },
-    approvedBy: { type: Schema.Types.ObjectId, ref: 'User' },
-    approvedAt: { type: Date },
-    status: { type: String, enum: ['DRAFT', 'SUBMITTED', 'APPROVED'], default: 'DRAFT', index: true },
+    status: { type: String, enum: ['DRAFT', 'COMPLETED'], default: 'DRAFT', index: true },
   },
   {
     timestamps: true,

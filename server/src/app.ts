@@ -2,8 +2,6 @@ import express, { Express, Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
-import path from 'path';
-import fs from 'fs';
 import { env } from './config/env.js';
 import { globalLimiter } from './middleware/rateLimiter.js';
 import { errorHandler } from './middleware/errorHandler.js';
@@ -27,6 +25,9 @@ import reportRoutes from './modules/reports/report.routes.js';
 const app: Express = express();
 
 // Security headers
+// Behind Nginx, take the client IP from X-Forwarded-For (see TRUST_PROXY in config/env.ts)
+app.set('trust proxy', env.TRUST_PROXY);
+
 app.use(helmet());
 
 // CORS configuration
@@ -47,12 +48,8 @@ app.use(cookieParser());
 // Global Rate Limiter
 app.use(globalLimiter);
 
-// Serve uploads directory safely
-const uploadDir = path.resolve(process.cwd(), env.FILE_STORAGE_PATH);
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
-}
-app.use('/uploads', express.static(uploadDir));
+// Uploaded files are not served publicly; they are downloaded through
+// GET /api/v1/attachments/:id/download, which checks who may read them.
 
 // Healthcheck Route
 app.get('/health', (req: Request, res: Response) => {

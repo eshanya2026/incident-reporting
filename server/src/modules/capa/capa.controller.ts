@@ -1,40 +1,71 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { Capa, CapaStatus } from './capa.model.js';
-import { Incident } from '../incidents/incident.model.js';
 import { RootCauseAnalysis } from '../rca/rca.model.js';
-import { IncidentWorkflowService } from '../incidents/incidentWorkflow.service.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { getNextSequence } from '../../common/models/counter.model.js';
+import { hasPermission, loadIncidentForView, loadIncidentForWork } from '../../common/helpers/incidentAccess.js';
+import { PERMISSIONS } from '../../common/enums/permissions.js';
+import { assertAttachmentsUsable, linkAttachments } from '../attachments/attachmentAccess.js';
 
-const createCapaSchema = z.object({
+const startOfToday = () => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const targetDate = z.coerce
+  .date({ errorMap: () => ({ message: 'Target date must be a valid date' }) })
+  .refine((d) => d >= startOfToday(), 'Target date cannot be in the past');
+
+const capaFields = {
   type: z.enum(['CORRECTIVE', 'PREVENTIVE']),
-  action: z.string().min(3, 'CAPA Action description is required'),
-  ownerUserId: z.string().min(1, 'CAPA owner user is required'),
-  ownerDepartmentId: z.string().min(1, 'CAPA owner department is required'),
-  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']).default('MEDIUM'),
-  targetDate: z.string().or(z.date()),
-});
+  action: z.string().trim().min(3, 'CAPA action description is required'),
+  priority: z.enum(['LOW', 'MEDIUM', 'HIGH', 'CRITICAL']),
+  targetDate,
+};
 
-const completeCapaSchema = z.object({
-  completionRemarks: z.string().min(3, 'Completion remarks are required'),
+const createCapaSchema = z.object({ ...capaFields, priority: capaFields.priority.default('MEDIUM') });
+
+const updateCapaSchema = z
+  .object(capaFields)
+  .partial()
+  .refine((d) => Object.keys(d).length > 0, 'Nothing to update');
+
+const capaDoneSchema = z.object({
+  completionRemarks: z.string().trim().min(3, 'Completion remarks are required'),
   evidence: z.array(z.string()).optional(),
 });
 
-const verifyCapaSchema = z.object({
-  effective: z.boolean().default(true),
-  remarks: z.string().min(1, 'Verification remarks are required'),
-});
+/** Loads a CAPA the current HOD may change: their department's incident, in CAPA_IN_PROGRESS, CAPA still OPEN. */
+const loadOpenCapaForWork = async (req: Request, verb: string) => {
+  const capa = await Capa.findById(req.params.id);
+  if (!capa) {
+    throw AppError.notFound('CAPA record not found');
+  }
+  const incident = await loadIncidentForWork(req, capa.incidentId.toString());
+  if (incident.status !== 'CAPA_IN_PROGRESS') {
+    throw AppError.conflict(`CAPA actions cannot be ${verb} while the incident is ${incident.status}`);
+  }
+  if (capa.status !== 'OPEN') {
+    throw AppError.conflict(`A CAPA in status ${capa.status} cannot be ${verb}`);
+  }
+  return capa;
+};
 
+
+/** HOD of the responsible department writes a CAPA action while the incident is in CAPA_IN_PROGRESS. */
 export const createCapa = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { incidentId } = req.params;
     const data = createCapaSchema.parse(req.body);
 
-    const incident = await Incident.findById(incidentId);
-    if (!incident) {
-      throw AppError.notFound('Incident record not found');
+    const incident = await loadIncidentForWork(req, incidentId as string);
+    if (incident.status !== 'CAPA_IN_PROGRESS') {
+      throw AppError.conflict(
+        `CAPA actions can be added once the investigation is complete; the incident is ${incident.status}`
+      );
     }
 
     const rca = await RootCauseAnalysis.findOne({ incidentId });
@@ -49,23 +80,13 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
       rcaId: rca?._id || undefined,
       type: data.type,
       action: data.action,
-      ownerUserId: data.ownerUserId,
-      ownerDepartmentId: data.ownerDepartmentId,
+      ownerUserId: req.user!.userId,
+      ownerDepartmentId: incident.departmentId,
       priority: data.priority,
       assignedDate: new Date(),
-      targetDate: new Date(data.targetDate),
+      targetDate: data.targetDate,
       status: 'OPEN',
     });
-
-    if (incident.status === 'UNDER_INVESTIGATION' || incident.status === 'RCA_REQUIRED') {
-      await IncidentWorkflowService.transition({
-        incidentId: incident._id.toString(),
-        targetStatus: 'CAPA_IN_PROGRESS',
-        actorUserId: req.user?.userId || '',
-        remarks: 'CAPA Action created',
-        req,
-      });
-    }
 
     sendSuccess(res, capa, 'CAPA action created successfully', 201);
   } catch (error) {
@@ -76,6 +97,7 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
 export const getCapasByIncident = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { incidentId } = req.params;
+    await loadIncidentForView(req, incidentId as string);
     const capas = await Capa.find({ incidentId })
       .populate('ownerUserId', 'name email designation')
       .populate('ownerDepartmentId', 'name code')
@@ -98,19 +120,18 @@ export const getAllCapas = async (req: Request, res: Response, next: NextFunctio
 
     const query: any = {};
 
-    // Scope filtering if staff user
-    const permissions = req.user?.permissions || [];
-    if (!permissions.includes('report.view_all')) {
-      if (permissions.includes('report.view_department') && req.user?.departmentId) {
+    if (status) query.status = status;
+    if (ownerUserId) query.ownerUserId = ownerUserId;
+    if (ownerDepartmentId) query.ownerDepartmentId = ownerDepartmentId;
+
+    // HODs only see CAPAs owned by their department (applied last so filters cannot widen it)
+    if (!hasPermission(req.user, PERMISSIONS.REPORT_VIEW_ALL)) {
+      if (req.user?.departmentId) {
         query.ownerDepartmentId = req.user.departmentId;
       } else {
         query.ownerUserId = req.user?.userId;
       }
     }
-
-    if (status) query.status = status;
-    if (ownerUserId) query.ownerUserId = ownerUserId;
-    if (ownerDepartmentId) query.ownerDepartmentId = ownerDepartmentId;
 
     const total = await Capa.countDocuments(query);
     const capas = await Capa.find(query)
@@ -132,83 +153,40 @@ export const getAllCapas = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
-export const completeCapa = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+/** HOD edits a CAPA action that is still open. */
+export const updateCapa = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const data = completeCapaSchema.parse(req.body);
-
-    const capa = await Capa.findById(req.params.id);
-    if (!capa) {
-      throw AppError.notFound('CAPA record not found');
+    const data = updateCapaSchema.parse(req.body);
+    const capa = await loadOpenCapaForWork(req, 'edited');
+    if (data.targetDate && data.targetDate.getTime() !== capa.targetDate.getTime()) {
+      // New deadline: remind again if this one is missed too
+      capa.overdueNotifiedAt = undefined;
     }
-
-    capa.status = 'PENDING_VERIFICATION';
-    capa.completionRemarks = data.completionRemarks;
-    capa.completedAt = new Date();
-    if (data.evidence) {
-      capa.evidence = data.evidence as any;
-    }
+    Object.assign(capa, data);
     await capa.save();
-
-    sendSuccess(res, capa, 'CAPA completed and submitted for verification');
+    sendSuccess(res, capa, 'CAPA action updated');
   } catch (error) {
     next(error);
   }
 };
 
-export const verifyCapa = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+/** HOD marks a CAPA action as carried out: OPEN → DONE. Quality judges its effectiveness at review. */
+export const markCapaDone = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    if (!req.user) {
-      throw AppError.unauthorized('User not authenticated');
+    const data = capaDoneSchema.parse(req.body);
+    const capa = await loadOpenCapaForWork(req, 'marked done');
+    const evidenceIds = await assertAttachmentsUsable(data.evidence, req.user!.userId, 'CAPA', capa._id);
+
+    capa.status = 'DONE';
+    capa.completionRemarks = data.completionRemarks;
+    capa.completedAt = new Date();
+    if (data.evidence) {
+      capa.evidence = evidenceIds as any;
     }
-
-    const data = verifyCapaSchema.parse(req.body);
-
-    const capa = await Capa.findById(req.params.id);
-    if (!capa) {
-      throw AppError.notFound('CAPA record not found');
-    }
-
-    if (data.effective) {
-      capa.status = 'VERIFIED';
-    } else {
-      // Return to in-progress if ineffective
-      capa.status = 'IN_PROGRESS';
-    }
-
-    capa.verification = {
-      verifiedBy: req.user.userId as any,
-      verifiedAt: new Date(),
-      effective: data.effective,
-      remarks: data.remarks,
-    };
     await capa.save();
+    await linkAttachments(evidenceIds, 'CAPA', capa._id);
 
-    // Check if ALL CAPAs for this incident are verified
-    const allCapas = await Capa.find({ incidentId: capa.incidentId });
-    const allVerified = allCapas.every((c) => c.status === 'VERIFIED');
-
-    if (allVerified) {
-      const incident = await Incident.findById(capa.incidentId);
-      if (incident && incident.status === 'CAPA_IN_PROGRESS') {
-        await IncidentWorkflowService.transition({
-          incidentId: incident._id.toString(),
-          targetStatus: 'EFFECTIVENESS_REVIEW',
-          actorUserId: req.user.userId,
-          remarks: 'All CAPAs verified effective',
-          req,
-        });
-
-        await IncidentWorkflowService.transition({
-          incidentId: incident._id.toString(),
-          targetStatus: 'READY_FOR_CLOSURE',
-          actorUserId: req.user.userId,
-          remarks: 'Ready for closure',
-          req,
-        });
-      }
-    }
-
-    sendSuccess(res, capa, 'CAPA verification recorded successfully');
+    sendSuccess(res, capa, 'CAPA marked done');
   } catch (error) {
     next(error);
   }

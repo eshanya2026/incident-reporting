@@ -21,7 +21,7 @@ export default function LoginPage() {
       const res: any = await api.post('/auth/login', { username, password });
       if (res.data?.accessToken && res.data?.user) {
         setAuth(res.data.user, res.data.accessToken);
-        navigate('/dashboard');
+        navigate('/');
       }
     } catch (err: any) {
       setError(err?.message || 'Invalid credentials or login failed');
@@ -30,20 +30,17 @@ export default function LoginPage() {
     }
   };
 
+  const quickLogins: Record<string, [string, string]> = {
+    staff: ['nurse.mary', 'Staff@123'],
+    quality: ['quality.anita', 'Quality@123'],
+    hod: ['hod.emergency', 'Hod@123'],
+    admin: ['admin', 'Admin@123'],
+  };
+
   const handleQuickLogin = (userType: string) => {
-    if (userType === 'admin') {
-      setUsername('admin');
-      setPassword('Admin@123');
-    } else if (userType === 'quality') {
-      setUsername('quality.admin');
-      setPassword('Quality@123');
-    } else if (userType === 'hod') {
-      setUsername('hod.emergency');
-      setPassword('Hod@123');
-    } else if (userType === 'staff') {
-      setUsername('nurse.mary');
-      setPassword('Staff@123');
-    }
+    const [u, pw] = quickLogins[userType];
+    setUsername(u);
+    setPassword(pw);
   };
 
   return (
@@ -84,7 +81,7 @@ export default function LoginPage() {
                 required
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g. nurse.mary or admin"
+                placeholder="e.g. nurse.mary or quality.anita"
                 className="w-full pl-10 pr-4 py-2.5 bg-white border border-[#E2E8F0] rounded-xl text-sm text-[#172033] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] transition"
               />
             </div>
@@ -128,7 +125,14 @@ export default function LoginPage() {
                 onClick={() => handleQuickLogin('staff')}
                 className="px-3 py-2 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl text-[#172033] text-left font-medium transition cursor-pointer"
               >
-                🏥 <span>Staff Nurse</span>
+                🏥 <span>Staff</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleQuickLogin('quality')}
+                className="px-3 py-2 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl text-[#172033] text-left font-medium transition cursor-pointer"
+              >
+                🛡️ <span>Quality</span>
               </button>
               <button
                 type="button"
@@ -139,17 +143,10 @@ export default function LoginPage() {
               </button>
               <button
                 type="button"
-                onClick={() => handleQuickLogin('quality')}
-                className="px-3 py-2 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl text-[#172033] text-left font-medium transition cursor-pointer"
-              >
-                🛡️ <span>Quality Admin</span>
-              </button>
-              <button
-                type="button"
                 onClick={() => handleQuickLogin('admin')}
                 className="px-3 py-2 bg-[#F8FAFC] hover:bg-[#F1F5F9] border border-[#E2E8F0] rounded-xl text-[#172033] text-left font-medium transition cursor-pointer"
               >
-                ⚡ <span>System Admin</span>
+                ⚙️ <span>Admin</span>
               </button>
             </div>
           </div>

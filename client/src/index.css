@@ -39,6 +39,36 @@
   pointer-events: none;
 }
 
+/* Toast entrance */
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(1.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+.animate-toast-in {
+  animation: toast-in 220ms ease-out;
+}
+
+/* Tab panel entrance, paired with the sliding tab indicator (see useSlidingIndicator) */
+@keyframes tab-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.animate-tab-panel-in {
+  animation: tab-panel-in 220ms ease-out;
+}
+
 /* Clean Clinical Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
