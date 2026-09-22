@@ -9,7 +9,7 @@ import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { toast } from '../store/useToastStore';
 import { errorMessage } from '../lib/useAction';
 
-const FLOORS = ['Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
+const FLOORS = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
 const ZONES = ['Zone-1', 'Zone-B', 'Zone-C'] as const;
 
 export default function ReportIncidentPage() {

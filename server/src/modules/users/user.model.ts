@@ -8,6 +8,7 @@ export interface IUser extends Document {
   email: string;
   username: string;
   phone?: string;
+  whatsappNumber?: string;
   passwordHash: string;
   departmentId?: mongoose.Types.ObjectId;
   designation?: string;
@@ -27,6 +28,7 @@ const UserSchema: Schema = new Schema(
     email: { type: String, required: true, unique: true, lowercase: true, trim: true },
     username: { type: String, required: true, unique: true, lowercase: true, trim: true },
     phone: { type: String, trim: true },
+    whatsappNumber: { type: String, trim: true },
     passwordHash: { type: String, required: true },
     departmentId: { type: Schema.Types.ObjectId, ref: 'Department' },
     designation: { type: String, trim: true },

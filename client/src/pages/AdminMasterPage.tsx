@@ -9,7 +9,7 @@ import { useSlidingIndicator } from '../lib/useSlidingIndicator';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 
 const LOCATION_TYPES = ['WARD', 'ROOM', 'OT', 'ICU', 'LAB', 'OPD', 'OTHER'];
-const FLOORS = ['Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
+const FLOORS = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
 const ZONES = ['Zone-1', 'Zone-B', 'Zone-C'] as const;
 
 export default function AdminMasterPage() {
@@ -26,6 +26,7 @@ export default function AdminMasterPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [designation, setDesignation] = useState('');
+  const [whatsappNumber, setWhatsappNumber] = useState('');
   const [deptId, setDeptId] = useState('');
   const [roleId, setRoleId] = useState('');
   const [userStatus, setUserStatus] = useState('ACTIVE');
@@ -239,6 +240,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
   const roleById = (id: string) => roles.find((r: any) => r._id === id);
   const selectedRoleCode = roleById(roleId)?.code;
   const needsDepartment = selectedRoleCode === 'STAFF' || selectedRoleCode === 'HOD';
+  const isHodRole = selectedRoleCode === 'HOD';
   const selectedDept = departments.find((d: any) => d._id === deptId);
   const currentDeptHod = selectedDept?.hodUserId;
   const hodConflict =
@@ -270,6 +272,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
     setUsername('');
     setPassword('');
     setDesignation('');
+    setWhatsappNumber('');
     setDeptId('');
     setRoleId(roles.find((r: any) => r.code === 'STAFF')?._id || '');
     setUserStatus('ACTIVE');
@@ -285,6 +288,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
     setUsername(u.username);
     setPassword('');
     setDesignation(u.designation || '');
+    setWhatsappNumber(u.whatsappNumber || '');
     setDeptId(u.departmentId?._id || '');
     setRoleId(u.roles?.[0]?._id || '');
     setUserStatus(u.status);
@@ -307,6 +311,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
         name,
         email,
         designation,
+        whatsappNumber: isHodRole ? whatsappNumber : '',
         departmentId: deptId || null,
         roles: [roleId],
         replaceDepartmentHod: replaceHod,
@@ -968,6 +973,19 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
           <form onSubmit={handleSaveUser} className="bg-white rounded-2xl p-6 max-w-lg w-full space-y-3 shadow-2xl border border-clinicalBorder">
             <h3 className="font-bold text-clinicalText-primary">{editingUser ? `Edit User — ${editingUser.username}` : 'Add New User'}</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Role *</label>
+                <SearchableSelect
+                  value={roleId}
+                  onChange={setRoleId}
+                  options={[
+                    { value: '', label: '-- Choose Role --' },
+                    ...roles.map((r: any) => ({ value: r._id, label: r.name })),
+                  ]}
+                  searchPlaceholder="Search roles..."
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+                />
+              </div>
               <div>
                 <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Employee ID *</label>
                 <input type="text" required disabled={Boolean(editingUser)} value={empId} onChange={(e) => setEmpId(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition disabled:opacity-60" />
@@ -984,41 +1002,40 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Email *</label>
                 <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
               </div>
-              <div>
-                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Designation</label>
-                <input type="text" value={designation} onChange={(e) => setDesignation(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
-              </div>
               {!editingUser && (
                 <div>
                   <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Initial Password * (min 8)</label>
                   <input type="text" required minLength={8} value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
                 </div>
               )}
-              <div>
-                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Role *</label>
-                <SearchableSelect
-                  value={roleId}
-                  onChange={setRoleId}
-                  options={[
-                    { value: '', label: '-- Choose Role --' },
-                    ...roles.map((r: any) => ({ value: r._id, label: r.name })),
-                  ]}
-                  searchPlaceholder="Search roles..."
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">
-                  Department {needsDepartment ? '*' : '(optional)'}
-                </label>
-                <SearchableSelect
-                  value={deptId}
-                  onChange={setDeptId}
-                  options={[{ value: '', label: '-- Choose Department --' }, ...departmentOptions(departments)]}
-                  searchPlaceholder="Search departments..."
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-                />
-              </div>
+              {roleId && (
+                <div>
+                  <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">
+                    Department {needsDepartment ? '*' : '(optional)'}
+                  </label>
+                  <SearchableSelect
+                    value={deptId}
+                    onChange={setDeptId}
+                    options={[{ value: '', label: '-- Choose Department --' }, ...departmentOptions(departments)]}
+                    searchPlaceholder="Search departments..."
+                    className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+                  />
+                </div>
+              )}
+              {roleId && (
+                <div>
+                  <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">
+                    Designation {isHodRole ? '*' : '(optional)'}
+                  </label>
+                  <input type="text" required={isHodRole} value={designation} onChange={(e) => setDesignation(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
+                </div>
+              )}
+              {isHodRole && (
+                <div>
+                  <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">WhatsApp Number *</label>
+                  <input type="tel" required value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="e.g. +91 98765 43210" className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
+                </div>
+              )}
               {editingUser && (
                 <div>
                   <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Status</label>

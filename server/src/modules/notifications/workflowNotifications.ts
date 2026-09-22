@@ -3,6 +3,9 @@ import { IIncident, SEVERITY_LABELS } from '../incidents/incident.model.js';
 import type { WorkflowAction } from '../incidents/incidentWorkflow.rules.js';
 import type { JwtPayload } from '../auth/auth.utils.js';
 import { notifyUsers, qualityUserIds } from './notification.service.js';
+import { sendWhatsapp, sendWhatsappTemplate, whatsappEnabled } from './whatsapp.js';
+import { User } from '../users/user.model.js';
+import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 
 // Who is told about each workflow step (docs/FLOW_REWORK_PLAN.md, Phase 4).
@@ -70,9 +73,37 @@ export const notifyWorkflowEvent = async (
         entityType: 'INCIDENT',
         entityId: incident._id as mongoose.Types.ObjectId,
       });
+
+      if (m.to === 'HOD' && event === 'ASSIGN') {
+        await notifyHodByWhatsapp(incident, m, text);
+      }
     }
   } catch (error) {
     // Notifications must never fail the workflow action that triggered them
     logger.error({ err: error }, `❌ Notifications for ${event} failed`);
   }
+};
+
+/** WhatsApp is only wired up for the ASSIGN event, so the HOD hears about new work immediately. */
+const notifyHodByWhatsapp = async (incident: IIncident, m: Message, text?: string): Promise<void> => {
+  if (!whatsappEnabled()) return;
+
+  const hodId = hodOf(incident);
+  if (!hodId) return;
+
+  const hod = await User.findById(hodId).select('name whatsappNumber status');
+  if (hod?.status !== 'ACTIVE' || !hod.whatsappNumber) return;
+
+  const link = `${env.APP_URL}/incidents/${incident._id}`;
+
+  if (env.WATI_TEMPLATE_NAME) {
+    // Uses the "incident_assigned_hod" template (docs/whatsapp-template.md): {{1}} name,
+    // {{2}} incident ref, {{3}} severity, {{4}} remarks, {{5}} direct incident link.
+    const severity = SEVERITY_LABELS[incident.severity] ?? `Severity ${incident.severity}`;
+    const remarks = text?.trim() || 'Please review promptly.';
+    await sendWhatsappTemplate(hod.whatsappNumber, [hod.name, ref(incident), severity, remarks, link]);
+    return;
+  }
+
+  await sendWhatsapp(hod.whatsappNumber, `*${m.title}*\n${m.message(incident, text)}\n\nOpen: ${link}`);
 };

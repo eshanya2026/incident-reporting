@@ -15,6 +15,11 @@ dotenv.config();
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/incident_db';
 
 export const CORE_FLOOR_ZONE_LOCATIONS = [
+  // Ground Floor
+  { code: 'GF-Z1', name: 'Ground Floor - Zone-1', floor: 'Ground Floor', zone: 'Zone-1', type: 'OPD' },
+  { code: 'GF-ZB', name: 'Ground Floor - Zone-B', floor: 'Ground Floor', zone: 'Zone-B', type: 'OPD' },
+  { code: 'GF-ZC', name: 'Ground Floor - Zone-C', floor: 'Ground Floor', zone: 'Zone-C', type: 'OTHER' },
+
   // Floor 1
   { code: 'FL1-Z1', name: 'Floor 1 - Zone-1', floor: 'Floor 1', zone: 'Zone-1', type: 'ROOM' },
   { code: 'FL1-ZB', name: 'Floor 1 - Zone-B', floor: 'Floor 1', zone: 'Zone-B', type: 'ROOM' },

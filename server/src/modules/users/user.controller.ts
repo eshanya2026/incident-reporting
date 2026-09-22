@@ -18,6 +18,7 @@ const createUserSchema = z.object({
   username: z.string().trim().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   phone: z.string().optional(),
+  whatsappNumber: z.string().optional(),
   departmentId: objectId.optional().nullable(),
   designation: z.string().optional(),
   roles: z.array(objectId).min(1, 'At least one role must be assigned'),
@@ -29,6 +30,7 @@ const updateUserSchema = z.object({
   name: z.string().trim().min(1).optional(),
   email: z.string().email().optional(),
   phone: z.string().optional(),
+  whatsappNumber: z.string().optional(),
   departmentId: objectId.optional().nullable(),
   designation: z.string().optional(),
   roles: z.array(objectId).min(1, 'At least one role must be assigned').optional(),
@@ -62,6 +64,18 @@ const assertDepartmentForRoles = async (roleCodes: string[], departmentId?: stri
   }
   if (departmentId && !(await Department.exists({ _id: departmentId }))) {
     throw AppError.badRequest('Selected department does not exist');
+  }
+};
+
+const assertWhatsappForHod = (roleCodes: string[], whatsappNumber?: string | null): void => {
+  if (roleCodes.includes(ROLE_CODES.HOD) && !whatsappNumber?.trim()) {
+    throw AppError.badRequest('HOD users must have a WhatsApp number');
+  }
+};
+
+const assertDesignationForHod = (roleCodes: string[], designation?: string | null): void => {
+  if (roleCodes.includes(ROLE_CODES.HOD) && !designation?.trim()) {
+    throw AppError.badRequest('HOD users must have a designation');
   }
 };
 
@@ -186,6 +200,8 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
 
     const roleCodes = await resolveRoleCodes(data.roles);
     await assertDepartmentForRoles(roleCodes, data.departmentId);
+    assertWhatsappForHod(roleCodes, data.whatsappNumber);
+    assertDesignationForHod(roleCodes, data.designation);
 
     await assertHodSlotAvailable({
       roleCodes,
@@ -201,6 +217,7 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
       username: data.username.toLowerCase(),
       passwordHash: await hashPassword(data.password),
       phone: data.phone,
+      whatsappNumber: data.whatsappNumber,
       departmentId: data.departmentId || null,
       designation: data.designation,
       roles: data.roles,
@@ -228,6 +245,10 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     const roleCodes = await resolveRoleCodes(roleIds);
     const departmentId = data.departmentId !== undefined ? data.departmentId : user.departmentId?.toString();
     await assertDepartmentForRoles(roleCodes, departmentId);
+    const whatsappNumber = data.whatsappNumber !== undefined ? data.whatsappNumber : user.whatsappNumber;
+    assertWhatsappForHod(roleCodes, whatsappNumber);
+    const designation = data.designation !== undefined ? data.designation : user.designation;
+    assertDesignationForHod(roleCodes, designation);
 
     // Admins cannot lock themselves out
     if (user._id.toString() === req.user?.userId) {
@@ -255,6 +276,7 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     }
     if (data.name) user.name = data.name;
     if (data.phone !== undefined) user.phone = data.phone;
+    if (data.whatsappNumber !== undefined) user.whatsappNumber = data.whatsappNumber;
     if (data.departmentId !== undefined) user.departmentId = (data.departmentId || null) as any;
     if (data.designation !== undefined) user.designation = data.designation;
     if (data.roles) user.roles = data.roles as any;

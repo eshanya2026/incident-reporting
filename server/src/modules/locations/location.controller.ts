@@ -8,7 +8,7 @@ const createLocationSchema = z.object({
   code: z.string().min(1, 'Location code is required'),
   name: z.string().min(1, 'Location name is required'),
   type: z.enum(['WARD', 'ROOM', 'OT', 'ICU', 'LAB', 'OPD', 'OTHER']),
-  floor: z.enum(['Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5']).optional(),
+  floor: z.enum(['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5']).optional(),
   zone: z.enum(['Zone-1', 'Zone-B', 'Zone-C']).optional(),
   departmentId: z.string().optional(),
   parentLocationId: z.string().optional(),
@@ -17,7 +17,7 @@ const createLocationSchema = z.object({
 const updateLocationSchema = z.object({
   name: z.string().optional(),
   type: z.enum(['WARD', 'ROOM', 'OT', 'ICU', 'LAB', 'OPD', 'OTHER']).optional(),
-  floor: z.enum(['Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5']).optional(),
+  floor: z.enum(['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5']).optional(),
   zone: z.enum(['Zone-1', 'Zone-B', 'Zone-C']).optional(),
   departmentId: z.string().optional().nullable(),
   parentLocationId: z.string().optional().nullable(),

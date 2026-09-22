@@ -28,6 +28,20 @@ const envSchema = z.object({
     .string()
     .optional()
     .transform((val) => val === 'true'),
+  // Also send the HOD a WhatsApp message when Quality assigns an incident to them
+  // (uses the WATI WhatsApp Business API — https://wati.io — and the HOD's whatsappNumber).
+  WHATSAPP_NOTIFICATIONS: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true'),
+  // Account's API base URL, e.g. https://live-mt-server.wati.io/123456 (WATI dashboard > API Docs).
+  WATI_API_ENDPOINT: z.string().optional().default(''),
+  // Bearer token from the same WATI dashboard page.
+  WATI_ACCESS_TOKEN: z.string().optional().default(''),
+  // Name of the approved template to send (see docs/whatsapp-template.md). Required for the first
+  // message to a HOD outside the 24h session window; leave blank to send free-form text instead
+  // (only deliverable while the HOD has an open WhatsApp session with the business number).
+  WATI_TEMPLATE_NAME: z.string().optional().default(''),
   APP_URL: z.string().default('http://localhost:5173'),
   API_URL: z.string().default('http://localhost:5000'),
   // Number of reverse proxies in front of the API (1 behind Nginx). Needed so rate limits and

@@ -74,7 +74,10 @@ export const seedDatabase = async (): Promise<void> => {
 
     // 3. Seed Locations (15 Core Floor-Zone Locations + Department Specialized Locations)
     const locationsData = [
-      // 15 Standard Core Floor-Zone Locations
+      // 18 Standard Core Floor-Zone Locations
+      { code: 'GF-Z1', name: 'Ground Floor - Zone-1', floor: 'Ground Floor', zone: 'Zone-1', type: 'OPD' },
+      { code: 'GF-ZB', name: 'Ground Floor - Zone-B', floor: 'Ground Floor', zone: 'Zone-B', type: 'OPD' },
+      { code: 'GF-ZC', name: 'Ground Floor - Zone-C', floor: 'Ground Floor', zone: 'Zone-C', type: 'OTHER' },
       { code: 'FL1-Z1', name: 'Floor 1 - Zone-1', floor: 'Floor 1', zone: 'Zone-1', type: 'ROOM' },
       { code: 'FL1-ZB', name: 'Floor 1 - Zone-B', floor: 'Floor 1', zone: 'Zone-B', type: 'ROOM' },
       { code: 'FL1-ZC', name: 'Floor 1 - Zone-C', floor: 'Floor 1', zone: 'Zone-C', type: 'ROOM' },
@@ -111,7 +114,7 @@ export const seedDatabase = async (): Promise<void> => {
       const loc = await Location.findOneAndUpdate({ code: l.code }, l, { upsert: true, new: true });
       locationMap.set(l.code, loc._id as mongoose.Types.ObjectId);
     }
-    logger.info(`✅ Locations seeded (${locationsData.length} locations across 5 floors and 3 zones)`);
+    logger.info(`✅ Locations seeded (${locationsData.length} locations across 6 floors and 3 zones)`);
 
     // 4. Seed Incident Categories (48 Hospital Categories from docs/Hospital_Incident_Categories_and_Subcategories.md)
     const categoryMap = new Map<string, mongoose.Types.ObjectId>();

@@ -2,7 +2,7 @@ import mongoose, { Schema, Document } from 'mongoose';
 
 export type LocationType = 'WARD' | 'ROOM' | 'OT' | 'ICU' | 'LAB' | 'OPD' | 'OTHER';
 
-export const VALID_FLOORS = ['Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
+export const VALID_FLOORS = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
 export type HospitalFloor = typeof VALID_FLOORS[number];
 
 export const VALID_ZONES = ['Zone-1', 'Zone-B', 'Zone-C'] as const;
