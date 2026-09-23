@@ -18,6 +18,8 @@ export default function TriageInboxPage() {
     queries: TABS.map((t) => ({
       queryKey: ['triage-queue', t.key],
       queryFn: () => api.get('/incidents/triage-queue', { params: { status: t.key } }),
+      staleTime: 0,
+      refetchInterval: 30_000,
     })),
   });
   const active = TABS.findIndex((t) => t.key === tab);

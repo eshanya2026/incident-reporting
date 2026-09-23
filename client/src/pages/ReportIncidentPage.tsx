@@ -261,19 +261,14 @@ export default function ReportIncidentPage() {
   return (
     <div className="space-y-6 text-clinicalText-primary">
       {/* Page Title Header - dark theme */}
-      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] p-6 sm:p-7 rounded-2xl border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-start space-x-2">
-            <ShieldAlert className="w-6 h-6 shrink-0 mt-0.5 text-[#F06B70]" />
-            <span>Report Hospital Safety Incident / Near Miss</span>
-          </h2>
-          <p className="text-xs text-slate-300/80 mt-1">
-            Complete the form below to initiate triage, investigation, and safety management.
-          </p>
-        </div>
-        <span className="self-start sm:self-auto shrink-0 text-xs font-bold px-3.5 py-1 bg-white/10 text-[#F5A5A8] rounded-full border border-white/15">
-          Target: &lt; 3 Mins Submission
-        </span>
+      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] p-6 sm:p-7 rounded-2xl border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
+        <h2 className="text-xl font-bold text-white flex items-start space-x-2">
+          <ShieldAlert className="w-6 h-6 shrink-0 mt-0.5 text-[#F06B70]" />
+          <span>Report Hospital Safety Incident / Near Miss</span>
+        </h2>
+        <p className="text-xs text-slate-300/80 mt-1">
+          Complete the form below to initiate triage, investigation, and safety management.
+        </p>
       </div>
 
       {success && (
