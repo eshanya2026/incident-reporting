@@ -232,7 +232,7 @@ cp .env.production.example .env.production
 #    - APP_URL / API_URL: the address users open (server IP or domain, ports 1006 / 2006)
 #    - JWT_ACCESS_SECRET / JWT_REFRESH_SECRET: generate each with `openssl rand -hex 48`
 
-# 2. Build and start
+# 2. Build and start (if you keep these settings in a file named `.env` instead, just run `docker compose up -d --build`)
 docker compose --env-file .env.production up -d --build
 
 # 3. Check it is healthy
