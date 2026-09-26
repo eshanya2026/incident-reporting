@@ -400,29 +400,16 @@ export default function ReportIncidentPage() {
 
   return (
     <div className="space-y-6 text-clinicalText-primary">
-<<<<<<< HEAD
-      {/* Page Title Header - dark theme */}
-      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] p-6 sm:p-7 rounded-2xl border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)]">
-        <h2 className="text-xl font-bold text-white flex items-start space-x-2">
-          <ShieldAlert className="w-6 h-6 shrink-0 mt-0.5 text-[#F06B70]" />
-          <span>Report Hospital Safety Incident / Near Miss</span>
-        </h2>
-        <p className="text-xs text-slate-300/80 mt-1">
-          Complete the form below to initiate triage, investigation, and safety management.
-        </p>
-      </div>
-=======
       <PageHeader
         icon={ShieldAlert}
-        title="Report Safety Incident / Near Miss"
-        description="Tell us what happened. Quality reviews every report and routes it to the responsible department."
+        title="Report Hospital Safety Incident / Near Miss"
+        description="Complete the form below. Quality will review the report and route it to the responsible department."
       >
-        <span className="self-start md:self-auto shrink-0 inline-flex items-center gap-2 text-xs font-bold px-4 py-2 bg-black/20 text-[#FBC9CB] rounded-full border border-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+        <span className="self-start md:self-auto shrink-0 inline-flex items-center gap-2 text-xs font-bold px-4 py-2 bg-black/20 text-[#FBC9CB] rounded-full border border-white/15">
           <Clock className="w-4 h-4" />
-          Takes under 3 minutes
+          Report an incident
         </span>
       </PageHeader>
->>>>>>> 78cda57 (production)
 
       <form onSubmit={handleSubmit} className="grid lg:grid-cols-[290px_minmax(0,1fr)] gap-6 items-start">
         {/* ---------- Progress rail ---------- */}
@@ -1041,3 +1028,4 @@ export default function ReportIncidentPage() {
     </div>
   );
 }
+
