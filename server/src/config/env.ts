@@ -57,3 +57,20 @@ if (!_env.success) {
 }
 
 export const env = _env.data;
+
+// In production, never run with the built-in / example secrets: anyone who has read the repository
+// could forge login tokens.
+if (env.NODE_ENV === 'production') {
+  const weak = (secret: string) => secret.length < 32 || /change_in_prod|super_secret_key/i.test(secret);
+  const problems: string[] = [];
+  if (weak(env.JWT_ACCESS_SECRET)) problems.push('JWT_ACCESS_SECRET');
+  if (weak(env.JWT_REFRESH_SECRET)) problems.push('JWT_REFRESH_SECRET');
+  if (env.JWT_ACCESS_SECRET === env.JWT_REFRESH_SECRET) problems.push('JWT_ACCESS_SECRET and JWT_REFRESH_SECRET must differ');
+  if (problems.length > 0) {
+    console.error(
+      `❌ Refusing to start in production with weak or default secrets: ${problems.join(', ')}. ` +
+        'Set unique random values of at least 32 characters (e.g. `openssl rand -hex 48`).'
+    );
+    process.exit(1);
+  }
+}

@@ -17,6 +17,7 @@ export function SearchableSelect({
   onChange,
   options,
   className = '',
+  containerClassName = 'inline-block',
   disabled = false,
   placeholder = 'Select...',
   searchPlaceholder = 'Search...',
@@ -26,6 +27,8 @@ export function SearchableSelect({
   onChange: (value: string) => void;
   options: SearchableSelectOption[];
   className?: string;
+  /** Classes for the wrapper; pass "block w-full" to make the select fill its parent. */
+  containerClassName?: string;
   disabled?: boolean;
   placeholder?: string;
   searchPlaceholder?: string;
@@ -107,7 +110,7 @@ export function SearchableSelect({
   };
 
   return (
-    <div ref={containerRef} className="relative inline-block">
+    <div ref={containerRef} className={`relative ${containerClassName}`}>
       <button
         type="button"
         id={id}
@@ -145,7 +148,7 @@ export function SearchableSelect({
               grouped.map(({ group, items }) => (
                 <div key={group ?? '__root'}>
                   {group && (
-                    <div className="px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400 sticky top-0 bg-white">
+                    <div className="px-3 pt-2 pb-1 text-[11.5px] font-bold uppercase tracking-wider text-slate-400 sticky top-0 bg-white">
                       {group}
                     </div>
                   )}

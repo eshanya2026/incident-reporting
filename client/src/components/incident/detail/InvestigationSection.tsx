@@ -66,7 +66,7 @@ export default function InvestigationSection({
       actions={
         <div className="flex items-center gap-2">
           {editable && !editing && <EditToggle onClick={() => setEditing(true)} />}
-          <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full border ${completed ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-sky-50 text-sky-700 border-sky-200'}`}>
+          <span className={`text-[11.5px] font-bold uppercase px-2 py-0.5 rounded-full border ${completed ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-sky-50 text-sky-700 border-sky-200'}`}>
             {completed ? 'Completed' : 'In progress'}
           </span>
         </div>

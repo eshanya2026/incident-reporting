@@ -24,7 +24,8 @@ import { useAuthStore } from '../store/useAuthStore';
 import { hasPermission } from '../lib/rbac';
 import { departmentOptions } from '../components/ui/DepartmentOptions';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
-import { useSlidingIndicator } from '../lib/useSlidingIndicator';
+import { EmptyState, FilterBar, SearchInput, StatTile, TabBar, TableSkeleton, filterControlClass } from '../components/ui/listKit';
+import { SEVERITY_COLOR } from '../lib/incidentMeta';
 
 type ReportTab = 'INCIDENTS' | 'CAPA';
 
@@ -34,7 +35,6 @@ export default function QualityReportsPage() {
   const userDeptId = user?.departmentId;
 
   const [activeTab, setActiveTab] = useState<ReportTab>('INCIDENTS');
-  const { indicatorStyle, registerTab } = useSlidingIndicator(activeTab);
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [departmentId, setDepartmentId] = useState(isHospitalWide ? '' : userDeptId || '');
@@ -310,9 +310,9 @@ export default function QualityReportsPage() {
   return (
     <div className="space-y-6 text-[#172033]">
       {/* Title Card / Banner - dark theme */}
-      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] p-6 sm:p-7 rounded-2xl border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
+      <div className="hero-banner p-6 sm:p-7 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-white/10 text-[#F5A5A8] text-[11px] font-bold tracking-wide uppercase mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-white/10 text-[#F5A5A8] text-[12.5px] font-bold tracking-wide uppercase mb-2">
             <span>AUDIT & COMPLIANCE REGISTERS</span>
           </div>
           <h2 className="text-2xl font-bold text-white flex items-start space-x-2.5">
@@ -376,154 +376,58 @@ export default function QualityReportsPage() {
         </div>
       </div>
 
-      {/* Dual Tab Switcher */}
-      <div className="relative flex border-b border-[#E2E8F0] space-x-8 print:hidden">
-        <span
-          className="absolute bottom-0 h-0.5 bg-[#8B1E23] rounded-full transition-all duration-300 ease-out"
-          style={indicatorStyle}
+      {/* Register switcher */}
+      <div className="print:hidden">
+        <TabBar
+          active={activeTab}
+          onChange={(key) => {
+            setActiveTab(key as typeof activeTab);
+            setSearchQuery('');
+          }}
+          tabs={[
+            { key: 'INCIDENTS', label: 'Incident Master Register', count: filteredIncidents.length },
+            { key: 'CAPA', label: 'CAPA Compliance Register', count: filteredCapas.length },
+          ]}
         />
-        <button
-          type="button"
-          ref={registerTab('INCIDENTS')}
-          onClick={() => {
-            setActiveTab('INCIDENTS');
-            setSearchQuery('');
-          }}
-          className={`pb-3 text-sm font-semibold flex items-center space-x-2 transition-colors duration-200 cursor-pointer relative ${
-            activeTab === 'INCIDENTS' ? 'text-[#8B1E23]' : 'text-[#64748B] hover:text-[#172033]'
-          }`}
-        >
-          <FileText className="w-4 h-4" />
-          <span>Incident Master Register</span>
-          <span className="ml-1.5 px-2 py-0.5 rounded-full text-[11px] bg-[#F1F5F9] text-[#475569]">
-            {filteredIncidents.length}
-          </span>
-        </button>
-
-        <button
-          type="button"
-          ref={registerTab('CAPA')}
-          onClick={() => {
-            setActiveTab('CAPA');
-            setSearchQuery('');
-          }}
-          className={`pb-3 text-sm font-semibold flex items-center space-x-2 transition-colors duration-200 cursor-pointer relative ${
-            activeTab === 'CAPA' ? 'text-[#8B1E23]' : 'text-[#64748B] hover:text-[#172033]'
-          }`}
-        >
-          <CheckCircle2 className="w-4 h-4" />
-          <span>CAPA Compliance Register</span>
-          <span className="ml-1.5 px-2 py-0.5 rounded-full text-[11px] bg-[#F1F5F9] text-[#475569]">
-            {filteredCapas.length}
-          </span>
-        </button>
       </div>
 
       {/* KPI Metric Summary Strip */}
       <div key={activeTab} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden animate-tab-panel-in">
         {activeTab === 'INCIDENTS' ? (
           <>
-            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-[#64748B]">Total in Register</span>
-                <div className="text-2xl font-bold text-[#172033] mt-1">{incidentSummary.total}</div>
-                <span className="text-[11px] text-[#94A3B8]">Matching filters</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#F8FAFC] flex items-center justify-center">
-                <FileText className="w-5 h-5 text-[#8B1E23]" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-[#64748B]">Closed Incidents</span>
-                <div className="text-2xl font-bold text-[#059669] mt-1">{incidentSummary.closed}</div>
-                <span className="text-[11px] text-[#059669] font-medium">
-                  {incidentSummary.total
-                    ? `${Math.round((incidentSummary.closed / incidentSummary.total) * 100)}% resolution rate`
-                    : '0%'}
-                </span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#ECFDF5] flex items-center justify-center">
-                <CheckCircle2 className="w-5 h-5 text-[#059669]" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-[#64748B]">Critical / Major</span>
-                <div className="text-2xl font-bold text-[#DC2626] mt-1">{incidentSummary.critical}</div>
-                <span className="text-[11px] text-[#DC2626] font-medium">Severity 4 & 5 events</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#FEE2E2] flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-[#DC2626]" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-[#64748B]">Median Cycle Time</span>
-                <div className="text-2xl font-bold text-[#8B1E23] mt-1">
-                  {incidentSummary.medianDays !== null ? `${incidentSummary.medianDays} d` : '—'}
-                </div>
-                <span className="text-[11px] text-[#94A3B8]">Report to final closure</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#FDECEC] flex items-center justify-center">
-                <Clock className="w-5 h-5 text-[#8B1E23]" />
-              </div>
-            </div>
+            <StatTile label="Total in register" value={incidentSummary.total} icon={FileText} tone="red" hint="Matching filters" />
+            <StatTile
+              label="Closed incidents"
+              value={incidentSummary.closed}
+              icon={CheckCircle2}
+              tone="green"
+              hint={
+                incidentSummary.total
+                  ? `${Math.round((incidentSummary.closed / incidentSummary.total) * 100)}% resolution rate`
+                  : '0%'
+              }
+            />
+            <StatTile label="Critical / major" value={incidentSummary.critical} icon={AlertTriangle} tone="red" hint="Severity 4 & 5 events" />
+            <StatTile
+              label="Median cycle time"
+              value={incidentSummary.medianDays !== null ? `${incidentSummary.medianDays} d` : '—'}
+              icon={Clock}
+              tone="slate"
+              hint="Report to final closure"
+            />
           </>
         ) : (
           <>
-            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-[#64748B]">Total CAPAs</span>
-                <div className="text-2xl font-bold text-[#172033] mt-1">{capaSummary.total}</div>
-                <span className="text-[11px] text-[#94A3B8]">Audit registered</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#F8FAFC] flex items-center justify-center">
-                <Layers className="w-5 h-5 text-[#8B1E23]" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-[#64748B]">Verified Effective</span>
-                <div className="text-2xl font-bold text-[#059669] mt-1">{capaSummary.effective}</div>
-                <span className="text-[11px] text-[#059669] font-medium">Quality approved</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#ECFDF5] flex items-center justify-center">
-                <CheckCircle2 className="w-5 h-5 text-[#059669]" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-[#64748B]">Ongoing / Open</span>
-                <div className="text-2xl font-bold text-[#D97706] mt-1">{capaSummary.open}</div>
-                <span className="text-[11px] text-[#D97706] font-medium">In execution</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#FEF3C7] flex items-center justify-center">
-                <Clock className="w-5 h-5 text-[#D97706]" />
-              </div>
-            </div>
-
-            <div className="bg-white p-4 rounded-xl border border-[#E2E8F0] shadow-xs flex items-center justify-between">
-              <div>
-                <span className="text-xs font-semibold text-[#64748B]">Overdue Actions</span>
-                <div className="text-2xl font-bold text-[#DC2626] mt-1">{capaSummary.overdue}</div>
-                <span className="text-[11px] text-[#DC2626] font-medium">Target date exceeded</span>
-              </div>
-              <div className="w-10 h-10 rounded-full bg-[#FEE2E2] flex items-center justify-center">
-                <AlertTriangle className="w-5 h-5 text-[#DC2626]" />
-              </div>
-            </div>
+            <StatTile label="Total CAPAs" value={capaSummary.total} icon={Layers} tone="red" hint="Audit registered" />
+            <StatTile label="Verified effective" value={capaSummary.effective} icon={CheckCircle2} tone="green" hint="Quality approved" />
+            <StatTile label="Ongoing / open" value={capaSummary.open} icon={Clock} tone="amber" hint="In execution" />
+            <StatTile label="Overdue actions" value={capaSummary.overdue} icon={AlertTriangle} tone="red" hint="Target date exceeded" />
           </>
         )}
       </div>
 
       {/* Filter Bar */}
-      <div className="bg-white p-4 sm:p-5 rounded-2xl border border-[#E2E8F0] shadow-xs space-y-3 print:hidden">
+      <FilterBar className="space-y-3 print:hidden">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-[#64748B] flex items-center space-x-1.5">
             <Filter className="w-3.5 h-3.5 text-[#8B1E23]" />
@@ -550,47 +454,43 @@ export default function QualityReportsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
           {/* Quick Search */}
           <div className="lg:col-span-1">
-            <label className="block text-[11px] font-semibold text-[#64748B] mb-1">Search Keywords</label>
-            <div className="relative">
-              <input
-                type="text"
-                placeholder={activeTab === 'INCIDENTS' ? 'Search #, title, UHID...' : 'Search CAPA #, action...'}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-3 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-lg text-xs focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] focus:bg-white transition"
-              />
-              <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-2.5 top-2.5 pointer-events-none" />
-            </div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">Search keywords</label>
+            <SearchInput
+              value={searchQuery}
+              onChange={setSearchQuery}
+              placeholder={activeTab === 'INCIDENTS' ? 'Search #, title, UHID...' : 'Search CAPA #, action...'}
+            />
           </div>
 
           {/* From Date */}
           <div>
-            <label className="block text-[11px] font-semibold text-[#64748B] mb-1">From Date</label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">From Date</label>
             <input
               type="date"
               value={fromDate}
               onChange={(e) => setFromDate(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-lg text-xs focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] focus:bg-white transition"
+              className={filterControlClass}
             />
           </div>
 
           {/* To Date */}
           <div>
-            <label className="block text-[11px] font-semibold text-[#64748B] mb-1">To Date</label>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">To Date</label>
             <input
               type="date"
               value={toDate}
               onChange={(e) => setToDate(e.target.value)}
-              className="w-full px-3 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-lg text-xs focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] focus:bg-white transition"
+              className={filterControlClass}
             />
           </div>
 
           {/* Department Filter */}
           <div>
-            <label className="block text-[11px] font-semibold text-[#64748B] mb-1">
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
               Responsible Department
             </label>
             <SearchableSelect
+              containerClassName="block w-full"
               value={departmentId}
               onChange={setDepartmentId}
               disabled={!isHospitalWide}
@@ -599,15 +499,16 @@ export default function QualityReportsPage() {
                 ...departmentOptions(departments),
               ]}
               searchPlaceholder="Search departments..."
-              className="w-full px-3 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-lg text-xs focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] focus:bg-white transition disabled:opacity-75"
+              className={filterControlClass}
             />
           </div>
 
           {/* Dynamic Tab Filter: Severity/Status vs CAPA Status/Overdue */}
           {activeTab === 'INCIDENTS' ? (
             <div>
-              <label className="block text-[11px] font-semibold text-[#64748B] mb-1">Severity / Harm Level</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Severity / Harm Level</label>
               <SearchableSelect
+                containerClassName="block w-full"
                 value={severity}
                 onChange={setSeverity}
                 options={[
@@ -619,14 +520,15 @@ export default function QualityReportsPage() {
                   { value: '5', label: 'Severity 5 – Sentinel Event' },
                 ]}
                 searchPlaceholder="Search severities..."
-                className="w-full px-3 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-lg text-xs focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] focus:bg-white transition"
+                className={filterControlClass}
               />
             </div>
           ) : (
             <div>
-              <label className="block text-[11px] font-semibold text-[#64748B] mb-1">CAPA Status & Compliance</label>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">CAPA Status & Compliance</label>
               <div className="flex items-center space-x-2">
                 <SearchableSelect
+                  containerClassName="block w-full"
                   value={capaStatus}
                   onChange={setCapaStatus}
                   options={[
@@ -636,7 +538,7 @@ export default function QualityReportsPage() {
                     { value: 'EFFECTIVE', label: 'EFFECTIVE (Completed)' },
                   ]}
                   searchPlaceholder="Search statuses..."
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-[#CBD5E1] rounded-lg text-xs focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] focus:bg-white transition"
+                  className={filterControlClass}
                 />
 
                 <label className="inline-flex items-center space-x-1.5 cursor-pointer shrink-0 text-xs text-[#DC2626] font-semibold">
@@ -652,20 +554,20 @@ export default function QualityReportsPage() {
             </div>
           )}
         </div>
-      </div>
+      </FilterBar>
 
       {/* Main Audit Register Table */}
       <div className="bg-white rounded-2xl border border-[#E2E8F0] shadow-card overflow-hidden print:border-none print:shadow-none">
-        <div className="p-5 border-b border-[#E2E8F0] flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50 print:hidden">
+        <div className="px-5 py-4 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 print:hidden">
           <div>
-            <h3 className="font-bold text-sm text-[#172033]">
+            <h3 className="font-bold text-base text-slate-900">
               {activeTab === 'INCIDENTS' ? 'Master Incident Register' : 'CAPA Compliance Register'}
             </h3>
             <span className="text-xs text-[#64748B]">
               Showing {activeTab === 'INCIDENTS' ? filteredIncidents.length : filteredCapas.length} records
             </span>
           </div>
-          <span className="text-xs text-[#64748B] font-mono">
+          <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#FFF5F5] border border-[#FBD5D5] text-[#8B1E23]">
             NABH Accreditation Reference Standard PSQ.2
           </span>
         </div>
@@ -673,9 +575,9 @@ export default function QualityReportsPage() {
         <div key={activeTab} className="overflow-x-auto animate-tab-panel-in">
           {activeTab === 'INCIDENTS' ? (
             /* INCIDENT REGISTER TABLE */
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="data-table">
               <thead>
-                <tr className="bg-slate-100/75 border-b border-[#E2E8F0] font-bold uppercase text-[10px] tracking-wider text-[#475569]">
+                <tr className="bg-slate-100/75 border-b border-[#E2E8F0] font-bold uppercase text-[11.5px] tracking-wider text-[#475569]">
                   <th className="py-3 px-3">Inc #</th>
                   <th className="py-3 px-3">Reported</th>
                   <th className="py-3 px-3">Occurred In</th>
@@ -691,30 +593,30 @@ export default function QualityReportsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loadingIncidents ? (
-                  <tr>
-                    <td colSpan={11} className="py-12 text-center text-[#64748B]">
-                      <RefreshCw className="w-6 h-6 text-[#8B1E23] animate-spin mx-auto mb-2" />
-                      Loading incident audit records...
-                    </td>
-                  </tr>
+                  <TableSkeleton columns={11} />
                 ) : filteredIncidents.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="py-12 text-center text-[#94A3B8]">
-                      No matching incident records found for the selected filters.
+                    <td colSpan={11} className="!p-0">
+                      <EmptyState icon={FileText} message="No matching incident records found for the selected filters." />
                     </td>
                   </tr>
                 ) : (
                   filteredIncidents.map((inc) => (
                     <tr key={inc._id} className="hover:bg-slate-50/80 transition">
                       {/* Incident # */}
-                      <td className="py-3 px-3 font-mono font-bold text-[#8B1E23] whitespace-nowrap">
-                        {inc.incidentNumber}
+                      <td
+                        className="whitespace-nowrap"
+                        style={{ boxShadow: `inset 4px 0 0 ${SEVERITY_COLOR[inc.severity] ?? '#CBD5E1'}` }}
+                      >
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs">
+                          {inc.incidentNumber}
+                        </span>
                       </td>
 
                       {/* Reported Date */}
                       <td className="py-3 px-3 text-[#64748B] whitespace-nowrap">
                         <div>{dayjs(inc.reportedAt).format('DD/MM/YYYY')}</div>
-                        <div className="text-[10px] text-[#94A3B8]">{dayjs(inc.reportedAt).format('HH:mm')}</div>
+                        <div className="text-[11.5px] text-[#94A3B8]">{dayjs(inc.reportedAt).format('HH:mm')}</div>
                       </td>
 
                       {/* Occurred In Dept */}
@@ -736,7 +638,7 @@ export default function QualityReportsPage() {
                       <td className="py-3 px-3 text-[#475569]">
                         <div className="font-medium truncate max-w-[140px]">{inc.category || 'General'}</div>
                         {inc.subcategory && (
-                          <div className="text-[10px] text-[#94A3B8] truncate max-w-[140px]">{inc.subcategory}</div>
+                          <div className="text-[11.5px] text-[#94A3B8] truncate max-w-[140px]">{inc.subcategory}</div>
                         )}
                       </td>
 
@@ -744,7 +646,7 @@ export default function QualityReportsPage() {
                       <td className="py-3 px-3 text-[#172033] max-w-xs">
                         <div className="font-semibold truncate">{inc.title}</div>
                         {inc.patientUhid && (
-                          <div className="text-[10px] font-mono text-[#64748B]">UHID: {inc.patientUhid}</div>
+                          <div className="text-[11.5px] font-mono text-[#64748B]">UHID: {inc.patientUhid}</div>
                         )}
                       </td>
 
@@ -752,7 +654,7 @@ export default function QualityReportsPage() {
                       <td className="py-3 px-3 whitespace-nowrap">
                         <SeverityBadge severity={inc.severity} />
                         {inc.reportedSeverity !== inc.severity && (
-                          <span className="block text-[9px] text-[#94A3B8] mt-0.5">
+                          <span className="block text-[11px] text-[#94A3B8] mt-0.5">
                             Initial: L{inc.reportedSeverity}
                           </span>
                         )}
@@ -766,11 +668,11 @@ export default function QualityReportsPage() {
                       {/* Turnaround times breakdown */}
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         {inc.status === 'CLOSED' ? (
-                          <div className="inline-flex items-center space-x-1 font-mono text-[11px] font-bold text-[#059669]">
+                          <div className="inline-flex items-center space-x-1 font-mono text-[12.5px] font-bold text-[#059669]">
                             <span>{inc.daysToClose ?? '—'}d total</span>
                           </div>
                         ) : inc.daysToAssign !== null && inc.daysToAssign !== undefined ? (
-                          <span className="font-mono text-[10px] text-[#64748B]">{inc.daysToAssign}d to assign</span>
+                          <span className="font-mono text-[11.5px] text-[#64748B]">{inc.daysToAssign}d to assign</span>
                         ) : (
                           <span className="text-[#94A3B8]">—</span>
                         )}
@@ -779,11 +681,11 @@ export default function QualityReportsPage() {
                       {/* Rework */}
                       <td className="py-3 px-3 text-center whitespace-nowrap">
                         {inc.sentBackByQuality > 0 ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#F3E8FF] text-[#7C3AED]">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11.5px] font-bold bg-[#F3E8FF] text-[#7C3AED]">
                             {inc.sentBackByQuality} sent back
                           </span>
                         ) : (
-                          <span className="text-[10px] text-[#94A3B8]">0</span>
+                          <span className="text-[11.5px] text-[#94A3B8]">0</span>
                         )}
                       </td>
                     </tr>
@@ -793,9 +695,9 @@ export default function QualityReportsPage() {
             </table>
           ) : (
             /* CAPA REGISTER TABLE */
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="data-table">
               <thead>
-                <tr className="bg-slate-100/75 border-b border-[#E2E8F0] font-bold uppercase text-[10px] tracking-wider text-[#475569]">
+                <tr className="bg-slate-100/75 border-b border-[#E2E8F0] font-bold uppercase text-[11.5px] tracking-wider text-[#475569]">
                   <th className="py-3 px-3">CAPA #</th>
                   <th className="py-3 px-3">Incident</th>
                   <th className="py-3 px-3">Department</th>
@@ -809,30 +711,30 @@ export default function QualityReportsPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loadingCapas ? (
-                  <tr>
-                    <td colSpan={9} className="py-12 text-center text-[#64748B]">
-                      <RefreshCw className="w-6 h-6 text-[#8B1E23] animate-spin mx-auto mb-2" />
-                      Loading CAPA audit records...
-                    </td>
-                  </tr>
+                  <TableSkeleton columns={9} />
                 ) : filteredCapas.length === 0 ? (
                   <tr>
-                    <td colSpan={9} className="py-12 text-center text-[#94A3B8]">
-                      No matching CAPA records found.
+                    <td colSpan={9} className="!p-0">
+                      <EmptyState icon={Layers} message="No matching CAPA records found." />
                     </td>
                   </tr>
                 ) : (
                   filteredCapas.map((capa) => (
                     <tr key={capa._id} className="hover:bg-slate-50/80 transition">
                       {/* CAPA # */}
-                      <td className="py-3 px-3 font-mono font-bold text-[#8B1E23] whitespace-nowrap">
-                        {capa.capaNumber}
+                      <td
+                        className="whitespace-nowrap"
+                        style={capa.overdue ? { boxShadow: 'inset 4px 0 0 #DC2626' } : undefined}
+                      >
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs">
+                          {capa.capaNumber}
+                        </span>
                       </td>
 
                       {/* Incident */}
                       <td className="py-3 px-3 text-[#172033] whitespace-nowrap">
                         <span className="font-mono font-semibold text-[#64748B]">{capa.incidentNumber}</span>
-                        <div className="text-[10px] text-[#94A3B8] truncate max-w-[140px]">{capa.incidentTitle}</div>
+                        <div className="text-[11.5px] text-[#94A3B8] truncate max-w-[140px]">{capa.incidentTitle}</div>
                       </td>
 
                       {/* Department */}
@@ -848,7 +750,7 @@ export default function QualityReportsPage() {
                       {/* Type */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         <span
-                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                          className={`px-2 py-0.5 rounded text-[11.5px] font-bold ${
                             capa.type === 'PREVENTIVE'
                               ? 'bg-[#EFF6FF] text-[#2563EB]'
                               : 'bg-[#FDF4FF] text-[#C026D3]'
@@ -873,13 +775,13 @@ export default function QualityReportsPage() {
                           {capa.overdue && <AlertTriangle className="w-3.5 h-3.5" />}
                           <span>{dayjs(capa.targetDate).format('DD/MM/YYYY')}</span>
                         </div>
-                        {capa.overdue && <span className="text-[9px] text-[#DC2626] font-semibold">OVERDUE</span>}
+                        {capa.overdue && <span className="text-[11px] text-[#DC2626] font-semibold">OVERDUE</span>}
                       </td>
 
                       {/* Status */}
                       <td className="py-3 px-3 whitespace-nowrap">
                         <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-bold tracking-wide ${
+                          className={`px-2.5 py-1 rounded-full text-[11.5px] font-bold tracking-wide ${
                             capa.status === 'EFFECTIVE'
                               ? 'bg-[#ECFDF5] text-[#059669] border border-[#A7F3D0]'
                               : capa.status === 'DONE'
@@ -895,8 +797,8 @@ export default function QualityReportsPage() {
                       <td className="py-3 px-3 text-[#64748B] whitespace-nowrap">
                         {capa.reviewedBy ? (
                           <div>
-                            <div className="text-[11px] font-semibold text-[#172033]">{capa.reviewedBy}</div>
-                            <div className="text-[9px] text-[#94A3B8]">
+                            <div className="text-[12.5px] font-semibold text-[#172033]">{capa.reviewedBy}</div>
+                            <div className="text-[11px] text-[#94A3B8]">
                               {dayjs(capa.reviewedAt).format('DD/MM/YYYY')}
                             </div>
                           </div>

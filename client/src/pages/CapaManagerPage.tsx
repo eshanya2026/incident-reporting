@@ -2,21 +2,14 @@ import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { CheckSquare, Eye } from 'lucide-react';
+import { CheckSquare, ArrowRight, CircleDot, AlarmClock, Hourglass, BadgeCheck, ListChecks } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { hasPermission } from '../lib/rbac';
 import { CAPA_STATUS_META } from '../lib/incidentMeta';
 import { PageHeader } from '../components/ui/primitives';
 import { CapaStatusBadge } from '../components/incident/Badges';
-
-const FILTERS = [
-  { key: '', label: 'All' },
-  { key: 'OPEN', label: CAPA_STATUS_META.OPEN.label },
-  { key: 'overdue', label: 'Overdue' },
-  { key: 'DONE', label: CAPA_STATUS_META.DONE.label },
-  { key: 'EFFECTIVE', label: CAPA_STATUS_META.EFFECTIVE.label },
-];
+import { EmptyState, FilterChips, StatTile, TableSkeleton } from '../components/ui/listKit';
 
 /**
  * CAPA register. HODs see their department's actions and complete them from the incident page;
@@ -27,13 +20,31 @@ export default function CapaManagerPage() {
   const isHod = hasPermission(user, 'capa.write');
   const [filter, setFilter] = useState('');
 
+  // One query for every action; filters and counts are worked out here so the chips can show totals
   const { data, isLoading } = useQuery({
-    queryKey: ['all-capas', filter],
-    queryFn: () => api.get('/capas', { params: { status: filter === 'overdue' ? 'OPEN' : filter || undefined, limit: 200 } }),
+    queryKey: ['all-capas'],
+    queryFn: () => api.get('/capas', { params: { limit: 200 } }),
   });
   const all: any[] = (data as any)?.data || [];
   const isOverdue = (c: any) => c.status === 'OPEN' && dayjs().isAfter(dayjs(c.targetDate), 'day');
-  const capas = filter === 'overdue' ? all.filter(isOverdue) : all;
+
+  const counts = {
+    '': all.length,
+    OPEN: all.filter((c) => c.status === 'OPEN').length,
+    overdue: all.filter(isOverdue).length,
+    DONE: all.filter((c) => c.status === 'DONE').length,
+    EFFECTIVE: all.filter((c) => c.status === 'EFFECTIVE').length,
+  };
+
+  const FILTERS = [
+    { key: '', label: 'All', count: counts[''] },
+    { key: 'OPEN', label: CAPA_STATUS_META.OPEN.label, count: counts.OPEN },
+    { key: 'overdue', label: 'Overdue', count: counts.overdue },
+    { key: 'DONE', label: CAPA_STATUS_META.DONE.label, count: counts.DONE },
+    { key: 'EFFECTIVE', label: CAPA_STATUS_META.EFFECTIVE.label, count: counts.EFFECTIVE },
+  ];
+
+  const capas = all.filter((c) => (!filter ? true : filter === 'overdue' ? isOverdue(c) : c.status === filter));
 
   return (
     <div className="space-y-6 text-clinicalText-primary">
@@ -47,81 +58,94 @@ export default function CapaManagerPage() {
         }
       />
 
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
-              filter === f.key ? 'bg-[#8B1E23] text-white border-[#8B1E23]' : 'bg-white text-clinicalText-secondary border-clinicalBorder hover:bg-slate-50'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
+        <StatTile label="Open actions" value={counts.OPEN} icon={CircleDot} tone="blue" />
+        <StatTile label="Overdue" value={counts.overdue} icon={AlarmClock} tone="red" hint={counts.overdue ? 'Past target date' : 'Nothing overdue'} />
+        <StatTile label="Awaiting review" value={counts.DONE} icon={Hourglass} tone="amber" />
+        <StatTile label="Effective" value={counts.EFFECTIVE} icon={BadgeCheck} tone="green" />
       </div>
 
-      <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden">
+      <FilterChips value={filter} onChange={setFilter} options={FILTERS} />
+
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+          <table className="data-table">
             <thead>
-              <tr className="bg-slate-50/80 border-b border-clinicalBorder text-[11px] font-bold uppercase tracking-wider text-clinicalText-secondary">
-                <th className="py-3 px-4">CAPA</th>
-                <th className="py-3 px-4">Action</th>
-                <th className="py-3 px-4">Incident</th>
-                <th className="py-3 px-4">Department / Owner</th>
-                <th className="py-3 px-4">Target</th>
-                <th className="py-3 px-4">Status</th>
-                <th className="py-3 px-4 text-right">Open</th>
+              <tr>
+                <th>CAPA</th>
+                <th>Action</th>
+                <th>Incident</th>
+                <th>Department / Owner</th>
+                <th>Target</th>
+                <th>Status</th>
+                <th className="text-right">Details</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 text-xs">
+            <tbody>
               {isLoading ? (
-                <tr>
-                  <td colSpan={7} className="py-8 text-center text-clinicalText-secondary">Loading…</td>
-                </tr>
+                <TableSkeleton columns={7} />
               ) : capas.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="py-8 text-center text-clinicalText-secondary">No CAPA actions found.</td>
+                  <td colSpan={7} className="!p-0">
+                    <EmptyState icon={ListChecks} message="No CAPA actions found." />
+                  </td>
                 </tr>
               ) : (
-                capas.map((c) => (
-                  <tr key={c._id} className="hover:bg-slate-50/80 transition align-top">
-                    <td className="py-3 px-4">
-                      <div className="font-mono font-bold text-maroon-700 whitespace-nowrap">{c.capaNumber}</div>
-                      <div className="text-[10px] text-clinicalText-muted uppercase">{c.type === 'CORRECTIVE' ? 'Corrective' : 'Preventive'} · {c.priority}</div>
-                    </td>
-                    <td className="py-3 px-4 font-medium text-clinicalText-primary max-w-md">{c.action}</td>
-                    <td className="py-3 px-4">
-                      <div className="font-mono text-clinicalText-secondary whitespace-nowrap">{c.incidentId?.incidentNumber}</div>
-                      <div className="text-[11px] text-clinicalText-muted line-clamp-1">{c.incidentId?.title}</div>
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-clinicalText-primary">{c.ownerDepartmentId?.name}</div>
-                      <div className="text-[11px] text-clinicalText-muted">{c.ownerUserId?.name}</div>
-                    </td>
-                    <td className="py-3 px-4 whitespace-nowrap">
-                      <span className={isOverdue(c) ? 'font-bold text-red-700' : 'text-clinicalText-secondary'}>
-                        {dayjs(c.targetDate).format('DD MMM YYYY')}
-                      </span>
-                      {isOverdue(c) && <div className="text-[10px] font-bold text-red-700 uppercase">Overdue</div>}
-                    </td>
-                    <td className="py-3 px-4">
-                      <CapaStatusBadge status={c.status} />
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      {c.incidentId?._id && (
-                        <Link
-                          to={`/incidents/${c.incidentId._id}`}
-                          className="inline-flex items-center space-x-1.5 px-3 py-1 bg-white hover:bg-[#FFF5F5] text-clinicalText-primary hover:text-[#8B1E23] rounded-md font-semibold text-xs transition border border-clinicalBorder shadow-xs"
-                        >
-                          <Eye className="w-3.5 h-3.5 text-[#8B1E23]" />
-                          <span>Incident</span>
-                        </Link>
-                      )}
-                    </td>
-                  </tr>
-                ))
+                capas.map((c) => {
+                  const overdue = isOverdue(c);
+                  return (
+                    <tr key={c._id}>
+                      <td style={overdue ? { boxShadow: 'inset 4px 0 0 #DC2626' } : undefined}>
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">
+                          {c.capaNumber}
+                        </span>
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[11.5px] font-semibold ${
+                              c.type === 'CORRECTIVE' ? 'bg-orange-50 text-orange-700' : 'bg-sky-50 text-sky-700'
+                            }`}
+                          >
+                            {c.type === 'CORRECTIVE' ? 'Corrective' : 'Preventive'}
+                          </span>
+                          <span className="text-[11.5px] font-semibold text-slate-500 uppercase">{c.priority}</span>
+                        </div>
+                      </td>
+                      <td className="font-semibold text-slate-900 max-w-md">{c.action}</td>
+                      <td>
+                        <div className="font-mono font-semibold text-slate-700 whitespace-nowrap">{c.incidentId?.incidentNumber}</div>
+                        <div className="text-xs text-slate-500 line-clamp-1 mt-0.5">{c.incidentId?.title}</div>
+                      </td>
+                      <td>
+                        <div className="font-semibold text-slate-900">{c.ownerDepartmentId?.name}</div>
+                        <div className="text-xs text-slate-500 mt-0.5">{c.ownerUserId?.name}</div>
+                      </td>
+                      <td className="whitespace-nowrap">
+                        <div className={`font-semibold ${overdue ? 'text-red-700' : 'text-slate-800'}`}>
+                          {dayjs(c.targetDate).format('DD MMM YYYY')}
+                        </div>
+                        {overdue && (
+                          <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-red-50 border border-red-200 text-[11.5px] font-bold text-red-700">
+                            Overdue {dayjs().diff(dayjs(c.targetDate), 'day')}d
+                          </span>
+                        )}
+                      </td>
+                      <td>
+                        <CapaStatusBadge status={c.status} />
+                      </td>
+                      <td className="text-right">
+                        {c.incidentId?._id && (
+                          <Link
+                            to={`/incidents/${c.incidentId._id}`}
+                            className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-white hover:bg-gradient-to-b hover:from-[#C62828] hover:to-[#8B1E23] text-slate-700 hover:text-white rounded-xl font-semibold text-[13px] transition border border-slate-200 hover:border-transparent shadow-xs"
+                          >
+                            <span>Incident</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </Link>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

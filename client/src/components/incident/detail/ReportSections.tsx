@@ -23,7 +23,7 @@ export function ReportDetails({ incident }: { incident: any }) {
             <span>{incident.categoryId?.name}</span>
             {subcategory ? <span className="text-clinicalText-secondary"> — {subcategory}</span> : ''}
             {incident.categoryId?.domain && (
-              <span className="block text-[11px] text-clinicalText-muted mt-0.5 font-normal">
+              <span className="block text-[12.5px] text-clinicalText-muted mt-0.5 font-normal">
                 {incident.categoryId.domain}
               </span>
             )}
@@ -41,7 +41,7 @@ export function ReportDetails({ incident }: { incident: any }) {
               </span>
             )}
             {incident.locationId?.name && !incident.locationId.code?.startsWith('FL') ? (
-              <span className="block text-[11px] text-clinicalText-muted mt-0.5 font-normal">
+              <span className="block text-[12.5px] text-clinicalText-muted mt-0.5 font-normal">
                 Specific Area: {incident.locationId.name}
               </span>
             ) : null}
@@ -59,7 +59,7 @@ export function ReportDetails({ incident }: { incident: any }) {
       </div>
       {incident.attachments?.length > 0 && (
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-wider text-clinicalText-muted mb-1">Evidence</div>
+          <div className="text-[12.5px] font-bold uppercase tracking-wider text-clinicalText-muted mb-1">Evidence</div>
           <div className="flex flex-wrap gap-2">
             {incident.attachments.map((a: any) => (
               <button
@@ -124,7 +124,7 @@ export function HistorySection({ incident }: { incident: any }) {
         {entries.map((e, i) => (
           <div key={i} className={`pl-3 border-l-4 ${e.tone}`}>
             <div className="text-xs font-semibold text-clinicalText-primary">{e.title}</div>
-            <div className="text-[11px] text-clinicalText-muted">
+            <div className="text-[12.5px] text-clinicalText-muted">
               {fmt(e.at)}
               {e.who ? ` · ${e.who}` : ''}
             </div>

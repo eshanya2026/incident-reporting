@@ -48,13 +48,16 @@ export function PageHeader({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] p-6 rounded-2xl border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex flex-col md:flex-row md:items-center justify-between gap-4">
-      <div>
-        <h2 className="text-xl font-bold text-white flex items-start space-x-2">
-          <Icon className="w-6 h-6 shrink-0 mt-0.5 text-[#F06B70]" />
-          <span>{title}</span>
-        </h2>
-        {description && <p className="text-xs text-slate-300/80 mt-1">{description}</p>}
+    <div className="hero-banner p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="flex items-center gap-4 min-w-0">
+        <span className="relative w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-[#E53935] via-[#C62828] to-[#8B1E23] ring-1 ring-white/25 shadow-[0_8px_18px_-6px_rgba(229,57,53,0.7),inset_0_1px_0_rgba(255,255,255,0.4)] flex items-center justify-center overflow-hidden">
+          <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent pointer-events-none"></span>
+          <Icon className="w-6 h-6 text-white relative" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white leading-tight">{title}</h2>
+          {description && <p className="text-xs sm:text-[14px] text-slate-300/80 mt-1">{description}</p>}
+        </div>
       </div>
       {children}
     </div>
@@ -99,7 +102,7 @@ export function Card({
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <div>
-      <div className="text-[11px] font-bold uppercase tracking-wider text-clinicalText-muted">{label}</div>
+      <div className="text-[12.5px] font-bold uppercase tracking-wider text-clinicalText-muted">{label}</div>
       <div className="text-xs text-clinicalText-primary mt-0.5 whitespace-pre-wrap">{children || '—'}</div>
     </div>
   );
@@ -121,7 +124,7 @@ export function EditToggle({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold text-[#8B1E23] bg-white hover:bg-[#FFF5F5] border border-clinicalBorder rounded-lg cursor-pointer"
+      className="inline-flex items-center gap-1 px-2.5 py-1 text-[12.5px] font-semibold text-[#8B1E23] bg-white hover:bg-[#FFF5F5] border border-clinicalBorder rounded-lg cursor-pointer"
     >
       <Pencil className="w-3 h-3" /> Edit
     </button>

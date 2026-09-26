@@ -20,7 +20,7 @@ function AttachmentLinks({ files }: { files: any[] }) {
           key={f._id}
           type="button"
           onClick={() => openAttachment(f).catch(() => toast.error('Could not open the file'))}
-          className="inline-flex items-center gap-1 text-[11px] text-[#8B1E23] hover:underline cursor-pointer"
+          className="inline-flex items-center gap-1 text-[12.5px] text-[#8B1E23] hover:underline cursor-pointer"
         >
           <Paperclip className="w-3 h-3" /> {f.originalName || 'Evidence'}
         </button>
@@ -61,7 +61,7 @@ function MarkDoneForm({ incidentId, capa, onDone }: { incidentId: string; capa: 
           <input type="file" multiple accept=".pdf,.png,.jpg,.jpeg,.doc,.docx" className="hidden" onChange={(e) => addFiles(e.target.files)} />
         </label>
         {files.map((f) => (
-          <span key={f._id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-clinicalBorder rounded text-[11px]">
+          <span key={f._id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-clinicalBorder rounded text-[12.5px]">
             {f.originalName}
             <button type="button" onClick={() => setFiles(files.filter((x) => x._id !== f._id))} className="cursor-pointer">
               <X className="w-3 h-3" />
@@ -167,7 +167,7 @@ export default function CapaSection({ incident, capas, editable }: { incident: a
                     <span className="font-mono text-maroon-700 mr-2">{c.capaNumber}</span>
                     {c.action}
                   </div>
-                  <div className="text-[11px] text-clinicalText-muted mt-1">
+                  <div className="text-[12.5px] text-clinicalText-muted mt-1">
                     {c.type === 'CORRECTIVE' ? 'Corrective' : 'Preventive'} · {c.priority} priority · Target {dayjs(c.targetDate).format('DD MMM YYYY')}
                     {overdue && <span className="ml-1 font-bold text-red-700">· Overdue</span>}
                   </div>

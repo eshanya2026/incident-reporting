@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { FileText, PlusCircle } from 'lucide-react';
+import { FileText, PlusCircle, AlertTriangle } from 'lucide-react';
 import { api } from '../lib/api';
 import { PageHeader } from '../components/ui/primitives';
 import IncidentTable from '../components/incident/IncidentTable';
+import { FilterChips } from '../components/ui/listKit';
 
 const FILTERS = [
   { key: '', label: 'All' },
@@ -43,24 +44,25 @@ export default function MyReportsPage() {
       </PageHeader>
 
       {actionNeeded > 0 && (
-        <div className="p-4 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold">
-          Quality has asked you for more information on {actionNeeded} report{actionNeeded > 1 ? 's' : ''}. Open the report to answer.
+        <div className="flex items-start gap-3 p-4 rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 to-white text-amber-900 shadow-xs">
+          <span className="w-9 h-9 shrink-0 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5" />
+          </span>
+          <div className="text-sm">
+            <p className="font-bold">Action needed on {actionNeeded} report{actionNeeded > 1 ? 's' : ''}</p>
+            <p className="text-amber-800/90 mt-0.5">Quality has asked you for more information. Open the report to answer.</p>
+          </div>
         </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.key}
-            onClick={() => setFilter(f.key)}
-            className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
-              filter === f.key ? 'bg-[#8B1E23] text-white border-[#8B1E23]' : 'bg-white text-clinicalText-secondary border-clinicalBorder hover:bg-slate-50'
-            }`}
-          >
-            {f.label}
-          </button>
-        ))}
-      </div>
+      <FilterChips
+        value={filter}
+        onChange={setFilter}
+        options={FILTERS.map((f) => ({
+          ...f,
+          count: f.key === '' ? all.length : f.key === 'open' ? all.filter((i) => OPEN_STATUSES.includes(i.status)).length : all.filter((i) => i.status === f.key).length,
+        }))}
+      />
 
       <IncidentTable
         incidents={incidents}

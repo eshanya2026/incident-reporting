@@ -21,7 +21,7 @@ export default function WorkflowStepper({ status }: { status: string }) {
           <li key={step.key} className="flex items-center flex-1 min-w-[110px] last:flex-none">
             <div className="flex items-center gap-2">
               <span
-                className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold shrink-0 ${
+                className={`w-6 h-6 rounded-full flex items-center justify-center text-[12.5px] font-bold shrink-0 ${
                   done
                     ? 'bg-emerald-600 text-white'
                     : active
@@ -31,7 +31,7 @@ export default function WorkflowStepper({ status }: { status: string }) {
               >
                 {done ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </span>
-              <span className={`text-[11px] whitespace-nowrap ${active ? 'font-bold text-[#8B1E23]' : done ? 'font-semibold text-clinicalText-primary' : 'text-clinicalText-muted'}`}>
+              <span className={`text-[12.5px] whitespace-nowrap ${active ? 'font-bold text-[#8B1E23]' : done ? 'font-semibold text-clinicalText-primary' : 'text-clinicalText-muted'}`}>
                 {step.label}
               </span>
             </div>

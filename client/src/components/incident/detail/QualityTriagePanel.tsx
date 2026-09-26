@@ -81,7 +81,7 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
                 className={inputClass}
               />
               {selected && (
-                <p className={`mt-1 text-[11px] ${hod ? 'text-clinicalText-secondary' : 'text-red-700 font-semibold'}`}>
+                <p className={`mt-1 text-[12.5px] ${hod ? 'text-clinicalText-secondary' : 'text-red-700 font-semibold'}`}>
                   {hod ? `HOD: ${hod.name}` : 'This department has no active HOD. Ask Admin to set one before assigning.'}
                 </p>
               )}
@@ -98,7 +98,7 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
                 searchPlaceholder="Search severities..."
                 className={inputClass}
               />
-              <p className="mt-1 text-[11px] text-clinicalText-secondary">
+              <p className="mt-1 text-[12.5px] text-clinicalText-secondary">
                 {needs.rca ? 'RCA and CAPA required.' : needs.capa ? 'CAPA required.' : 'Investigation only; no CAPA required.'}
               </p>
             </div>
@@ -146,7 +146,7 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
               placeholder="e.g. Duplicate of INC-2026-000012."
               className={inputClass}
             />
-            <p className="mt-1 text-[11px] text-clinicalText-secondary">The reporter sees this reason. A rejected report cannot be reopened.</p>
+            <p className="mt-1 text-[12.5px] text-clinicalText-secondary">The reporter sees this reason. A rejected report cannot be reopened.</p>
           </div>
           <Button variant="danger" busy={busy} disabled={!reason.trim()} onClick={() => run(() => api.post(`/incidents/${incident._id}/reject`, { reason }))}>
             <XCircle className="w-4 h-4" /> Reject report

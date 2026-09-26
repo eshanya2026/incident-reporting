@@ -19,6 +19,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../lib/api';
 import { hasAnyPermission, hasPermission } from '../../lib/rbac';
+import StatlogLogo from '../ui/StatlogLogo';
 
 dayjs.extend(relativeTime);
 
@@ -144,27 +145,36 @@ export default function AppLayout() {
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-[#172033]">
-      {/* Top Header Bar - Premium White */}
-      <header className="bg-white border-b border-[#E2E8F0] shadow-[0_1px_3px_rgba(15,23,42,0.03)] sticky top-0 z-40">
-        <div className="w-full px-4 sm:px-6 lg:px-8 h-18 sm:h-20 flex items-center justify-between">
-          <Link to="/" className="flex items-center space-x-3.5 group min-w-0 flex-1 mr-2">
-            {/* APH Logo with subtle glossy gradient */}
-            <div className="w-11 h-11 shrink-0 rounded-xl bg-gradient-to-br from-[#8B1E23] via-[#C62828] to-[#E53935] flex items-center justify-center font-black text-white text-base shadow-md shadow-red-900/20 ring-1 ring-white/30 relative overflow-hidden transition-all duration-200 group-hover:scale-105">
-              <span className="relative z-10 tracking-tight">APH</span>
-              <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none"></span>
-            </div>
-            <div className="min-w-0">
-              <h1 className="font-bold text-[20px] sm:text-[22px] leading-tight tracking-tight text-[#68151A] truncate">
-                Adhiparasakthi Hospitals
+      {/* Top Header Bar */}
+      <header className="bg-white/95 backdrop-blur border-b border-[#E9DFE0] shadow-[0_4px_18px_-8px_rgba(104,21,26,0.18)] sticky top-0 z-40">
+        {/* Brand accent strip */}
+        <div className="h-[3px] brand-gradient"></div>
+
+        <div className="w-full px-4 sm:px-6 lg:px-8 h-[68px] sm:h-[76px] flex items-center justify-between">
+          <Link to="/" className="flex items-center gap-3 sm:gap-4 group min-w-0 flex-1 mr-2">
+            <img
+              src="/logo.png"
+              alt="Adhiparasakthi Hospital"
+              className="h-10 sm:h-[52px] w-auto shrink-0 transition-transform duration-200 group-hover:scale-105"
+            />
+            <span
+              className="hidden sm:block h-10 w-px bg-gradient-to-b from-transparent via-[#D9C7C8] to-transparent shrink-0"
+              aria-hidden="true"
+            ></span>
+            <div className="min-w-0 flex flex-col gap-1.5">
+              <h1 className="leading-none">
+                <StatlogLogo className="text-[22px] sm:text-[26px]" />
               </h1>
-              <p className="hidden sm:block text-[11px] sm:text-[12px] text-[#64748B] uppercase tracking-[0.5px] font-medium mt-0.5 truncate">
-                Incident Reporting & Safety Portal
+              <p className="hidden sm:flex items-center gap-1.5 text-[11.5px] text-[#64748B] uppercase tracking-[0.14em] font-semibold truncate">
+                <span>Incident Reporting</span>
+                <span className="w-1 h-1 rounded-full bg-[#C62828]/60 shrink-0"></span>
+                <span>Patient Safety</span>
               </p>
             </div>
           </Link>
 
           {/* Right Header Navigation & Actions */}
-          <div className="flex items-center space-x-3 shrink-0">
+          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
             {/* Notification Bell */}
             <div className="relative" ref={bellRef}>
               <button
@@ -172,12 +182,16 @@ export default function AppLayout() {
                   if (!showNotifications) fetchNotifications();
                   setShowNotifications(!showNotifications);
                 }}
-                className="p-2.5 rounded-xl bg-white hover:bg-[#F8FAFC] text-[#64748B] hover:text-[#8B1E23] border border-[#E2E8F0] shadow-xs relative transition duration-180 cursor-pointer"
+                className={`w-10 h-10 rounded-xl border flex items-center justify-center relative transition duration-180 cursor-pointer ${
+                  showNotifications
+                    ? 'bg-[#FDECEC] border-[#F8B4B4] text-[#8B1E23]'
+                    : 'bg-white hover:bg-[#FFF5F5] border-[#E2E8F0] hover:border-[#F8B4B4] text-[#64748B] hover:text-[#8B1E23]'
+                }`}
                 title="Notifications"
               >
-                <Bell className="w-4.5 h-4.5" />
+                <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-[#C62828] text-white text-[10px] font-bold flex items-center justify-center shadow-xs">
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-gradient-to-br from-[#E53935] to-[#B71C1C] text-white text-[11.5px] font-bold flex items-center justify-center ring-2 ring-white shadow-sm">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
@@ -210,7 +224,7 @@ export default function AppLayout() {
                         >
                           <div className="flex items-start justify-between gap-2">
                             <span className="font-semibold text-[#172033]">{n.title}</span>
-                            <span className="text-[10px] text-[#94A3B8] whitespace-nowrap">{dayjs(n.createdAt).fromNow()}</span>
+                            <span className="text-[11.5px] text-[#94A3B8] whitespace-nowrap">{dayjs(n.createdAt).fromNow()}</span>
                           </div>
                           <div className="text-[#64748B] mt-0.5">{n.message}</div>
                         </button>
@@ -222,13 +236,15 @@ export default function AppLayout() {
             </div>
 
             {/* User Profile Capsule */}
-            <div className="flex items-center space-x-3 bg-white px-3.5 py-1.5 rounded-xl border border-[#E2E8F0] shadow-xs">
-              <div className="w-8 h-8 rounded-lg bg-[#FDECEC] text-[#8B1E23] flex items-center justify-center font-bold text-xs">
+            <div className="flex items-center gap-2.5 bg-white pl-1.5 pr-3 sm:pr-4 h-10 rounded-xl border border-[#E2E8F0]">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#8B1E23] to-[#E53935] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
                 {user?.name?.charAt(0) || <UserIcon className="w-4 h-4" />}
               </div>
-              <div className="hidden sm:block text-left">
-                <div className="text-xs font-bold leading-tight text-[#172033]">{user?.name || 'User'}</div>
-                <div className="text-[10px] text-[#64748B] font-medium uppercase">{user?.roles?.[0]?.replace(/_/g, ' ') || 'User'}</div>
+              <div className="hidden sm:flex flex-col items-start gap-0.5 text-left">
+                <div className="text-xs font-bold leading-none text-[#172033]">{user?.name || 'User'}</div>
+                <div className="text-[11px] leading-none px-1.5 py-[3px] rounded-full bg-[#FDECEC] text-[#8B1E23] font-bold uppercase tracking-wider">
+                  {user?.roles?.[0]?.replace(/_/g, ' ') || 'User'}
+                </div>
               </div>
             </div>
 
@@ -238,17 +254,18 @@ export default function AppLayout() {
                 logout();
                 navigate('/login');
               }}
-              className="p-2.5 rounded-xl bg-white hover:bg-[#FFF5F5] text-[#64748B] hover:text-[#C62828] border border-[#E2E8F0] shadow-xs transition duration-180 cursor-pointer"
+              className="h-10 px-3 sm:px-3.5 rounded-xl bg-white hover:bg-[#FFF5F5] text-[#64748B] hover:text-[#C62828] border border-[#E2E8F0] hover:border-[#F8B4B4] transition duration-180 cursor-pointer flex items-center gap-2 text-xs font-semibold"
               title="Logout"
             >
-              <LogOut className="w-4.5 h-4.5" />
+              <LogOut className="w-[18px] h-[18px]" />
+              <span className="hidden lg:inline">Logout</span>
             </button>
           </div>
         </div>
 
-        {/* Navigation Bar - Clean White Background */}
-        <div className="bg-white border-t border-[#F1F5F9]">
-          <div className="w-full px-4 sm:px-6 lg:px-8 flex justify-start md:justify-center space-x-2 py-2 overflow-x-auto scrollbar-none">
+        {/* Navigation Bar - soft tinted tray with pill items */}
+        <div className="bg-gradient-to-b from-[#FBF6F6] to-[#F8F4F4] border-t border-[#F1E7E8]">
+          <div className="w-full px-4 sm:px-6 lg:px-8 flex justify-start md:justify-center gap-1.5 py-2 overflow-x-auto scrollbar-none">
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
@@ -256,20 +273,24 @@ export default function AppLayout() {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center space-x-2 px-4 py-2 text-xs font-medium whitespace-nowrap rounded-xl transition duration-180 ${
+                  className={`group/nav flex items-center gap-2 h-9 px-4 text-[14px] whitespace-nowrap rounded-full transition duration-180 ${
                     isActive
-                      ? 'bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] text-white font-semibold shadow-md shadow-red-900/15 relative overflow-hidden'
-                      : 'text-[#475569] hover:text-[#172033] hover:bg-[#F8FAFC]'
+                      ? 'bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] text-white font-semibold shadow-[0_6px_14px_-4px_rgba(139,30,35,0.55)] relative overflow-hidden'
+                      : 'text-[#475569] font-medium hover:text-[#68151A] hover:bg-white hover:shadow-[0_2px_8px_-2px_rgba(104,21,26,0.18)]'
                   }`}
                 >
                   {isActive && (
-                    <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/15 to-transparent pointer-events-none"></span>
+                    <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none"></span>
                   )}
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-white' : 'text-[#8B1E23]'}`} />
+                  <Icon
+                    className={`w-4 h-4 relative z-10 transition-colors ${
+                      isActive ? 'text-white' : 'text-[#94A3B8] group-hover/nav:text-[#C62828]'
+                    }`}
+                  />
                   <span className="relative z-10">{item.label}</span>
                   {Boolean(item.count) && (
                     <span
-                      className={`relative z-10 min-w-[18px] px-1.5 py-0.5 rounded-full text-[10px] font-bold text-center ${
+                      className={`relative z-10 min-w-[18px] px-1.5 py-0.5 rounded-full text-[11.5px] font-bold text-center ${
                         isActive ? 'bg-white text-[#8B1E23]' : 'bg-[#8B1E23] text-white'
                       }`}
                     >
@@ -291,8 +312,8 @@ export default function AppLayout() {
       {/* Footer */}
       <footer className="bg-white border-t border-[#E2E8F0] py-4">
         <div className="w-full px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-[#64748B] gap-2">
-          <span>Adhiparasakthi Hospitals © 2026 – Patient Safety & Incident Reporting System</span>
-          <div className="flex items-center space-x-4 text-[11px] text-[#94A3B8]">
+          <span>Statlog © 2026 – Adhiparasakthi Hospitals Patient Safety & Incident Reporting</span>
+          <div className="flex items-center space-x-4 text-[12.5px] text-[#94A3B8]">
             <span>Privacy</span>
             <span>•</span>
             <span>Help Center</span>

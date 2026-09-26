@@ -103,7 +103,7 @@ export default function IncidentDetailPage() {
       </button>
 
       {/* Header - dark theme */}
-      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] p-6 rounded-2xl border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)] space-y-3">
+      <div className="hero-banner p-6 rounded-2xl space-y-3">
         <div className="flex flex-wrap items-center gap-3">
           <span className="font-mono text-lg font-black text-[#F06B70]">{incident.incidentNumber}</span>
           <StatusBadge status={status} />
@@ -113,7 +113,7 @@ export default function IncidentDetailPage() {
             <SeverityBadge severity={incident.initialSeverity ?? incident.severity} provisional />
           )}
           {severityChanged && (
-            <span className="text-[11px] text-slate-400">reported as {SEVERITY_META[incident.initialSeverity]?.short}</span>
+            <span className="text-[12.5px] text-slate-400">reported as {SEVERITY_META[incident.initialSeverity]?.short}</span>
           )}
         </div>
         <h2 className="text-xl font-bold text-white">{incident.title}</h2>

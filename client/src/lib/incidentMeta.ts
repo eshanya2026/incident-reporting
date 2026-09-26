@@ -111,3 +111,12 @@ export const idOf = (value: any): string | undefined => {
   if (typeof value === 'object') return value._id ? String(value._id) : undefined;
   return String(value);
 };
+
+/** Identity colour for each severity level (list row stripes, summary cards). */
+export const SEVERITY_COLOR: Record<number, string> = {
+  1: '#10B981',
+  2: '#0284C7',
+  3: '#EA580C',
+  4: '#DC2626',
+  5: '#6B1418',
+};

@@ -48,7 +48,7 @@ export default function QualityReviewPanel({ incident, capas }: { incident: any;
               <span className="font-mono text-maroon-700 mr-2">{c.capaNumber}</span>
               {c.action}
             </div>
-            <div className="text-[11px] text-clinicalText-secondary">Done: {c.completionRemarks}</div>
+            <div className="text-[12.5px] text-clinicalText-secondary">Done: {c.completionRemarks}</div>
             <div className="flex flex-wrap gap-2">
               {[
                 { value: true, label: 'Effective', on: 'bg-emerald-600 text-white border-emerald-600' },
@@ -82,7 +82,7 @@ export default function QualityReviewPanel({ incident, capas }: { incident: any;
       <div>
         <label className={labelClass}>{allEffective ? 'Closure remarks *' : 'Remarks for the HOD *'}</label>
         <textarea rows={3} value={remarks} onChange={(e) => setRemarks(e.target.value)} className={inputClass} />
-        <p className="mt-1 text-[11px] text-clinicalText-secondary">
+        <p className="mt-1 text-[12.5px] text-clinicalText-secondary">
           {allEffective
             ? 'If you close the incident, these remarks are shown to the staff member who reported it.'
             : 'These remarks go to the HOD with the incident.'}

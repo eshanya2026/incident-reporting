@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { Building2 } from 'lucide-react';
+import { Building2, AlertTriangle, ClipboardList, Search as SearchIcon, ListChecks } from 'lucide-react';
 import { api } from '../lib/api';
 import { PageHeader } from '../components/ui/primitives';
 import IncidentTable from '../components/incident/IncidentTable';
 import { statusMeta } from '../lib/incidentMeta';
+import { StatTile, TabBar } from '../components/ui/listKit';
 
 // Statuses in which the incident is with the HOD, in workflow order
 const WORK_STATUSES = ['ASSIGNED', 'UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'];
@@ -42,35 +43,34 @@ export default function MyDepartmentPage() {
       />
 
       {tab === 'work' && toWork.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-          {WORK_STATUSES.map((s) => (
-            <div key={s} className="bg-white border border-clinicalBorder rounded-xl p-4 shadow-card">
-              <div className="text-[11px] font-bold uppercase text-clinicalText-muted">{statusMeta(s).label}</div>
-              <div className="text-2xl font-bold text-clinicalText-primary mt-1">{toWork.filter((i) => i.status === s).length}</div>
-            </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {WORK_STATUSES.map((s, i) => (
+            <StatTile
+              key={s}
+              label={statusMeta(s).label}
+              value={toWork.filter((inc) => inc.status === s).length}
+              icon={[ClipboardList, SearchIcon, ListChecks][i]}
+              tone={(['violet', 'blue', 'amber'] as const)[i]}
+            />
           ))}
         </div>
       )}
       {tab === 'work' && overdue > 0 && (
-        <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 text-amber-900 text-xs font-semibold">
-          {overdue} newly assigned incident{overdue > 1 ? 's have' : ' has'} not been started for 2 days or more.
+        <div className="flex items-center gap-3 p-4 rounded-2xl border border-amber-300 bg-gradient-to-r from-amber-50 to-white text-amber-900 text-sm">
+          <span className="w-9 h-9 shrink-0 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center">
+            <AlertTriangle className="w-5 h-5" />
+          </span>
+          <span className="font-semibold">
+            {overdue} newly assigned incident{overdue > 1 ? 's have' : ' has'} not been started for 2 days or more.
+          </span>
         </div>
       )}
 
-      <div className="bg-white border border-clinicalBorder shadow-sm rounded-xl px-2 flex space-x-1 overflow-x-auto">
-        {tabs.map((t) => (
-          <button
-            key={t.key}
-            onClick={() => setTab(t.key)}
-            className={`px-5 py-3 text-xs border-b-[3px] whitespace-nowrap transition cursor-pointer ${
-              tab === t.key ? 'border-[#8B1E23] text-[#8B1E23] font-bold' : 'border-transparent text-[#64748B] hover:text-[#8B1E23] font-semibold'
-            }`}
-          >
-            {t.label}
-            {'count' in t && <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-[10px]">{t.count}</span>}
-          </button>
-        ))}
-      </div>
+      <TabBar
+        active={tab}
+        onChange={setTab}
+        tabs={tabs.map((t) => ({ key: t.key, label: t.label, count: 'count' in t ? t.count : undefined }))}
+      />
 
       {tab === 'work' && (
         <IncidentTable

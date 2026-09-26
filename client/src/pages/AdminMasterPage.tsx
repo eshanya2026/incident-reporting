@@ -5,8 +5,9 @@ import { api } from '../lib/api';
 import { departmentOptions, DEPARTMENT_CATEGORIES } from '../components/ui/DepartmentOptions';
 import { toast } from '../store/useToastStore';
 import { errorMessage } from '../lib/useAction';
-import { useSlidingIndicator } from '../lib/useSlidingIndicator';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
+import { PageHeader } from '../components/ui/primitives';
+import { EmptyState, FilterBar, SearchInput, TabBar, filterControlClass } from '../components/ui/listKit';
 
 const LOCATION_TYPES = ['WARD', 'ROOM', 'OT', 'ICU', 'LAB', 'OPD', 'OTHER'];
 const FLOORS = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
@@ -15,7 +16,6 @@ const ZONES = ['Zone-1', 'Zone-B', 'Zone-C'] as const;
 export default function AdminMasterPage() {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'locations' | 'categories'>('users');
-  const { indicatorStyle, registerTab } = useSlidingIndicator(activeTab);
 
   // User form state (shared by create and edit; editingUser is null when creating)
   const [showUserModal, setShowUserModal] = useState(false);
@@ -451,64 +451,41 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
   return (
     <div className="space-y-6 text-clinicalText-primary">
       {/* Title Card - dark theme */}
-      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] p-6 rounded-2xl border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h2 className="text-xl font-bold text-white flex items-start space-x-2">
-            <Settings className="w-6 h-6 shrink-0 mt-0.5 text-[#F06B70]" />
-            <span>Master Administration & Configurations</span>
-          </h2>
-          <p className="text-xs text-slate-300/80 mt-1">
-            Manage users and their roles, departments and their HODs, locations, and incident categories.
-          </p>
-        </div>
-      </div>
+      <PageHeader
+        icon={Settings}
+        title="Master Administration & Configurations"
+        description="Manage users and their roles, departments and their HODs, locations, and incident categories."
+      />
 
       {/* Tabs */}
-      <div className="relative bg-white border border-clinicalBorder shadow-sm rounded-xl px-2 flex space-x-1 overflow-x-auto">
-        <span
-          className="absolute top-0 bottom-0 rounded-t-xl bg-[#FFF5F5] border-b-[3px] border-[#8B1E23] shadow-xs transition-all duration-300 ease-out"
-          style={indicatorStyle}
-        />
-        {[
-          { id: 'users', label: `User Directory (${users.length})` },
-          { id: 'departments', label: `Departments (${departments.length})` },
-          { id: 'locations', label: `Locations (${locations.length})` },
-          { id: 'categories', label: `Categories (${categories.length})` },
-        ].map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              ref={registerTab(tab.id)}
-              onClick={() => setActiveTab(tab.id as any)}
-              className={`relative z-10 px-5 py-3 text-xs rounded-t-xl transition-colors duration-200 cursor-pointer whitespace-nowrap ${
-                isActive ? 'text-[#8B1E23] font-bold' : 'text-[#64748B] hover:text-[#8B1E23] font-semibold'
-              }`}
-            >
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <TabBar
+        active={activeTab}
+        onChange={(key) => setActiveTab(key)}
+        tabs={[
+          { key: 'users', label: 'User Directory', count: users.length },
+          { key: 'departments', label: 'Departments', count: departments.length },
+          { key: 'locations', label: 'Locations', count: locations.length },
+          { key: 'categories', label: 'Categories', count: categories.length },
+        ] as const}
+      />
 
       {/* Tab 1: Users */}
       {activeTab === 'users' && (
         <div key="users" className="space-y-4 animate-tab-panel-in">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
             <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Search name, username, email, employee ID"
+              <SearchInput
                 value={userSearch}
-                onChange={(e) => setUserSearch(e.target.value)}
-                className="px-3 py-2 bg-white border border-clinicalBorder rounded-lg text-xs w-72 focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 transition"
+                onChange={setUserSearch}
+                placeholder="Search name, username, email, employee ID"
+                className="w-72 max-w-full"
               />
               <SearchableSelect
                 value={roleFilter}
                 onChange={setRoleFilter}
                 options={[{ value: '', label: 'All roles' }, ...roles.map((r: any) => ({ value: r.code, label: r.name }))]}
                 searchPlaceholder="Search roles..."
-                className="px-3 py-2 bg-white border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 transition"
+                className={`${filterControlClass} min-w-[11rem]`}
               />
             </div>
             <div className="flex items-center space-x-2 self-start">
@@ -537,8 +514,8 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
           </div>
 
           <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden overflow-x-auto">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[11px] tracking-wider text-clinicalText-secondary">
+            <table className="data-table">
+              <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[12.5px] tracking-wider text-clinicalText-secondary">
                 <tr>
                   <th className="py-3 px-4">Emp ID</th>
                   <th className="py-3 px-4">Name</th>
@@ -554,28 +531,28 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   const isDeptHod = departments.some((d: any) => d.hodUserId?._id === u._id);
                   return (
                     <tr key={u._id} className="hover:bg-slate-50/80 transition">
-                      <td className="py-3 px-4 font-mono font-bold text-maroon-700">{u.employeeId}</td>
+                      <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">{u.employeeId}</span></td>
                       <td className="py-3 px-4">
                         <div className="font-semibold text-clinicalText-primary">{u.name}</div>
-                        <div className="text-[11px] text-clinicalText-muted">{u.designation}</div>
+                        <div className="text-[12.5px] text-clinicalText-muted">{u.designation}</div>
                       </td>
                       <td className="py-3 px-4 text-clinicalText-secondary">{u.username} ({u.email})</td>
                       <td className="py-3 px-4 text-clinicalText-secondary">{u.departmentId?.name || '—'}</td>
                       <td className="py-3 px-4">
                         {u.roles?.map((r: any) => (
-                          <span key={r._id} className="px-2 py-0.5 rounded bg-brandRed-50 text-maroon-700 border border-brandRed-200 font-semibold text-[10px] mr-1">
+                          <span key={r._id} className="px-2.5 py-1 rounded-full bg-brandRed-50 text-maroon-700 border border-brandRed-200 font-semibold text-[11.5px] mr-1">
                             {r.name}
                           </span>
                         ))}
                         {isDeptHod && (
-                          <span className="px-2 py-0.5 rounded bg-amber-50 text-amber-700 border border-amber-200 font-semibold text-[10px]">
+                          <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200 font-semibold text-[11.5px]">
                             Dept HOD
                           </span>
                         )}
                       </td>
                       <td className="py-3 px-4">
                         <span
-                          className={`px-2 py-0.5 rounded border font-bold text-[10px] ${
+                          className={`px-2.5 py-1 rounded-full border font-bold text-[11.5px] ${
                             u.status === 'ACTIVE'
                               ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                               : 'bg-slate-100 text-slate-600 border-slate-200'
@@ -588,7 +565,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                         <button
                           type="button"
                           onClick={() => openEditUser(u)}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-clinicalText-primary bg-white hover:bg-slate-50 border border-clinicalBorder rounded-lg transition cursor-pointer mr-1"
+                          className="h-8 px-3 text-[13px] font-semibold text-slate-700 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg transition cursor-pointer mr-1.5"
                         >
                           Edit
                         </button>
@@ -598,7 +575,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                             setResetUser(u);
                             setNewPassword('');
                           }}
-                          className="px-2.5 py-1 text-[11px] font-semibold text-maroon-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition cursor-pointer"
+                          className="h-8 px-3 text-[13px] font-semibold text-[#8B1E23] bg-[#FFF5F5] hover:bg-[#FDECEC] border border-[#FBD5D5] rounded-lg transition cursor-pointer"
                         >
                           Reset Password
                         </button>
@@ -608,7 +585,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 })}
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="py-6 text-center text-clinicalText-muted">No users match the filter.</td>
+                    <td colSpan={7} className="!p-0"><EmptyState message="No users match the filter." /></td>
                   </tr>
                 )}
               </tbody>
@@ -622,12 +599,11 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
         <div key="departments" className="space-y-4 animate-tab-panel-in">
           <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
             <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Search name or code"
+              <SearchInput
                 value={deptSearch}
-                onChange={(e) => setDeptSearch(e.target.value)}
-                className="px-3 py-2 bg-white border border-clinicalBorder rounded-lg text-xs w-64 focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 transition"
+                onChange={setDeptSearch}
+                placeholder="Search name or code"
+                className="w-64 max-w-full"
               />
               <SearchableSelect
                 value={deptCategoryFilter}
@@ -637,7 +613,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   ...departmentCategories.map((c) => ({ value: c, label: c })),
                 ]}
                 searchPlaceholder="Search categories..."
-                className="px-3 py-2 bg-white border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 transition"
+                className={`${filterControlClass} min-w-[11rem]`}
               />
             </div>
             <button
@@ -654,8 +630,8 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
           </div>
 
           <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[11px] tracking-wider text-clinicalText-secondary">
+            <table className="data-table">
+              <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[12.5px] tracking-wider text-clinicalText-secondary">
                 <tr>
                   <th className="py-3 px-4">Code</th>
                   <th className="py-3 px-4">Department Name</th>
@@ -667,12 +643,12 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               <tbody className="divide-y divide-slate-100">
                 {filteredDepartments.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-6 text-center text-clinicalText-muted">No departments match the filter.</td>
+                    <td colSpan={5} className="!p-0"><EmptyState message="No departments match the filter." /></td>
                   </tr>
                 )}
                 {filteredDepartments.map((d: any) => (
                   <tr key={d._id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3 px-4 font-mono font-bold text-maroon-700">{d.code}</td>
+                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">{d.code}</span></td>
                     <td className="py-3 px-4 font-semibold text-clinicalText-primary">{d.name}</td>
                     <td className="py-3 px-4 text-clinicalText-secondary">{d.category || '—'}</td>
                     <td className="py-3 px-4">
@@ -690,7 +666,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                       />
                     </td>
                     <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[10px]">
+                      <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11.5px]">
                         {d.active ? 'ACTIVE' : 'INACTIVE'}
                       </span>
                     </td>
@@ -705,13 +681,13 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
       {/* Tab 3: Locations */}
       {activeTab === 'locations' && (
         <div key="locations" className="space-y-4 animate-tab-panel-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-clinicalBorder">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-[#FFF8F8] to-white p-5 rounded-2xl border border-[#F1E0E1]">
             <div>
               <div className="font-bold text-xs text-clinicalText-primary flex items-center space-x-2">
                 <MapPin className="w-4 h-4 text-maroon-700" />
                 <span>Hospital Locations ({locations.length} Total across 5 Floors & 3 Zones)</span>
               </div>
-              <p className="text-[11px] text-clinicalText-muted mt-0.5">
+              <p className="text-[12.5px] text-clinicalText-muted mt-0.5">
                 Organized hierarchy: 5 Floors &bull; 3 Zones (Zone-1, Zone-B, Zone-C) &bull; Clinical departments.
               </p>
             </div>
@@ -728,14 +704,12 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
           </div>
 
           {/* Search & Floor/Zone Filter Bar */}
-          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3 rounded-xl border border-clinicalBorder shadow-sm">
+          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-card">
             <div className="flex-1 w-full sm:max-w-xs">
-              <input
-                type="text"
-                placeholder="Search location code, name, department..."
+              <SearchInput
                 value={locSearch}
-                onChange={(e) => setLocSearch(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+                onChange={setLocSearch}
+                placeholder="Search location code, name, department..." className="w-full"
               />
             </div>
             <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
@@ -747,7 +721,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   ...FLOORS.map((f) => ({ value: f, label: `${f} (${locations.filter((l: any) => l.floor === f).length})` })),
                 ]}
                 searchPlaceholder="Search floors..."
-                className="px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+                className={`${filterControlClass} min-w-[11rem]`}
               />
 
               <SearchableSelect
@@ -758,7 +732,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   ...ZONES.map((z) => ({ value: z, label: `${z} (${locations.filter((l: any) => l.zone === z).length})` })),
                 ]}
                 searchPlaceholder="Search zones..."
-                className="px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+                className={`${filterControlClass} min-w-[11rem]`}
               />
 
               {(locSearch || locFloorFilter || locZoneFilter) && (
@@ -778,8 +752,8 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
           </div>
 
           <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[11px] tracking-wider text-clinicalText-secondary">
+            <table className="data-table">
+              <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[12.5px] tracking-wider text-clinicalText-secondary">
                 <tr>
                   <th className="py-3 px-4 w-36">Code</th>
                   <th className="py-3 px-4 w-32">Floor</th>
@@ -792,10 +766,10 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               <tbody className="divide-y divide-slate-100">
                 {filteredLocations.map((l: any) => (
                   <tr key={l._id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3 px-4 font-mono font-bold text-maroon-700">{l.code}</td>
+                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">{l.code}</span></td>
                     <td className="py-3 px-4">
                       {l.floor ? (
-                        <span className="px-2 py-0.5 rounded font-semibold bg-red-50 text-maroon-700 border border-red-100 text-[11px]">
+                        <span className="px-2.5 py-1 rounded-full font-semibold bg-red-50 text-maroon-700 border border-red-100 text-[12.5px]">
                           {l.floor}
                         </span>
                       ) : (
@@ -804,7 +778,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                     </td>
                     <td className="py-3 px-4">
                       {l.zone ? (
-                        <span className="px-2 py-0.5 rounded font-semibold bg-slate-100 text-slate-700 border border-slate-200 text-[11px]">
+                        <span className="px-2.5 py-1 rounded-full font-semibold bg-slate-100 text-slate-700 border border-slate-200 text-[12.5px]">
                           {l.zone}
                         </span>
                       ) : (
@@ -813,7 +787,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                     </td>
                     <td className="py-3 px-4 font-semibold text-clinicalText-primary">{l.name}</td>
                     <td className="py-3 px-4">
-                      <span className="px-2 py-0.5 rounded bg-slate-100 text-clinicalText-primary font-bold text-[10px]">
+                      <span className="px-2.5 py-1 rounded-full bg-slate-100 text-clinicalText-primary font-bold text-[11.5px]">
                         {l.type}
                       </span>
                     </td>
@@ -822,9 +796,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 ))}
                 {filteredLocations.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="py-8 text-center text-clinicalText-muted text-xs">
-                      No locations found matching your filter criteria.
-                    </td>
+                    <td colSpan={6} className="!p-0"><EmptyState message="No locations found matching your filter criteria." /></td>
                   </tr>
                 )}
               </tbody>
@@ -836,13 +808,13 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
       {/* Tab 4: Categories */}
       {activeTab === 'categories' && (
         <div key="categories" className="space-y-4 animate-tab-panel-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-50 p-4 rounded-xl border border-clinicalBorder">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-[#FFF8F8] to-white p-5 rounded-2xl border border-[#F1E0E1]">
             <div>
               <div className="font-bold text-xs text-clinicalText-primary flex items-center space-x-2">
                 <Tag className="w-4 h-4 text-maroon-700" />
                 <span>Incident Categories & Subcategories ({categories.length} Categories)</span>
               </div>
-              <p className="text-[11px] text-clinicalText-muted mt-0.5">
+              <p className="text-[12.5px] text-clinicalText-muted mt-0.5">
                 Standardized NABH hospital classification taxonomy with specialized subcategories across 5 clinical & operational domains.
               </p>
             </div>
@@ -860,14 +832,12 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
           </div>
 
           {/* Search & Domain Filter Bar */}
-          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-3 rounded-xl border border-clinicalBorder shadow-sm">
+          <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-card">
             <div className="flex-1 w-full sm:max-w-xs">
-              <input
-                type="text"
-                placeholder="Search category, code, or subcategory..."
+              <SearchInput
                 value={categorySearch}
-                onChange={(e) => setCategorySearch(e.target.value)}
-                className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+                onChange={setCategorySearch}
+                placeholder="Search category, code, or subcategory..." className="w-full"
               />
             </div>
             <div className="flex items-center space-x-2 w-full sm:w-auto">
@@ -883,7 +853,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   })),
                 ]}
                 searchPlaceholder="Search domains..."
-                className="px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+                className={`${filterControlClass} min-w-[11rem]`}
               />
               {(categorySearch || categoryDomainFilter) && (
                 <button
@@ -901,8 +871,8 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
           </div>
 
           <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden">
-            <table className="w-full text-left text-xs">
-              <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[11px] tracking-wider text-clinicalText-secondary">
+            <table className="data-table">
+              <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[12.5px] tracking-wider text-clinicalText-secondary">
                 <tr>
                   <th className="py-3 px-4 w-12 text-center">#</th>
                   <th className="py-3 px-4 w-44">Code</th>
@@ -917,11 +887,11 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                     <td className="py-3 px-4 text-center font-bold text-clinicalText-muted">
                       {c.order || index + 1}
                     </td>
-                    <td className="py-3 px-4 font-mono font-bold text-maroon-700">{c.code}</td>
+                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">{c.code}</span></td>
                     <td className="py-3 px-4">
                       <div className="font-semibold text-clinicalText-primary">{c.name}</div>
                       {c.domain && (
-                        <span className="inline-block mt-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-red-50 text-maroon-700 border border-red-100">
+                        <span className="inline-block mt-1 px-2.5 py-1 rounded-full text-[11.5px] font-semibold bg-red-50 text-maroon-700 border border-red-100">
                           {c.domain}
                         </span>
                       )}
@@ -931,7 +901,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                         {c.subcategories?.map((sc: any) => (
                           <span
                             key={sc.code}
-                            className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-clinicalText-secondary text-[11px]"
+                            className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-clinicalText-secondary text-[12.5px]"
                           >
                             {sc.name}
                           </span>
@@ -945,7 +915,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                           setTargetCategory(c);
                           setShowSubModal(true);
                         }}
-                        className="inline-flex items-center space-x-1 px-2.5 py-1 text-[11px] font-semibold text-maroon-700 bg-red-50 hover:bg-red-100 border border-red-200 rounded-lg transition cursor-pointer"
+                        className="inline-flex items-center space-x-1 h-8 px-3 text-[13px] font-semibold text-[#8B1E23] bg-[#FFF5F5] hover:bg-[#FDECEC] border border-[#FBD5D5] rounded-lg transition cursor-pointer"
                         title="Add subcategory to this category"
                       >
                         <Plus className="w-3 h-3" />
@@ -956,9 +926,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 ))}
                 {filteredCategories.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="py-8 text-center text-clinicalText-muted text-xs">
-                      No categories found matching your filter criteria.
-                    </td>
+                    <td colSpan={5} className="!p-0"><EmptyState message="No categories found matching your filter criteria." /></td>
                   </tr>
                 )}
               </tbody>
@@ -1354,7 +1322,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 </div>
                 <div>
                   <h3 className="font-bold text-sm text-clinicalText-primary">Staff Accounts Bulk Import</h3>
-                  <p className="text-[11px] text-clinicalText-secondary">Upload an HR roster CSV file or paste formatted rows</p>
+                  <p className="text-[12.5px] text-clinicalText-secondary">Upload an HR roster CSV file or paste formatted rows</p>
                 </div>
               </div>
               <button
@@ -1430,12 +1398,12 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   <span className="font-semibold text-clinicalText-primary">
                     Preview Data ({bulkParsedRows.length} rows detected)
                   </span>
-                  <span className="text-[11px] text-clinicalText-muted">
+                  <span className="text-[12.5px] text-clinicalText-muted">
                     Showing top {Math.min(bulkParsedRows.length, 5)} rows
                   </span>
                 </div>
                 <div className="border border-clinicalBorder rounded-xl overflow-hidden overflow-x-auto max-h-40">
-                  <table className="w-full text-left text-[11px]">
+                  <table className="w-full text-left text-[12.5px]">
                     <thead className="bg-slate-100 border-b border-clinicalBorder text-clinicalText-secondary uppercase">
                       <tr>
                         <th className="py-1.5 px-3">Emp ID</th>
@@ -1476,7 +1444,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   )}
                   <span>Import Completed</span>
                 </div>
-                <div className="grid grid-cols-4 gap-2 text-[11px]">
+                <div className="grid grid-cols-4 gap-2 text-[12.5px]">
                   <div className="bg-white/80 p-1.5 rounded border border-current/20">
                     <span className="block text-slate-500">Imported</span>
                     <span className="font-bold text-emerald-700 text-sm">{bulkImportResult.imported}</span>
@@ -1495,7 +1463,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   </div>
                 </div>
                 {bulkImportResult.errors?.length > 0 && (
-                  <div className="mt-2 text-[11px] text-red-700 max-h-24 overflow-y-auto space-y-1">
+                  <div className="mt-2 text-[12.5px] text-red-700 max-h-24 overflow-y-auto space-y-1">
                     <span className="font-semibold block">Row Errors:</span>
                     {bulkImportResult.errors.map((e: any, idx: number) => (
                       <div key={idx} className="bg-white/90 p-1 rounded border border-red-200">

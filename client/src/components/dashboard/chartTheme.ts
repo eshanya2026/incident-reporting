@@ -27,6 +27,6 @@ export const CHART = {
   grid: '#E5E7EB', // hairline, solid, one step off the white surface
   axisText: '#64748B', // text-secondary token
   mutedText: '#94A3B8',
-  font: 11,
+  font: 12,
   barSize: 22, // ≤ 24px
 };

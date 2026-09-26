@@ -55,7 +55,7 @@ const truncatedTick =
           dx={opts.textAnchor === 'end' && !opts.angle ? -6 : 0}
           textAnchor={opts.textAnchor ?? 'middle'}
           transform={opts.angle ? `rotate(${opts.angle})` : undefined}
-          fontSize={opts.textAnchor === 'end' && !opts.angle ? 11 : 10}
+          fontSize={opts.textAnchor === 'end' && !opts.angle ? 12 : 11}
           fill={opts.textAnchor === 'end' && !opts.angle ? '#475569' : '#64748B'}
         >
           {short}
@@ -103,7 +103,7 @@ function KpiCard({
       <div className="text-[28px] font-bold leading-none mt-2 tracking-tight" style={{ color: valueColor }}>
         {value}
       </div>
-      <div className="text-[11px] mt-2 font-medium truncate" style={{ color: captionColor }}>
+      <div className="text-[12.5px] mt-2 font-medium truncate" style={{ color: captionColor }}>
         {caption}
       </div>
     </>
@@ -202,10 +202,10 @@ export default function DashboardPage() {
   return (
     <div className="space-y-7 text-[#172033]">
       {/* Hero Banner with Role-Specific Title and Period Controls - dark theme */}
-      <div className="bg-gradient-to-r from-[#241014] via-[#1B0E11] to-[#150A0C] rounded-2xl p-6 sm:p-7 border border-[#3D1B1F] shadow-[0_4px_20px_rgba(0,0,0,0.25)] flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+      <div className="hero-banner rounded-2xl p-6 sm:p-7 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         {/* Editorial Content */}
         <div className="max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-[#F5A5A8] text-[11px] font-bold tracking-wide uppercase mb-3">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-[#F5A5A8] text-[12.5px] font-bold tracking-wide uppercase mb-3">
             <span className="w-1.5 h-1.5 rounded-full bg-[#F06B70]"></span>
             <span>
               {isHod
@@ -225,14 +225,16 @@ export default function DashboardPage() {
 
         {/* Right Controls: Period Selector & Refresh */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 shrink-0">
-          <div className="inline-flex p-1 bg-white/10 border border-white/15 rounded-xl">
+          <div className="inline-flex p-1 bg-black/25 border border-white/15 rounded-xl backdrop-blur-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]">
             {PERIOD_OPTIONS.map((opt) => (
               <button
                 key={opt.key}
                 type="button"
                 onClick={() => setPeriod(opt.key)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition duration-150 cursor-pointer ${
-                  period === opt.key ? 'bg-[#C62828] text-white shadow-xs' : 'text-slate-300 hover:text-white hover:bg-white/10'
+                  period === opt.key
+                    ? 'bg-gradient-to-b from-[#EF5350] to-[#B71C1C] text-white shadow-[0_4px_10px_-2px_rgba(229,57,53,0.6),inset_0_1px_0_rgba(255,255,255,0.35)]'
+                    : 'text-slate-300 hover:text-white hover:bg-white/10'
                 }`}
               >
                 {opt.label}
@@ -244,7 +246,7 @@ export default function DashboardPage() {
             type="button"
             onClick={() => refetch()}
             disabled={isFetching}
-            className="p-2.5 rounded-xl bg-white/10 border border-white/15 text-slate-300 hover:text-white hover:bg-white/15 transition duration-180 cursor-pointer disabled:opacity-50"
+            className="p-2.5 rounded-xl bg-black/25 border border-white/15 text-slate-300 hover:text-white hover:bg-white/15 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition duration-180 cursor-pointer disabled:opacity-50"
             title="Refresh dashboard metrics"
           >
             <RotateCw className={`w-4 h-4 ${isFetching ? 'animate-spin text-white' : ''}`} />
@@ -402,7 +404,7 @@ export default function DashboardPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
               <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+                <span className="text-[12.5px] font-semibold text-[#64748B] uppercase tracking-wider">
                   1. Staff Report → Quality Assign
                 </span>
                 <div className="text-2xl font-bold text-[#172033] mt-2">
@@ -410,11 +412,11 @@ export default function DashboardPage() {
                     ? `${inPeriod.turnaroundDays.reportToAssign} days`
                     : '—'}
                 </div>
-                <span className="text-[10px] text-[#94A3B8] mt-1">Triage & HOD routing</span>
+                <span className="text-[11.5px] text-[#94A3B8] mt-1">Triage & HOD routing</span>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+                <span className="text-[12.5px] font-semibold text-[#64748B] uppercase tracking-wider">
                   2. HOD Assign → Submit for Review
                 </span>
                 <div className="text-2xl font-bold text-[#172033] mt-2">
@@ -422,11 +424,11 @@ export default function DashboardPage() {
                     ? `${inPeriod.turnaroundDays.assignToSubmit} days`
                     : '—'}
                 </div>
-                <span className="text-[10px] text-[#94A3B8] mt-1">Investigation, RCA & CAPA completion</span>
+                <span className="text-[11.5px] text-[#94A3B8] mt-1">Investigation, RCA & CAPA completion</span>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider">
+                <span className="text-[12.5px] font-semibold text-[#64748B] uppercase tracking-wider">
                   3. Quality Review → Final Closure
                 </span>
                 <div className="text-2xl font-bold text-[#172033] mt-2">
@@ -434,11 +436,11 @@ export default function DashboardPage() {
                     ? `${inPeriod.turnaroundDays.submitToClose} days`
                     : '—'}
                 </div>
-                <span className="text-[10px] text-[#94A3B8] mt-1">Effectiveness audit & sign-off</span>
+                <span className="text-[11.5px] text-[#94A3B8] mt-1">Effectiveness audit & sign-off</span>
               </div>
 
               <div className="p-3.5 rounded-xl bg-[#FFF5F5] border border-[#FCDADA] flex flex-col justify-between">
-                <span className="text-[11px] font-semibold text-[#8B1E23] uppercase tracking-wider">
+                <span className="text-[12.5px] font-semibold text-[#8B1E23] uppercase tracking-wider">
                   Total End-to-End Cycle
                 </span>
                 <div className="text-2xl font-bold text-[#8B1E23] mt-2">
@@ -446,7 +448,7 @@ export default function DashboardPage() {
                     ? `${inPeriod.turnaroundDays.reportToClose} days`
                     : '—'}
                 </div>
-                <span className="text-[10px] text-[#C62828] mt-1">Report submission to closure</span>
+                <span className="text-[11.5px] text-[#C62828] mt-1">Report submission to closure</span>
               </div>
             </div>
           </div>
@@ -474,18 +476,18 @@ export default function DashboardPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={monthlyChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis dataKey="month" tick={{ fontSize: 11, fill: '#64748B' }} axisLine={{ stroke: '#E2E8F0' }} />
-                      <YAxis tick={{ fontSize: 11, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
+                      <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#64748B' }} axisLine={{ stroke: '#E2E8F0' }} />
+                      <YAxis tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
                       <Tooltip
                         contentStyle={{
                           backgroundColor: '#FFFFFF',
                           borderRadius: '10px',
                           border: '1px solid #E2E8F0',
                           boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                          fontSize: '12px',
+                          fontSize: '13px',
                         }}
                       />
-                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '8px' }} />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
                       <Bar dataKey="Reported" fill="#8B1E23" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="Closed" fill="#10B981" radius={[4, 4, 0, 0]} />
                     </BarChart>
@@ -535,14 +537,14 @@ export default function DashboardPage() {
                               borderRadius: '10px',
                               border: '1px solid #E2E8F0',
                               boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                              fontSize: '12px',
+                              fontSize: '13px',
                             }}
                           />
                         </PieChart>
                       </ResponsiveContainer>
                       <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
                         <span className="text-2xl font-bold text-[#172033] leading-none">{totalSeverityCount}</span>
-                        <span className="text-[10px] text-[#64748B] uppercase font-semibold mt-0.5">Total</span>
+                        <span className="text-[11.5px] text-[#64748B] uppercase font-semibold mt-0.5">Total</span>
                       </div>
                     </div>
 
@@ -561,7 +563,7 @@ export default function DashboardPage() {
                             </div>
                             <div className="flex items-center space-x-1.5 font-mono shrink-0">
                               <span className="font-bold text-[#172033]">{count}</span>
-                              <span className="text-[11px] text-[#94A3B8]">({percent}%)</span>
+                              <span className="text-[12.5px] text-[#94A3B8]">({percent}%)</span>
                             </div>
                           </div>
                         );
@@ -601,14 +603,14 @@ export default function DashboardPage() {
                           axisLine={{ stroke: '#E2E8F0' }}
                           tickLine={false}
                         />
-                        <YAxis tick={{ fontSize: 11, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
                         <Tooltip
                           contentStyle={{
                             backgroundColor: '#FFFFFF',
                             borderRadius: '10px',
                             border: '1px solid #E2E8F0',
                             boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                            fontSize: '12px',
+                            fontSize: '13px',
                           }}
                         />
                         <Bar dataKey="count" fill="#C62828" radius={[4, 4, 0, 0]} />
@@ -640,7 +642,7 @@ export default function DashboardPage() {
                   <ResponsiveContainer width="100%" height="100%">
                     <BarChart data={categoryChartData} layout="vertical" margin={{ top: 5, right: 20, left: 40, bottom: 5 }}>
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
-                      <XAxis type="number" tick={{ fontSize: 11, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
+                      <XAxis type="number" tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
                       <YAxis type="category" dataKey="name" tick={truncatedTick(18, { textAnchor: 'end' })} width={120} axisLine={{ stroke: '#E2E8F0' }} />
                       <Tooltip
                         contentStyle={{
@@ -648,7 +650,7 @@ export default function DashboardPage() {
                           borderRadius: '10px',
                           border: '1px solid #E2E8F0',
                           boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                          fontSize: '12px',
+                          fontSize: '13px',
                         }}
                       />
                       <Bar dataKey="count" fill="#475569" radius={[0, 4, 4, 0]} />

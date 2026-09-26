@@ -25,7 +25,7 @@ Designed with a **"Just Culture" / Blame-Free Patient Safety philosophy**, this 
 - [Incident Lifecycle & State Machine](#-incident-lifecycle--state-machine)
 - [Repository Structure](#-repository-structure)
 - [Prerequisites](#-prerequisites)
-- [Quick Start with Docker (Recommended)](#-quick-start-with-docker-recommended)
+- [Production Deployment with Docker](#-production-deployment-with-docker)
 - [Local Development Setup](#-local-development-setup)
 - [Default Seed Accounts & RBAC](#-default-seed-accounts--rbac)
 - [Role Guides](#-role-guides)
@@ -217,21 +217,49 @@ stateDiagram-v2
 
 ---
 
-## 🚀 Quick Start with Docker (Recommended)
+## 🚀 Production Deployment with Docker
+
+| Service | Address | Notes |
+|---|---|---|
+| **Web application** | `http://<server>:1006` | nginx: serves the app and forwards `/api` to the backend |
+| **Backend API** | `http://<server>:2006` | Express; health check at `/health` |
+| **MongoDB** | `127.0.0.1:3006` | Reachable from the server itself only (Compass, scripts). The database has no login, so do not expose it to the network |
+| Redis | internal only | Not published; reachable only by the other containers |
 
 ```bash
-# 1. Clone the repository and configure environment
-cp .env.example .env
+# 1. Create the production settings and fill them in (this file is git-ignored — keep it private)
+cp .env.production.example .env.production
+#    - APP_URL / API_URL: the address users open (server IP or domain, ports 1006 / 2006)
+#    - JWT_ACCESS_SECRET / JWT_REFRESH_SECRET: generate each with `openssl rand -hex 48`
 
-# 2. Build and start containers
-docker compose up --build -d
+# 2. Build and start
+docker compose --env-file .env.production up -d --build
 
-# 3. Seed default database data (roles, departments, users, 26 demo incidents)
-docker compose exec backend npm run seed
+# 3. Check it is healthy
+docker compose ps
+curl http://localhost:2006/health
 ```
 
-- **Web Application Portal**: [http://localhost](http://localhost)
-- **API Base URL**: `http://localhost/api/v1`
+Open **http://&lt;server&gt;:1006** in a browser.
+
+**First-time data.** An empty database has no roles, departments or users. Load them once with:
+
+```bash
+docker compose exec backend node dist/seeders/index.js
+```
+
+> ⚠️ The seeder also creates **demo accounts with well-known passwords** (e.g. `admin` / `Admin@123`) and demo incidents.
+> On a real system, change every seeded password (Administration → User Directory → Reset Password) or remove the demo users before staff start using it.
+
+**Production safeguards built in**
+- The backend refuses to start if the JWT secrets are missing, shorter than 32 characters or still the example values.
+- CORS accepts only `APP_URL`. The login cookie is marked `Secure` automatically when `APP_URL` starts with `https://`; over plain `http://` it is not, so login keeps working on an internal network.
+- Containers restart automatically, have health checks, rotate their logs, and the API runs as a non-root user.
+- Data lives in Docker volumes (`mongo_data`, `redis_data`, `uploads_data`) and survives rebuilds. Back up MongoDB with `docker compose exec -T mongo mongodump --db incident_db --archive --gzip > backup_$(date +%F).gz` (restore with `mongorestore --archive --gzip --drop`).
+
+**Firewall.** Open TCP **1006** (and **2006** only if other systems must call the API directly). Everything else stays closed.
+
+**HTTPS.** For anything beyond a trusted internal network, put TLS in front (a reverse proxy or load balancer terminating HTTPS in front of port 1006), then set `APP_URL` to the `https://` address and rebuild.
 
 ---
 
@@ -363,8 +391,8 @@ Configuration is managed via `.env` files. Key parameters (see `.env.example`):
 | `REFRESH_TOKEN_TTL` | `12h` | Refresh token lifespan |
 | `FILE_STORAGE_PATH` | `uploads` | Directory for attachment storage |
 | `MAX_FILE_SIZE_MB` | `10` | Maximum attachment size |
-| `APP_URL` | `http://localhost:5173` | Frontend application URL |
-| `API_URL` | `http://localhost:5000` | Backend API URL |
+| `APP_URL` | `http://localhost:5173` | Frontend application URL (production: `http://<server>:1006`) |
+| `API_URL` | `http://localhost:5000` | Backend API URL (production: `http://<server>:2006`) |
 
 ---
 

@@ -29,7 +29,7 @@ export default function Timeline({ entries }: { entries: any[] }) {
             <li key={i} className="ml-4">
               <span className={`absolute -left-[7px] mt-1 w-3 h-3 rounded-full border-2 border-white ${statusMeta(e.toStatus).dot}`} />
               <div className="text-xs font-semibold text-clinicalText-primary">{ACTION_LABELS[e.action] ?? e.label}</div>
-              <div className="text-[11px] text-clinicalText-muted">
+              <div className="text-[12.5px] text-clinicalText-muted">
                 {dayjs(e.at).format('DD MMM YYYY HH:mm')}
                 {e.by?.name && ` · ${e.by.name}`}
               </div>

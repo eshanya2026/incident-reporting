@@ -28,7 +28,7 @@ export function StatTile({
       <div className="text-xs font-medium text-clinicalText-secondary">{label}</div>
       <div className="text-3xl font-semibold text-clinicalText-primary mt-1 leading-tight">{value}</div>
       {status && (
-        <div className="mt-1 inline-flex items-center gap-1 text-[11px] font-semibold text-clinicalText-primary">
+        <div className="mt-1 inline-flex items-center gap-1 text-[12.5px] font-semibold text-clinicalText-primary">
           {status === 'critical' ? (
             <AlertTriangle className="w-3.5 h-3.5" style={{ color: STATUS.critical }} />
           ) : (
@@ -37,7 +37,7 @@ export function StatTile({
           {status === 'critical' ? 'Needs attention' : 'On track'}
         </div>
       )}
-      {note && <div className="text-[11px] text-clinicalText-muted mt-1">{note}</div>}
+      {note && <div className="text-[12.5px] text-clinicalText-muted mt-1">{note}</div>}
     </div>
   );
   return to ? (
@@ -70,13 +70,13 @@ export function ChartCard({
       <div className="flex items-start justify-between gap-3 mb-3">
         <div>
           <h3 className="text-sm font-bold text-clinicalText-primary">{title}</h3>
-          {subtitle && <p className="text-[11px] text-clinicalText-secondary mt-0.5">{subtitle}</p>}
+          {subtitle && <p className="text-[12.5px] text-clinicalText-secondary mt-0.5">{subtitle}</p>}
         </div>
         {!empty && (
           <button
             type="button"
             onClick={() => setAsTable(!asTable)}
-            className="inline-flex items-center gap-1 px-2 py-1 text-[11px] font-semibold text-clinicalText-secondary hover:text-[#8B1E23] border border-clinicalBorder rounded-lg cursor-pointer"
+            className="inline-flex items-center gap-1 px-2 py-1 text-[12.5px] font-semibold text-clinicalText-secondary hover:text-[#8B1E23] border border-clinicalBorder rounded-lg cursor-pointer"
             aria-pressed={asTable}
           >
             {asTable ? <BarChart3 className="w-3.5 h-3.5" /> : <Table2 className="w-3.5 h-3.5" />}

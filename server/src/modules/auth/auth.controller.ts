@@ -4,6 +4,7 @@ import { User } from '../users/user.model.js';
 import { Role } from '../roles/role.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
+import { env } from '../../config/env.js';
 import {
   comparePassword,
   generateAccessToken,
@@ -79,7 +80,8 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
     // Set Refresh Token HTTP-only cookie
     res.cookie('refreshToken', refreshToken, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
+      // Browsers drop Secure cookies on plain HTTP, so only set it when the app is served over HTTPS
+      secure: env.NODE_ENV === 'production' && env.APP_URL.startsWith('https://'),
       sameSite: 'lax',
       maxAge: 12 * 60 * 60 * 1000, // 12 hours
     });

@@ -1,12 +1,13 @@
 import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { FileSpreadsheet, Search } from 'lucide-react';
+import { FileSpreadsheet, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { STATUS_META, STATUS_ORDER, SEVERITY_META } from '../lib/incidentMeta';
 import { PageHeader } from '../components/ui/primitives';
 import IncidentTable from '../components/incident/IncidentTable';
 import { departmentOptions } from '../components/ui/DepartmentOptions';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
+import { FilterBar, Pagination, SearchInput, filterControlClass } from '../components/ui/listKit';
 
 /** Quality and Admin: every incident, with search and filters. */
 export default function IncidentRegisterPage() {
@@ -54,75 +55,115 @@ export default function IncidentRegisterPage() {
     [categories]
   );
 
+  const activeFilters = [search, status, departmentId, categoryId, severity].filter(Boolean).length;
+  const clearFilters = () => {
+    setSearch('');
+    setStatus('');
+    setDepartmentId('');
+    setCategoryId('');
+    setSeverity('');
+    setPage(1);
+  };
+
   return (
     <div className="space-y-6 text-clinicalText-primary">
       <PageHeader
         icon={FileSpreadsheet}
         title="All Incidents"
         description="Every reported incident with its responsible department and current status."
-      />
+      >
+        <div className="self-start md:self-auto shrink-0 px-5 py-3 rounded-2xl bg-black/20 border border-white/15 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
+          <div className="text-2xl font-extrabold text-white leading-none">{meta.total}</div>
+          <div className="text-[11.5px] font-semibold uppercase tracking-wider text-[#FBC9CB] mt-1">
+            {activeFilters ? 'Matching' : 'Total'} incidents
+          </div>
+        </div>
+      </PageHeader>
 
       {/* Search & Filter Bar */}
-      <div className="bg-white p-4 rounded-xl border border-clinicalBorder shadow-sm grid grid-cols-1 sm:grid-cols-5 gap-3">
-        <div className="relative">
-          <Search className="w-4 h-4 text-clinicalText-muted absolute left-3 top-2.5" />
-          <input
-            type="text"
-            placeholder="Search INC #, title, UHID..."
+      <FilterBar>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-5 gap-3">
+          <SearchInput
             value={search}
-            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-            className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+            onChange={(v) => {
+              setSearch(v);
+              setPage(1);
+            }}
+            placeholder="Search INC #, title, UHID..."
           />
-        </div>
 
-        <div>
           <SearchableSelect
             value={departmentId}
-            onChange={(v) => { setDepartmentId(v); setPage(1); }}
-            options={[{ value: '', label: '-- Responsible department (all) --' }, ...departmentOptions(departments)]}
+            onChange={(v) => {
+              setDepartmentId(v);
+              setPage(1);
+            }}
+            containerClassName="block w-full"
+            options={[{ value: '', label: 'Responsible department (all)' }, ...departmentOptions(departments)]}
             searchPlaceholder="Search departments..."
-            className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+            className={filterControlClass}
           />
-        </div>
 
-        <div>
           <SearchableSelect
             value={categoryId}
-            onChange={(v) => { setCategoryId(v); setPage(1); }}
-            options={[{ value: '', label: '-- All Categories --' }, ...categoryOptions]}
+            onChange={(v) => {
+              setCategoryId(v);
+              setPage(1);
+            }}
+            containerClassName="block w-full"
+            options={[{ value: '', label: 'All categories' }, ...categoryOptions]}
             searchPlaceholder="Search categories..."
-            className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+            className={filterControlClass}
           />
-        </div>
 
-        <div>
           <SearchableSelect
             value={status}
-            onChange={(v) => { setStatus(v); setPage(1); }}
+            onChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
+            containerClassName="block w-full"
             options={[
-              { value: '', label: '-- All Statuses --' },
+              { value: '', label: 'All statuses' },
               ...STATUS_ORDER.map((st) => ({ value: st, label: STATUS_META[st].label })),
             ]}
             searchPlaceholder="Search statuses..."
-            className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+            className={filterControlClass}
           />
-        </div>
 
-        <div>
           <SearchableSelect
             value={severity}
-            onChange={(v) => { setSeverity(v); setPage(1); }}
+            onChange={(v) => {
+              setSeverity(v);
+              setPage(1);
+            }}
+            containerClassName="block w-full"
             options={[
-              { value: '', label: '-- All Severities --' },
+              { value: '', label: 'All severities' },
               ...[1, 2, 3, 4, 5].map((lvl) => ({ value: String(lvl), label: SEVERITY_META[lvl].label })),
             ]}
             searchPlaceholder="Search severities..."
-            className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
+            className={filterControlClass}
           />
         </div>
-      </div>
 
-      <div>
+        {activeFilters > 0 && (
+          <div className="mt-3 pt-3 border-t border-slate-100 flex items-center justify-between text-sm">
+            <span className="text-slate-500">
+              <strong className="text-slate-800">{activeFilters}</strong> filter{activeFilters > 1 ? 's' : ''} applied
+            </span>
+            <button
+              type="button"
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[13px] font-semibold text-[#8B1E23] hover:bg-[#FFF5F5] transition cursor-pointer"
+            >
+              <X className="w-3.5 h-3.5" /> Clear all
+            </button>
+          </div>
+        )}
+      </FilterBar>
+
+      <div className="space-y-3">
         <IncidentTable
           incidents={incidents}
           loading={isLoading}
@@ -130,27 +171,8 @@ export default function IncidentRegisterPage() {
           empty="No incidents match the filters."
         />
 
-        {/* Pagination Footer */}
-        <div className="mt-2 px-4 py-3 bg-white rounded-xl border border-clinicalBorder flex items-center justify-between text-xs text-slate-500">
-          <span>
-            Showing page {meta.page} of {meta.totalPages} ({meta.total} records)
-          </span>
-          <div className="flex space-x-2">
-            <button
-              disabled={page <= 1}
-              onClick={() => setPage((p) => p - 1)}
-              className="px-3 py-1 bg-white border border-slate-200 rounded disabled:opacity-50 hover:bg-slate-100 font-medium"
-            >
-              Previous
-            </button>
-            <button
-              disabled={page >= meta.totalPages}
-              onClick={() => setPage((p) => p + 1)}
-              className="px-3 py-1 bg-white border border-slate-200 rounded disabled:opacity-50 hover:bg-slate-100 font-medium"
-            >
-              Next
-            </button>
-          </div>
+        <div className="px-5 py-3 bg-white rounded-2xl border border-slate-200 shadow-card text-sm text-slate-500">
+          <Pagination page={meta.page} totalPages={meta.totalPages} total={meta.total} onChange={setPage} />
         </div>
       </div>
     </div>

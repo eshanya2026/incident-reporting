@@ -4,6 +4,7 @@ import { Inbox } from 'lucide-react';
 import { api } from '../lib/api';
 import { PageHeader } from '../components/ui/primitives';
 import IncidentTable from '../components/incident/IncidentTable';
+import { TabBar } from '../components/ui/listKit';
 
 const TABS = [
   { key: 'SUBMITTED', label: 'New reports', description: 'Assign each report to the responsible department HOD, ask the reporter for more information, or reject it.' },
@@ -29,22 +30,11 @@ export default function TriageInboxPage() {
     <div className="space-y-6 text-clinicalText-primary">
       <PageHeader icon={Inbox} title="Triage Inbox" description={TABS[active].description} />
 
-      <div className="bg-white border border-clinicalBorder shadow-sm rounded-xl px-2 flex space-x-1">
-        {TABS.map((t, i) => {
-          const count = ((queries[i].data as any)?.data || []).length;
-          return (
-            <button
-              key={t.key}
-              onClick={() => setTab(t.key)}
-              className={`px-5 py-3 text-xs border-b-[3px] transition cursor-pointer ${
-                tab === t.key ? 'border-[#8B1E23] text-[#8B1E23] font-bold' : 'border-transparent text-[#64748B] hover:text-[#8B1E23] font-semibold'
-              }`}
-            >
-              {t.label} <span className="ml-1 px-1.5 py-0.5 rounded-full bg-slate-100 text-[10px]">{count}</span>
-            </button>
-          );
-        })}
-      </div>
+      <TabBar
+        active={tab}
+        onChange={setTab}
+        tabs={TABS.map((t, i) => ({ key: t.key, label: t.label, count: ((queries[i].data as any)?.data || []).length }))}
+      />
 
       <IncidentTable
         incidents={incidents}

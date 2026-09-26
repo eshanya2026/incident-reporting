@@ -49,6 +49,11 @@ export default {
         clinicalBlue: '#4677B8',
         neutralGray: '#94A3B8',
       },
+      fontSize: {
+        // Slightly larger than Tailwind's defaults (xs 12px, sm 14px) for readability
+        xs: ['0.8125rem', { lineHeight: '1.25rem' }],
+        sm: ['0.9375rem', { lineHeight: '1.4rem' }],
+      },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
       },
