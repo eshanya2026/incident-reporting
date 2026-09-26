@@ -19,7 +19,10 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response.data,
   async (error) => {
-    if (error.response?.status === 401 && !error.config._retry) {
+    // A 401 from the login / refresh calls themselves means bad credentials or an expired session:
+    // show the server's message instead of trying to refresh and reloading the page.
+    const isAuthCall = /\/auth\/(login|refresh)/.test(error.config?.url || '');
+    if (error.response?.status === 401 && !error.config._retry && !isAuthCall) {
       error.config._retry = true;
       try {
         const res = await axios.post('/api/v1/auth/refresh', {}, { withCredentials: true });

@@ -16,7 +16,8 @@ export const globalLimiter = rateLimit({
 
 export const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 15, // Limit login/auth attempts
+  max: 20, // Failed login attempts per IP (successful logins are not counted, so staff sharing one hospital IP are not locked out)
+  skipSuccessfulRequests: true,
   standardHeaders: true,
   legacyHeaders: false,
   message: {
