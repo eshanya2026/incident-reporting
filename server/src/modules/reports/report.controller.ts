@@ -26,7 +26,7 @@ const incidentQuerySchema = z.object({
   fromDate: dateParam,
   toDate: dateParam,
   departmentId: z.string().optional(),
-  severity: z.coerce.number().int().min(1).max(5).optional(),
+  severity: z.coerce.number().int().min(1).max(4).optional(),
   status: z.enum(INCIDENT_STATUSES).optional(),
   format: z.enum(['csv', 'json']).optional(),
 });
@@ -122,6 +122,7 @@ export const getIncidentRegisterReport = async (req: Request, res: Response, nex
         daysToClose: days(i.reportedAt, i.closedAt),
         hodReturns: i.hodReturns?.length ?? 0,
         sentBackByQuality: (i.qualityReviews || []).filter((r: any) => r.decision === 'RETURNED').length,
+        qualityScore: i.qualityScore?.overall,
       };
     });
 
@@ -152,6 +153,7 @@ export const getIncidentRegisterReport = async (req: Request, res: Response, nex
         'Total Days to Close',
         'HOD Returns Count',
         'Quality Send Backs Count',
+        'Analytics Score',
       ];
       const csvRows = rows.map((r) => [
         r.incidentNumber,
@@ -179,6 +181,7 @@ export const getIncidentRegisterReport = async (req: Request, res: Response, nex
         r.daysToClose ?? '',
         r.hodReturns,
         r.sentBackByQuality,
+        r.qualityScore ?? '',
       ]);
 
       const csv = '\uFEFF' + buildCsv(headers, csvRows);

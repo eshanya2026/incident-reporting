@@ -51,6 +51,7 @@ describe.skipIf(!MONGO_URI)('IncidentWorkflowService (MongoDB)', () => {
       categoryId: oid(),
       title: 'Test incident',
       description: 'Test description',
+      affectedPersonType: 'EMPLOYEE',
       initialSeverity: 2,
       severity: 2,
       status: 'SUBMITTED',
@@ -123,25 +124,16 @@ describe.skipIf(!MONGO_URI)('IncidentWorkflowService (MongoDB)', () => {
     doc = await perform(incident._id, 'SUBMIT_CLOSURE', hod, { text: 'All CAPA done' });
     expect(doc.status).toBe('PENDING_QUALITY_REVIEW');
 
-    // Quality sends it back: the CAPA reopens with the review remarks
-    doc = await perform(incident._id, 'REVIEW_RETURN', quality, {
-      text: 'Evidence missing',
-      capaResults: [{ capaId: capa._id.toString(), effective: false, remarks: 'Attach the audit sheet' }],
-    });
+    // Quality sends it back: every completed CAPA reopens automatically, with the review remarks
+    doc = await perform(incident._id, 'REVIEW_RETURN', quality, { text: 'Evidence missing' });
     expect(doc.status).toBe('CAPA_IN_PROGRESS');
     let capaDoc = await Capa.findById(capa._id);
     expect(capaDoc?.status).toBe('OPEN');
-    expect(capaDoc?.verification).toMatchObject({ effective: false, remarks: 'Attach the audit sheet' });
+    expect(capaDoc?.verification).toMatchObject({ effective: false, remarks: 'Evidence missing' });
 
     await Capa.updateOne({ _id: capa._id }, { status: 'DONE' });
     await perform(incident._id, 'SUBMIT_CLOSURE', hod, { text: 'Audit sheet attached' });
-    await expect(
-      perform(incident._id, 'REVIEW_ACCEPT', quality, { text: 'OK', capaResults: [] })
-    ).rejects.toThrow(/verdict is required/);
-    doc = await perform(incident._id, 'REVIEW_ACCEPT', quality, {
-      text: 'Effective',
-      capaResults: [{ capaId: capa._id.toString(), effective: true }],
-    });
+    doc = await perform(incident._id, 'REVIEW_ACCEPT', quality, { text: 'Effective' });
     expect(doc.status).toBe('CLOSED');
     expect(doc.closedBy?.toString()).toBe(ids.quality.toString());
     capaDoc = await Capa.findById(capa._id);
@@ -188,17 +180,6 @@ describe.skipIf(!MONGO_URI)('IncidentWorkflowService (MongoDB)', () => {
     await expect(perform(incident._id, 'ASSIGN', quality, { departmentId: ids.dept.toString(), severity: 2 })).rejects.toMatchObject({
       statusCode: 409,
     });
-  });
-
-  it('rejects a CAPA verdict for a CAPA of another incident', async () => {
-    const incident = await newIncident();
-    await expect(
-      perform(incident._id, 'ASSIGN', quality, {
-        departmentId: ids.dept.toString(),
-        severity: 2,
-        capaResults: [{ capaId: oid().toString(), effective: true }],
-      })
-    ).rejects.toThrow(/does not belong to this incident/);
   });
 
   it('refuses a stale save when someone else changed the incident first', async () => {

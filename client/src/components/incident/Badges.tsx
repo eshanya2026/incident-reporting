@@ -20,7 +20,7 @@ export function SeverityBadge({ severity, provisional }: { severity: number; pro
       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs border whitespace-nowrap ${meta.classes}`}
       title={provisional ? 'Severity entered by the reporter; Quality confirms it at assignment' : meta.label}
     >
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: severity === 5 ? '#FFFFFF' : SEVERITY_COLOR[severity] }} />
+      <span className="w-1.5 h-1.5 rounded-full" style={{ background: severity === 4 ? '#FFFFFF' : SEVERITY_COLOR[severity] }} />
       {meta.short}
       {provisional && <span className="font-medium opacity-70">(reported)</span>}
     </span>

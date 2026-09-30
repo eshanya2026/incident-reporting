@@ -5,7 +5,7 @@ import { ArrowLeft, Building, Calendar, MapPin, Tag, UserCheck, Users } from 'lu
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { hasPermission, homePath, isReceivingDepartment } from '../lib/rbac';
-import { SEVERITY_META } from '../lib/incidentMeta';
+import { PRIORITY_COLOR, PRIORITY_META, SEVERITY_META } from '../lib/incidentMeta';
 import { errorMessage } from '../lib/useAction';
 import { Card, Field, Notice } from '../components/ui/primitives';
 import { SeverityBadge, StatusBadge } from '../components/incident/Badges';
@@ -17,10 +17,10 @@ import InvestigationSection from '../components/incident/detail/InvestigationSec
 import RcaSection from '../components/incident/detail/RcaSection';
 import CapaSection from '../components/incident/detail/CapaSection';
 import { HistorySection, ReportDetails } from '../components/incident/detail/ReportSections';
-import { HodAssignedPanel, StaffResponsePanel, SubmitClosurePanel, WaitingNotice } from '../components/incident/detail/WorkflowPanels';
+import { HodAssignedPanel, StaffResponsePanel, SubmitClosurePanel, WaitingNotice, QualityMemberRcaPanel } from '../components/incident/detail/WorkflowPanels';
 
-const INVESTIGATION_STAGES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'CLOSED'];
-const CAPA_STAGES = ['CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'CLOSED'];
+const INVESTIGATION_STAGES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'RCA_REQUESTED', 'CLOSED'];
+const CAPA_STAGES = ['CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'RCA_REQUESTED', 'CLOSED'];
 const NOT_YET_ASSIGNED = ['SUBMITTED', 'INFO_REQUESTED', 'REJECTED'];
 
 /** GET that returns null on 404 (record not created yet). */
@@ -83,11 +83,24 @@ export default function IncidentDetailPage() {
   const workEditable = isResponsibleHod && ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'].includes(status);
   const capaEditable = isResponsibleHod && status === 'CAPA_IN_PROGRESS';
 
+  const isRcaRequested = status === 'RCA_REQUESTED';
+  const canPerformRca =
+    hasPermission(user, 'rca.write') ||
+    (user?.roles || []).includes('QUALITY_MEMBER') ||
+    (user?.roles || []).includes('QUALITY');
+  const rcaEditable = (workEditable && incident.requiresRca) || (isRcaRequested && canPerformRca);
+
   const showSubmit =
     actions.includes('SUBMIT_CLOSURE') &&
     (status === 'CAPA_IN_PROGRESS' || (!incident.requiresCapa && investigation?.status === 'COMPLETED'));
   const hasActionPanel =
-    actions.includes('ASSIGN') || actions.includes('RESPOND_INFO') || actions.includes('START_INVESTIGATION') || showSubmit || actions.includes('REVIEW_ACCEPT') || workEditable;
+    actions.includes('ASSIGN') ||
+    actions.includes('RESPOND_INFO') ||
+    actions.includes('START_INVESTIGATION') ||
+    showSubmit ||
+    actions.includes('REVIEW_ACCEPT') ||
+    workEditable ||
+    (isRcaRequested && canPerformRca);
 
   const confirmedSeverity = !isStaff && !NOT_YET_ASSIGNED.includes(status);
   const severityChanged = confirmedSeverity && incident.initialSeverity && incident.initialSeverity !== incident.severity;
@@ -150,24 +163,31 @@ export default function IncidentDetailPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         <div className="lg:col-span-2 space-y-6">
+          {/* What was reported, first */}
+          <ReportDetails incident={incident} />
+
           {/* What this user can do now */}
           {actions.includes('ASSIGN') && <QualityTriagePanel incident={incident} />}
           {actions.includes('RESPOND_INFO') && <StaffResponsePanel incident={incident} />}
           {actions.includes('START_INVESTIGATION') && <HodAssignedPanel incident={incident} />}
           {actions.includes('REVIEW_ACCEPT') && <QualityReviewPanel incident={incident} capas={capas} />}
+          {isRcaRequested && canPerformRca && <QualityMemberRcaPanel incident={incident} rca={rca} />}
           {!hasActionPanel && <WaitingNotice incident={incident} isStaff={isStaff} />}
 
-          {/* The HOD's work, in order; read-only for Quality and Admin */}
-          {/* Severity 4–5: the RCA comes before completing the investigation */}
-          {incident.requiresRca && (workEditable || rca) && <RcaSection incident={incident} rca={rca} editable={workEditable} />}
+          {/* Root Cause Analysis section */}
+          {(incident.requiresRca || isRcaRequested || rca) && (
+            <RcaSection incident={incident} rca={rca} editable={rcaEditable} />
+          )}
+
+          {/* Investigation findings */}
           <InvestigationSection incident={incident} investigation={investigation} rca={rca} editable={workEditable} />
-          {!incident.requiresRca && rca && <RcaSection incident={incident} rca={rca} editable={false} />}
+
+          {/* CAPA actions */}
           {CAPA_STAGES.includes(status) && hasPermission(user, 'capa.read') && (
             <CapaSection incident={incident} capas={capas} editable={capaEditable} />
           )}
           {showSubmit && <SubmitClosurePanel incident={incident} investigation={investigation} rca={rca} capas={capas} />}
 
-          <ReportDetails incident={incident} />
           <HistorySection incident={incident} />
         </div>
 
@@ -181,7 +201,62 @@ export default function IncidentDetailPage() {
               <Field label="Responsible department">
                 {incident.departmentId?.name ? incident.departmentId.name : 'Not assigned yet'}
               </Field>
+              {incident.notifiedDepartmentIds?.length > 0 && (
+                <Field label="Other involved departments">
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {incident.notifiedDepartmentIds.map((d: any) => (
+                      <span key={d._id || d.id || d} className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-clinicalText-primary text-[11.5px] font-medium border border-slate-200">
+                        {d.name || d}
+                      </span>
+                    ))}
+                  </div>
+                </Field>
+              )}
               {!isStaff && incident.assignedHod?.name && <Field label="HOD">{incident.assignedHod.name}</Field>}
+              {!isStaff && incident.assignedQualityMemberId?.name && (
+                <Field label="Quality Member (RCA)">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200 text-[11.5px] font-semibold">
+                    {incident.assignedQualityMemberId.name}
+                    {incident.assignedQualityMemberId.designation ? ` (${incident.assignedQualityMemberId.designation})` : ''}
+                  </span>
+                </Field>
+              )}
+              {!isStaff && incident.priority && (
+                <Field label="Priority">
+                  <span
+                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] border ${PRIORITY_META[incident.priority as keyof typeof PRIORITY_META]?.classes || ''}`}
+                  >
+                    <span
+                      className="w-1.5 h-1.5 rounded-full shrink-0"
+                      style={{ background: PRIORITY_COLOR[incident.priority as keyof typeof PRIORITY_COLOR] }}
+                    />
+                    {PRIORITY_META[incident.priority as keyof typeof PRIORITY_META]?.label || incident.priority}
+                  </span>
+                </Field>
+              )}
+              {!isStaff && incident.notifiedDepartmentIds?.length > 0 && (
+                <Field label="Involved departments">
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {incident.notifiedDepartmentIds.map((d: any) => (
+                      <span key={d._id || d.id || d} className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-clinicalText-primary text-[11.5px] font-medium">
+                        {d.name || d}
+                      </span>
+                    ))}
+                  </div>
+                </Field>
+              )}
+              {!isStaff && incident.intimatedUserIds?.length > 0 && (
+                <Field label="Intimated to">
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {incident.intimatedUserIds.map((u: any) => (
+                      <span key={u._id || u.id || u} className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-[11.5px] font-medium">
+                        {u.name || u.email || u}
+                        {u.designation ? ` (${u.designation})` : ''}
+                      </span>
+                    ))}
+                  </div>
+                </Field>
+              )}
               {!isStaff && incident.assignedAt && (
                 <Field label="Assigned">
                   {dayjs(incident.assignedAt).format('DD MMM YYYY HH:mm')}

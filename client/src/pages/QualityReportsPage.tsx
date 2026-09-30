@@ -125,7 +125,7 @@ export default function QualityReportsPage() {
   const incidentSummary = useMemo(() => {
     const total = filteredIncidents.length;
     const closed = filteredIncidents.filter((i) => i.status === 'CLOSED').length;
-    const critical = filteredIncidents.filter((i) => (i.severity || 0) >= 4).length;
+    const critical = filteredIncidents.filter((i) => (i.severity || 0) >= 3).length;
     const closedWithDays = filteredIncidents.filter((i) => i.daysToClose !== null && i.daysToClose !== undefined);
     const medianDays =
       closedWithDays.length > 0
@@ -407,7 +407,7 @@ export default function QualityReportsPage() {
                   : '0%'
               }
             />
-            <StatTile label="Critical / major" value={incidentSummary.critical} icon={AlertTriangle} tone="red" hint="Severity 4 & 5 events" />
+            <StatTile label="Harm & Sentinel" value={incidentSummary.critical} icon={AlertTriangle} tone="red" hint="Severity 3 & 4 events" />
             <StatTile
               label="Median cycle time"
               value={incidentSummary.medianDays !== null ? `${incidentSummary.medianDays} d` : '—'}
@@ -513,11 +513,10 @@ export default function QualityReportsPage() {
                 onChange={setSeverity}
                 options={[
                   { value: '', label: '-- All Severities --' },
-                  { value: '1', label: 'Severity 1 – Near Miss / No Harm' },
-                  { value: '2', label: 'Severity 2 – Minor Harm' },
-                  { value: '3', label: 'Severity 3 – Moderate Harm' },
-                  { value: '4', label: 'Severity 4 – Major Harm' },
-                  { value: '5', label: 'Severity 5 – Sentinel Event' },
+                  { value: '1', label: 'Severity 1 – Near Miss' },
+                  { value: '2', label: 'Severity 2 – No Harm' },
+                  { value: '3', label: 'Severity 3 – Harm' },
+                  { value: '4', label: 'Severity 4 – Sentinel Event' },
                 ]}
                 searchPlaceholder="Search severities..."
                 className={filterControlClass}

@@ -1,6 +1,6 @@
 import mongoose from 'mongoose';
 import { Request } from 'express';
-import { Incident, IIncident, severityRequirements } from './incident.model.js';
+import { Incident, IIncident, IncidentPriority, computeQualityScore, severityRequirements } from './incident.model.js';
 import { Investigation } from '../investigations/investigation.model.js';
 import { RootCauseAnalysis } from '../rca/rca.model.js';
 import { Capa } from '../capa/capa.model.js';
@@ -24,9 +24,12 @@ export interface WorkflowInput {
   text?: string;
   /** ASSIGN */
   departmentId?: string;
+  notifiedDepartmentIds?: string[];
+  intimatedUserIds?: string[];
   severity?: number;
-  /** REVIEW_RETURN / REVIEW_ACCEPT */
-  capaResults?: Array<{ capaId: string; effective: boolean; remarks?: string }>;
+  priority?: IncidentPriority;
+  /** REQUEST_RCA: optional assigned Quality member */
+  qualityMemberId?: string;
 }
 
 export interface PerformParams {
@@ -71,7 +74,6 @@ const loadContext = async (incident: IIncident, user: JwtPayload, input: Workflo
       text: input.text,
       severity: input.severity,
       departmentHasActiveHod: Boolean(assignHodId),
-      capaResults: input.capaResults?.map(({ capaId, effective }) => ({ capaId, effective })),
     },
   };
 
@@ -94,11 +96,6 @@ export class IncidentWorkflowService {
     }
 
     const { ctx, investigation, capas, assignHodId } = await loadContext(incident, user, input);
-
-    const unknownCapa = input.capaResults?.find((r) => !capas.some((c) => c._id.toString() === r.capaId));
-    if (unknownCapa) {
-      throw AppError.badRequest('A CAPA verdict refers to an action that does not belong to this incident');
-    }
 
     const check = checkTransition(action, ctx);
     if (!check.ok) {
@@ -134,14 +131,32 @@ export class IncidentWorkflowService {
       case 'ASSIGN': {
         const severity = input.severity!;
         const departmentId = new mongoose.Types.ObjectId(input.departmentId);
+        const notifiedDepartmentIds = (input.notifiedDepartmentIds || [])
+          .filter((id) => id && id !== input.departmentId)
+          .map((id) => new mongoose.Types.ObjectId(id));
+        const intimatedUserIds = (input.intimatedUserIds || [])
+          .filter(Boolean)
+          .map((id) => new mongoose.Types.ObjectId(id));
         Object.assign(incident, severityRequirements(severity), {
           severity,
           departmentId,
           assignedHod: assignHodId,
           assignedBy: actorId,
           assignedAt: now,
+          priority: input.priority,
+          notifiedDepartmentIds,
+          intimatedUserIds,
         });
-        incident.assignments.push({ departmentId, hodUserId: assignHodId!, severity, remarks: text, ...note });
+        incident.assignments.push({
+          departmentId,
+          hodUserId: assignHodId!,
+          severity,
+          priority: input.priority,
+          remarks: text,
+          notifiedDepartmentIds,
+          intimatedUserIds,
+          ...note,
+        });
         break;
       }
 
@@ -149,6 +164,9 @@ export class IncidentWorkflowService {
         incident.hodReturns.push({ reason: text!, ...note });
         incident.departmentId = undefined;
         incident.assignedHod = undefined;
+        incident.priority = undefined;
+        incident.notifiedDepartmentIds = [];
+        incident.intimatedUserIds = [];
         break;
 
       case 'START_INVESTIGATION':
@@ -171,32 +189,61 @@ export class IncidentWorkflowService {
 
       case 'REVIEW_RETURN':
       case 'REVIEW_ACCEPT': {
-        for (const result of input.capaResults ?? []) {
-          await Capa.updateOne(
-            { _id: result.capaId },
+        // Accepting closes the incident, so every completed CAPA is taken as effective; sending it
+        // back to the HOD means the opposite — each one goes back to OPEN for the HOD to redo.
+        const accepted = action === 'REVIEW_ACCEPT';
+        const doneCapaIds = capas.filter((c) => c.status === 'DONE').map((c) => c._id);
+        if (doneCapaIds.length > 0) {
+          await Capa.updateMany(
+            { _id: { $in: doneCapaIds } },
             {
               $set: {
-                status: result.effective ? 'EFFECTIVE' : 'OPEN',
+                status: accepted ? 'EFFECTIVE' : 'OPEN',
                 verification: {
                   verifiedBy: actorId,
                   verifiedAt: now,
-                  effective: result.effective,
-                  remarks: result.remarks?.trim() || text,
+                  effective: accepted,
+                  remarks: text,
                 },
               },
             }
           );
         }
-        incident.qualityReviews.push({ decision: action === 'REVIEW_ACCEPT' ? 'ACCEPTED' : 'RETURNED', remarks: text!, ...note });
-        if (action === 'REVIEW_ACCEPT') {
+        incident.qualityReviews.push({ decision: accepted ? 'ACCEPTED' : 'RETURNED', remarks: text!, ...note });
+        if (accepted) {
           incident.closedAt = now;
           incident.closedBy = actorId;
           incident.closureRemarks = text;
+          const reworkCount =
+            incident.hodReturns.length + incident.qualityReviews.filter((r) => r.decision === 'RETURNED').length;
+          incident.qualityScore = computeQualityScore({
+            reportedAt: incident.reportedAt,
+            closedAt: now,
+            severity: incident.severity,
+            reworkCount,
+            capaTypes: capas.map((c) => c.type),
+          });
         }
         break;
       }
 
       case 'COMPLETE_INVESTIGATION':
+        break;
+
+      case 'REQUEST_RCA':
+        incident.rcaRequestedAt = now;
+        incident.rcaRequestedBy = actorId;
+        incident.rcaRequestRemarks = text;
+        incident.requiresRca = true;
+        if (input.qualityMemberId) {
+          incident.assignedQualityMemberId = new mongoose.Types.ObjectId(input.qualityMemberId);
+        }
+        break;
+
+      case 'SUBMIT_RCA':
+        incident.rcaSubmittedAt = now;
+        incident.rcaSubmittedBy = actorId;
+        incident.rcaSubmissionRemarks = text;
         break;
     }
 
@@ -220,8 +267,15 @@ export class IncidentWorkflowService {
       newValue: {
         status: incident.status,
         text,
-        ...(action === 'ASSIGN' ? { departmentId: input.departmentId, severity: input.severity } : {}),
-        ...(input.capaResults ? { capaResults: input.capaResults } : {}),
+        ...(action === 'ASSIGN'
+          ? {
+              departmentId: input.departmentId,
+              notifiedDepartmentIds: input.notifiedDepartmentIds,
+              intimatedUserIds: input.intimatedUserIds,
+              severity: input.severity,
+              priority: input.priority,
+            }
+          : {}),
       },
       req,
     });

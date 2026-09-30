@@ -12,6 +12,7 @@ import { INCIDENT_STATUSES, IncidentStatus } from './incident.model.js';
 // People used across the tests. The incident was reported by `reporter` and is assigned to department d1.
 const PEOPLE = {
   quality: { userId: 'q1', roles: ['QUALITY'], departmentId: 'dq' },
+  qualityMember: { userId: 'qm1', roles: ['QUALITY_MEMBER'], departmentId: 'dq' },
   reporter: { userId: 's1', roles: ['STAFF'], departmentId: 'd9' },
   otherStaff: { userId: 's2', roles: ['STAFF'], departmentId: 'd1' },
   hod: { userId: 'h1', roles: ['HOD'], departmentId: 'd1' },
@@ -31,6 +32,8 @@ const ACTOR_FOR: Record<WorkflowAction, Person> = {
   SUBMIT_CLOSURE: 'hod',
   REVIEW_RETURN: 'quality',
   REVIEW_ACCEPT: 'quality',
+  REQUEST_RCA: 'quality',
+  SUBMIT_RCA: 'qualityMember',
 };
 
 /** A context in which `action` succeeds; tests then change one thing at a time. */
@@ -51,8 +54,6 @@ const validContext = (action: WorkflowAction): WorkflowContext => {
     input: { text: 'Some text' },
   };
   if (action === 'ASSIGN') base.input = { severity: 3, departmentHasActiveHod: true };
-  if (action === 'REVIEW_RETURN') base.input.capaResults = [{ capaId: 'c1', effective: false }];
-  if (action === 'REVIEW_ACCEPT') base.input.capaResults = [{ capaId: 'c1', effective: true }];
   return base;
 };
 
@@ -90,7 +91,6 @@ describe.each(WORKFLOW_ACTIONS)('%s', (action) => {
   it(`moves to ${rule.to} when status, actor and gate are valid`, () => {
     for (const from of rule.from) {
       const ctx = withIncident(validContext(action), { status: from });
-      if (action === 'SUBMIT_CLOSURE' && from === 'UNDER_INVESTIGATION') ctx.incident.requiresCapa = false;
       expect(checkTransition(action, ctx)).toEqual({ ok: true, to: rule.to });
     }
   });
@@ -107,7 +107,7 @@ describe.each(WORKFLOW_ACTIONS)('%s', (action) => {
 });
 
 describe('gates', () => {
-  it.each(['REQUEST_INFO', 'RESPOND_INFO', 'REJECT', 'RETURN_TO_QUALITY', 'SUBMIT_CLOSURE', 'REVIEW_RETURN', 'REVIEW_ACCEPT'] as WorkflowAction[])(
+  it.each(['REQUEST_INFO', 'RESPOND_INFO', 'REJECT', 'RETURN_TO_QUALITY', 'SUBMIT_CLOSURE', 'REVIEW_RETURN', 'REVIEW_ACCEPT', 'REQUEST_RCA'] as WorkflowAction[])(
     '%s requires text',
     (action) => {
       const ctx = validContext(action);
@@ -131,10 +131,6 @@ describe('gates', () => {
   });
 
   describe('COMPLETE_INVESTIGATION', () => {
-    it('is not used when CAPA is not required', () => {
-      expectFail('COMPLETE_INVESTIGATION', withIncident(validContext('COMPLETE_INVESTIGATION'), { requiresCapa: false }), 'GATE_FAILED', /not required/);
-    });
-
     it('needs a completed investigation with findings', () => {
       const ctx = validContext('COMPLETE_INVESTIGATION');
       ctx.investigation = { status: 'IN_PROGRESS', findings: 'x' };
@@ -155,17 +151,12 @@ describe('gates', () => {
   });
 
   describe('SUBMIT_CLOSURE', () => {
-    it('from UNDER_INVESTIGATION only when CAPA is not required', () => {
+    it('is refused directly from UNDER_INVESTIGATION — CAPA is always required first', () => {
       const ctx = withIncident(validContext('SUBMIT_CLOSURE'), { status: 'UNDER_INVESTIGATION' });
-      expectFail('SUBMIT_CLOSURE', ctx, 'GATE_FAILED', /CAPA before submitting/);
-      ctx.incident.requiresCapa = false;
-      ctx.incident.requiresRca = false;
-      ctx.rca = null;
-      ctx.capas = [];
-      expect(checkTransition('SUBMIT_CLOSURE', ctx).ok).toBe(true);
+      expectFail('SUBMIT_CLOSURE', ctx, 'INVALID_STATE');
     });
 
-    it('needs at least one CAPA when CAPA is required', () => {
+    it('needs at least one CAPA', () => {
       const ctx = validContext('SUBMIT_CLOSURE');
       ctx.capas = [];
       expectFail('SUBMIT_CLOSURE', ctx, 'GATE_FAILED', /At least one CAPA/);
@@ -201,43 +192,35 @@ describe('gates', () => {
   });
 
   describe('Quality review', () => {
-    it('needs a verdict for every CAPA marked done', () => {
+    // Every completed CAPA is auto-marked EFFECTIVE (accept) or OPEN (return) by the service —
+    // see incidentWorkflow.service.ts — so the gate itself only needs remarks, regardless of CAPAs.
+    it('needs closure remarks to accept', () => {
+      const ctx = validContext('REVIEW_ACCEPT');
+      ctx.input.text = '';
+      expectFail('REVIEW_ACCEPT', ctx, 'GATE_FAILED', /Closure remarks/);
+    });
+
+    it('needs review remarks to send back', () => {
+      const ctx = validContext('REVIEW_RETURN');
+      ctx.input.text = '';
+      expectFail('REVIEW_RETURN', ctx, 'GATE_FAILED', /Review remarks/);
+    });
+
+    it('accepts or sends back regardless of how many CAPAs are done', () => {
       for (const action of ['REVIEW_ACCEPT', 'REVIEW_RETURN'] as WorkflowAction[]) {
         const ctx = validContext(action);
         ctx.capas = [
           { id: 'c1', status: 'DONE' },
           { id: 'c2', status: 'DONE' },
         ];
-        expectFail(action, ctx, 'GATE_FAILED', /verdict is required for every completed CAPA \(1 missing\)/);
+        expect(checkTransition(action, ctx).ok).toBe(true);
       }
     });
 
-    it('cannot accept while any CAPA is not effective', () => {
-      const ctx = validContext('REVIEW_ACCEPT');
-      ctx.input.capaResults = [{ capaId: 'c1', effective: false }];
-      expectFail('REVIEW_ACCEPT', ctx, 'GATE_FAILED', /send the incident back/);
-    });
-
-    it('counts CAPA accepted in an earlier review as effective', () => {
-      const ctx = validContext('REVIEW_ACCEPT');
-      ctx.capas = [
-        { id: 'c0', status: 'EFFECTIVE' },
-        { id: 'c1', status: 'DONE' },
-      ];
-      expect(checkTransition('REVIEW_ACCEPT', ctx).ok).toBe(true);
-    });
-
-    it('accepts a low-severity incident with no CAPA', () => {
+    it("doesn't choke if there happen to be no CAPAs (SUBMIT_CLOSURE prevents this in practice)", () => {
       const ctx = validContext('REVIEW_ACCEPT');
       ctx.capas = [];
-      ctx.input.capaResults = [];
       expect(checkTransition('REVIEW_ACCEPT', ctx).ok).toBe(true);
-    });
-
-    it('can send back even when every CAPA was effective, with remarks', () => {
-      const ctx = validContext('REVIEW_RETURN');
-      ctx.input.capaResults = [{ capaId: 'c1', effective: true }];
-      expect(checkTransition('REVIEW_RETURN', ctx).ok).toBe(true);
     });
   });
 });
@@ -269,10 +252,12 @@ describe('availableActions', () => {
     ['INFO_REQUESTED', 'otherStaff', []],
     ['ASSIGNED', 'hod', ['RETURN_TO_QUALITY', 'START_INVESTIGATION']],
     ['ASSIGNED', 'otherHod', []],
-    ['UNDER_INVESTIGATION', 'hod', ['COMPLETE_INVESTIGATION', 'SUBMIT_CLOSURE']],
+    ['UNDER_INVESTIGATION', 'hod', ['COMPLETE_INVESTIGATION']],
     ['CAPA_IN_PROGRESS', 'hod', ['SUBMIT_CLOSURE']],
-    ['PENDING_QUALITY_REVIEW', 'quality', ['REVIEW_RETURN', 'REVIEW_ACCEPT']],
+    ['PENDING_QUALITY_REVIEW', 'quality', ['REVIEW_RETURN', 'REVIEW_ACCEPT', 'REQUEST_RCA']],
     ['PENDING_QUALITY_REVIEW', 'hod', []],
+    ['RCA_REQUESTED', 'qualityMember', ['SUBMIT_RCA']],
+    ['RCA_REQUESTED', 'quality', []],
     ['CLOSED', 'quality', []],
     ['CLOSED', 'hod', []],
     ['REJECTED', 'quality', []],

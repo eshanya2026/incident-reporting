@@ -30,6 +30,13 @@ export const SYSTEM_ROLES = [
       PERMISSIONS.CAPA_READ,
       PERMISSIONS.DASHBOARD_VIEW,
       PERMISSIONS.REPORT_VIEW_ALL,
+      // Quality also administers master data (users, departments, locations, categories, roles, audit log)
+      PERMISSIONS.ADMIN_USER_MANAGE,
+      PERMISSIONS.ADMIN_ROLE_MANAGE,
+      PERMISSIONS.ADMIN_DEPARTMENT_MANAGE,
+      PERMISSIONS.ADMIN_LOCATION_MANAGE,
+      PERMISSIONS.ADMIN_CATEGORY_MANAGE,
+      PERMISSIONS.ADMIN_AUDIT_VIEW,
     ],
     isSystemRole: true,
   },
@@ -68,6 +75,33 @@ export const SYSTEM_ROLES = [
       PERMISSIONS.ADMIN_CATEGORY_MANAGE,
       PERMISSIONS.ADMIN_AUDIT_VIEW,
     ],
+    isSystemRole: true,
+  },
+  {
+    // Quality Members: when Quality is not satisfied with HOD's report, Quality requests RCA and assigns it
+    // to Quality Members. They perform 5-Why root cause analysis and submit their findings back to Quality.
+    name: 'Quality Member',
+    code: ROLE_CODES.QUALITY_MEMBER,
+    permissions: [
+      PERMISSIONS.INCIDENT_READ_ALL,
+      PERMISSIONS.INVESTIGATION_READ,
+      PERMISSIONS.CAPA_READ,
+      PERMISSIONS.RCA_READ,
+      PERMISSIONS.RCA_WRITE,
+      PERMISSIONS.DASHBOARD_VIEW,
+      PERMISSIONS.REPORT_VIEW_ALL,
+    ],
+    isSystemRole: true,
+  },
+  {
+    // A notify-only contact: someone Quality can pick in "Intimate to" who isn't Staff, Quality,
+    // HOD or Admin (e.g. an external stakeholder). They don't triage, investigate or administer —
+    // incident.read_own only lets them land on "My Reports" after logging in and open incidents
+    // they've been intimated on (server/src/common/helpers/incidentAccess.ts allows that for any
+    // intimated user, regardless of role).
+    name: 'Intimation Member',
+    code: ROLE_CODES.INTIMATION_MEMBER,
+    permissions: [PERMISSIONS.INCIDENT_READ_OWN],
     isSystemRole: true,
   },
 ];

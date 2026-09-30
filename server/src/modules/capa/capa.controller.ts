@@ -55,12 +55,10 @@ const loadOpenCapaForWork = async (req: Request, verb: string) => {
 };
 
 
-/** HOD of the responsible department writes a CAPA action while the incident is in CAPA_IN_PROGRESS. */
+/** HOD of the responsible department writes CAPA action(s) while the incident is in CAPA_IN_PROGRESS. */
 export const createCapa = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { incidentId } = req.params;
-    const data = createCapaSchema.parse(req.body);
-
     const incident = await loadIncidentForWork(req, incidentId as string);
     if (incident.status !== 'CAPA_IN_PROGRESS') {
       throw AppError.conflict(
@@ -68,27 +66,136 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
       );
     }
 
+    const body = req.body;
+    let itemsToCreate: Array<{
+      type: 'CORRECTIVE' | 'PREVENTIVE';
+      action: string;
+      priority: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
+      targetDate: Date;
+    }> = [];
+
+    if (body?.correctiveAction !== undefined || body?.preventiveAction !== undefined) {
+      const rca = await RootCauseAnalysis.findOne({ incidentId });
+      const year = new Date().getFullYear();
+      const defaultTargetDate = new Date(Date.now() + 30 * 24 * 3600 * 1000);
+
+      const existing = await Capa.find({ incidentId });
+      const existingCA = existing.find((c) => c.type === 'CORRECTIVE');
+      const existingPA = existing.find((c) => c.type === 'PREVENTIVE');
+
+      const updatedOrCreated = [];
+
+      // Corrective Action (CA)
+      if (body.correctiveAction && typeof body.correctiveAction === 'string' && body.correctiveAction.trim().length > 0) {
+        if (existingCA) {
+          existingCA.action = body.correctiveAction.trim();
+          existingCA.status = 'DONE';
+          existingCA.completedAt = existingCA.completedAt || new Date();
+          existingCA.completionRemarks = existingCA.completionRemarks || 'Completed by HOD';
+          await existingCA.save();
+          updatedOrCreated.push(existingCA);
+        } else {
+          const seq = await getNextSequence(`capa_${year}`);
+          const capaNumber = `CAPA-${year}-${seq.toString().padStart(6, '0')}`;
+          const newCA = await Capa.create({
+            capaNumber,
+            incidentId,
+            rcaId: rca?._id || undefined,
+            type: 'CORRECTIVE',
+            action: body.correctiveAction.trim(),
+            ownerUserId: req.user!.userId,
+            ownerDepartmentId: incident.departmentId,
+            priority: body.priority || 'MEDIUM',
+            assignedDate: new Date(),
+            targetDate: body.targetDate ? new Date(body.targetDate) : defaultTargetDate,
+            status: 'DONE',
+            completedAt: new Date(),
+            completionRemarks: 'Completed by HOD',
+          });
+          updatedOrCreated.push(newCA);
+        }
+      }
+
+      // Preventive Action (PA)
+      if (body.preventiveAction && typeof body.preventiveAction === 'string' && body.preventiveAction.trim().length > 0) {
+        if (existingPA) {
+          existingPA.action = body.preventiveAction.trim();
+          existingPA.status = 'DONE';
+          existingPA.completedAt = existingPA.completedAt || new Date();
+          existingPA.completionRemarks = existingPA.completionRemarks || 'Completed by HOD';
+          await existingPA.save();
+          updatedOrCreated.push(existingPA);
+        } else {
+          const seq = await getNextSequence(`capa_${year}`);
+          const capaNumber = `CAPA-${year}-${seq.toString().padStart(6, '0')}`;
+          const newPA = await Capa.create({
+            capaNumber,
+            incidentId,
+            rcaId: rca?._id || undefined,
+            type: 'PREVENTIVE',
+            action: body.preventiveAction.trim(),
+            ownerUserId: req.user!.userId,
+            ownerDepartmentId: incident.departmentId,
+            priority: body.priority || 'MEDIUM',
+            assignedDate: new Date(),
+            targetDate: body.targetDate ? new Date(body.targetDate) : defaultTargetDate,
+            status: 'DONE',
+            completedAt: new Date(),
+            completionRemarks: 'Completed by HOD',
+          });
+          updatedOrCreated.push(newPA);
+        }
+      }
+
+      if (updatedOrCreated.length === 0) {
+        throw AppError.badRequest('Please provide at least a Corrective Action (CA)');
+      }
+
+      const allCapas = await Capa.find({ incidentId });
+      sendSuccess(res, allCapas, 'CAPA saved successfully', 200);
+      return;
+    }
+
+    if (Array.isArray(body)) {
+      itemsToCreate = z.array(createCapaSchema).min(1, 'At least one CAPA action is required').parse(body);
+    } else if (Array.isArray(body?.items)) {
+      itemsToCreate = z.array(createCapaSchema).min(1, 'At least one CAPA action is required').parse(body.items);
+    } else {
+      itemsToCreate = [createCapaSchema.parse(body)];
+    }
+
     const rca = await RootCauseAnalysis.findOne({ incidentId });
-
     const year = new Date().getFullYear();
-    const seq = await getNextSequence(`capa_${year}`);
-    const capaNumber = `CAPA-${year}-${seq.toString().padStart(6, '0')}`;
+    const createdCapas = [];
 
-    const capa = await Capa.create({
-      capaNumber,
-      incidentId,
-      rcaId: rca?._id || undefined,
-      type: data.type,
-      action: data.action,
-      ownerUserId: req.user!.userId,
-      ownerDepartmentId: incident.departmentId,
-      priority: data.priority,
-      assignedDate: new Date(),
-      targetDate: data.targetDate,
-      status: 'OPEN',
-    });
+    for (const data of itemsToCreate) {
+      const seq = await getNextSequence(`capa_${year}`);
+      const capaNumber = `CAPA-${year}-${seq.toString().padStart(6, '0')}`;
 
-    sendSuccess(res, capa, 'CAPA action created successfully', 201);
+      const capa = await Capa.create({
+        capaNumber,
+        incidentId,
+        rcaId: rca?._id || undefined,
+        type: data.type,
+        action: data.action,
+        ownerUserId: req.user!.userId,
+        ownerDepartmentId: incident.departmentId,
+        priority: data.priority,
+        assignedDate: new Date(),
+        targetDate: data.targetDate,
+        status: 'OPEN',
+      });
+      createdCapas.push(capa);
+    }
+
+    sendSuccess(
+      res,
+      itemsToCreate.length === 1 && !Array.isArray(body?.items) && !Array.isArray(body)
+        ? createdCapas[0]
+        : createdCapas,
+      createdCapas.length === 1 ? 'CAPA action created successfully' : `${createdCapas.length} CAPA actions created successfully`,
+      201
+    );
   } catch (error) {
     next(error);
   }

@@ -141,7 +141,7 @@ export const completeInvestigation = async (req: Request, res: Response, next: N
     if (incident.requiresRca) {
       const rca = await RootCauseAnalysis.findOne({ incidentId: incident._id });
       if (rca?.status !== 'COMPLETED') {
-        throw AppError.badRequest('Complete the RCA before completing the investigation (required for severity 4 and 5)');
+        throw AppError.badRequest('Complete the RCA before completing the investigation (required for Sentinel Event incidents)');
       }
     }
 
@@ -150,7 +150,8 @@ export const completeInvestigation = async (req: Request, res: Response, next: N
     await investigation.save();
     await linkAttachments(evidenceIds, 'INVESTIGATION', investigation._id);
 
-    if (incident.status === 'UNDER_INVESTIGATION' && incident.requiresCapa) {
+    // Every incident writes a CAPA before closure, regardless of severity
+    if (incident.status === 'UNDER_INVESTIGATION') {
       await IncidentWorkflowService.perform({
         incidentId: incident._id.toString(),
         action: 'COMPLETE_INVESTIGATION',

@@ -140,7 +140,7 @@ export default function IncidentRegisterPage() {
             containerClassName="block w-full"
             options={[
               { value: '', label: 'All severities' },
-              ...[1, 2, 3, 4, 5].map((lvl) => ({ value: String(lvl), label: SEVERITY_META[lvl].label })),
+              ...[1, 2, 3, 4].map((lvl) => ({ value: String(lvl), label: SEVERITY_META[lvl].label })),
             ]}
             searchPlaceholder="Search severities..."
             className={filterControlClass}

@@ -135,6 +135,22 @@ export default function IncidentTable({
         return inc.departmentId ? (
           <div>
             <div className="font-semibold text-slate-900">{inc.departmentId.name}</div>
+            {inc.notifiedDepartmentIds?.length > 0 && (
+              <div
+                className="text-[11px] text-[#8B1E23] font-medium"
+                title={`Involved: ${inc.notifiedDepartmentIds.map((d: any) => d.name || d).join(', ')}`}
+              >
+                +{inc.notifiedDepartmentIds.length} involved
+              </div>
+            )}
+            {inc.intimatedUserIds?.length > 0 && (
+              <div
+                className="text-[11px] text-amber-700 font-medium"
+                title={`Intimated: ${inc.intimatedUserIds.map((u: any) => `${u.name || u}${u.designation ? ` (${u.designation})` : ''}`).join(', ')}`}
+              >
+                CC: {inc.intimatedUserIds.length} {inc.intimatedUserIds.length === 1 ? 'person' : 'people'}
+              </div>
+            )}
             {inc.assignedHod?.name && <div className="text-xs text-slate-500 mt-0.5">{inc.assignedHod.name}</div>}
           </div>
         ) : (

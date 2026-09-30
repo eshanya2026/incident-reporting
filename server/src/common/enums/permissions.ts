@@ -1,4 +1,4 @@
-// Permission set for the four roles: Staff, Quality, HOD, Admin.
+// Permission set for the five roles: Staff, Quality, HOD, Admin, Intimation Member.
 // Role → permission mapping lives in server/src/seeders/systemRoles.ts.
 export const PERMISSIONS = {
   // Incident permissions
@@ -41,6 +41,11 @@ export const ROLE_CODES = {
   QUALITY: 'QUALITY',
   HOD: 'HOD',
   ADMIN: 'ADMIN',
+  // Quality Committee Members: conduct RCA when Quality requests it during review, then report back to Quality
+  QUALITY_MEMBER: 'QUALITY_MEMBER',
+  // No workflow permissions of their own — created purely to be picked in "Intimate to" so
+  // non-staff contacts (external stakeholders, etc.) can be notified about an incident.
+  INTIMATION_MEMBER: 'INTIMATION_MEMBER',
 } as const;
 
 export type RoleCode = (typeof ROLE_CODES)[keyof typeof ROLE_CODES];

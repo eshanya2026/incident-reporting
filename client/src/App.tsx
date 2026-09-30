@@ -109,7 +109,7 @@ export default function App() {
           <Route
             path="review"
             element={
-              <RequirePermission anyOf={['incident.review']}>
+              <RequirePermission anyOf={['incident.review', 'rca.write']}>
                 <ReviewQueuePage />
               </RequirePermission>
             }

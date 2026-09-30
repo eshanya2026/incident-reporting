@@ -158,8 +158,10 @@ export const seedDatabase = async (): Promise<void> => {
     const passwords: Record<RoleCode, string> = {
       [ROLE_CODES.STAFF]: await hashPassword('Staff@123'),
       [ROLE_CODES.QUALITY]: await hashPassword('Quality@123'),
+      [ROLE_CODES.QUALITY_MEMBER]: await hashPassword('Quality@123'),
       [ROLE_CODES.HOD]: await hashPassword('Hod@123'),
       [ROLE_CODES.ADMIN]: await hashPassword('Admin@123'),
+      [ROLE_CODES.INTIMATION_MEMBER]: await hashPassword('Intimate@123'),
     };
 
     // [employeeId, name, email local part, username, department code, designation, role]
@@ -169,6 +171,8 @@ export const seedDatabase = async (): Promise<void> => {
 
       ['EMP-002', 'Dr. Anita Quality Head', 'anita.quality', 'quality.anita', 'QUALITY', 'Chief Quality Officer', ROLE_CODES.QUALITY],
       ['EMP-006', 'Mr. Ravi Patient Safety Officer', 'ravi.quality', 'quality.ravi', 'QUALITY', 'Patient Safety Officer', ROLE_CODES.QUALITY],
+      ['EMP-024', 'Dr. Rajesh Quality Member', 'rajesh.qm', 'quality.member', 'QUALITY', 'Quality Committee Member', ROLE_CODES.QUALITY_MEMBER],
+      ['EMP-025', 'Dr. Ananya Quality Member', 'ananya.qm', 'quality.ananya', 'QUALITY', 'Quality Safety Specialist', ROLE_CODES.QUALITY_MEMBER],
 
       ['EMP-003', 'Dr. Ramesh Emergency HOD', 'ramesh.hod', 'hod.emergency', 'EMERGENCY', 'HOD Emergency', ROLE_CODES.HOD],
       ['EMP-009', 'Dr. Lakshmi ICU HOD', 'lakshmi.icu', 'hod.icu', 'ICU', 'HOD Intensive Care', ROLE_CODES.HOD],
@@ -187,6 +191,8 @@ export const seedDatabase = async (): Promise<void> => {
       ['EMP-016', 'Radiographer Bala', 'bala.radiology', 'rad.bala', 'RADIOLOGY', 'CT Technologist', ROLE_CODES.STAFF],
       ['EMP-013', 'Tech Anitha Lab', 'anitha.lab', 'lab.anitha', 'LAB', 'Lab Technician', ROLE_CODES.STAFF],
       ['EMP-022', 'Nurse Divya IPC', 'divya.ipc', 'nurse.divya', 'QUALITY', 'Infection Control Nurse', ROLE_CODES.STAFF],
+
+      ['EMP-023', 'Mr. Suresh Fire Safety Officer', 'suresh.firesafety', 'intimate.firesafety', null, 'Fire & Safety Officer', ROLE_CODES.INTIMATION_MEMBER],
     ];
 
     const userMap = new Map<string, mongoose.Types.ObjectId>();

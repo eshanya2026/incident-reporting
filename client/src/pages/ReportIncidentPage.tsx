@@ -6,7 +6,6 @@ import {
   Upload,
   CheckCircle2,
   Check,
-  User,
   MapPin,
   Tag,
   FileText,
@@ -27,13 +26,30 @@ import { errorMessage } from '../lib/useAction';
 const FLOORS = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
 const ZONES = ['Zone-1', 'Zone-B', 'Zone-C'] as const;
 
+/** Who an incident affected. Matches server/src/modules/incidents/incident.model.ts AFFECTED_PERSON_TYPES. */
+const AFFECTED_PERSON_TYPES = [
+  { value: 'INPATIENT', label: 'Inpatient' },
+  { value: 'OUTPATIENT', label: 'Outpatient' },
+  { value: 'VISITOR_FAMILY', label: 'Visitor/Family' },
+  { value: 'EMPLOYEE', label: 'Employee' },
+  { value: 'OTHER', label: 'Other (specify)' },
+] as const;
+
+/** Heading shown above the detail fields for whoever was affected. */
+const AFFECTED_DETAIL_COPY: Record<string, { title: string }> = {
+  INPATIENT: { title: 'Patient details' },
+  OUTPATIENT: { title: 'Patient details' },
+  VISITOR_FAMILY: { title: 'Visitor / family details' },
+  EMPLOYEE: { title: 'Employee details' },
+  OTHER: { title: 'Details' },
+};
+
 /** Harm levels: colour is the identity of each level, tint is used for the selected card. */
 const SEVERITY_LEVELS = [
-  { lvl: 1, name: 'Near Miss', desc: 'No harm', color: '#10B981', tint: '#ECFDF5', label: 'Level 1 – Near Miss (No Harm)', sublabel: 'Incident caught or occurred with zero harm' },
-  { lvl: 2, name: 'Minor', desc: 'Minimal harm', color: '#0284C7', tint: '#F0F9FF', label: 'Level 2 – Minor Harm', sublabel: 'Minimal intervention or basic observation required' },
-  { lvl: 3, name: 'Moderate', desc: 'Reversible harm', color: '#EA580C', tint: '#FFF7ED', label: 'Level 3 – Moderate Harm', sublabel: 'Reversible harm requiring medical or surgical intervention' },
-  { lvl: 4, name: 'Major', desc: 'Severe harm', color: '#DC2626', tint: '#FEF2F2', label: 'Level 4 – Major Harm', sublabel: 'Permanent impairment or prolonged hospital stay' },
-  { lvl: 5, name: 'Sentinel', desc: 'Catastrophic', color: '#6B1418', tint: '#FBEEEF', label: 'Level 5 – Critical / Sentinel Event', sublabel: 'Catastrophic event, patient death or permanent severe loss of function' },
+  { lvl: 1, name: 'Near Miss', desc: 'Caught before it happened', color: '#10B981', tint: '#ECFDF5', label: 'Level 1 – Near Miss', sublabel: 'Incident caught or corrected before it reached the patient' },
+  { lvl: 2, name: 'No Harm', desc: 'Reached patient, no harm', color: '#0284C7', tint: '#F0F9FF', label: 'Level 2 – No Harm', sublabel: 'Incident occurred but resulted in no harm to the patient' },
+  { lvl: 3, name: 'Harm', desc: 'Harm resulted', color: '#DC2626', tint: '#FEF2F2', label: 'Level 3 – Harm', sublabel: 'Harm resulted, requiring intervention, treatment, or prolonged stay' },
+  { lvl: 4, name: 'Sentinel', desc: 'Death or severe harm', color: '#6B1418', tint: '#FBEEEF', label: 'Level 4 – Sentinel Event', sublabel: 'Catastrophic event: patient death or permanent severe loss of function' },
 ] as const;
 
 const inputClass =
@@ -88,7 +104,7 @@ function ChipGroup({
   label: string;
 }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-2">
+    <div role="radiogroup" aria-label={label} className="flex flex-wrap gap-1.5">
       {options.map((opt) => {
         const active = value === opt;
         return (
@@ -99,7 +115,7 @@ function ChipGroup({
             aria-checked={active}
             disabled={disabled}
             onClick={() => onChange(opt)}
-            className={`h-10 px-4 rounded-xl border text-sm font-semibold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+            className={`h-9 px-3.5 rounded-lg border text-sm font-semibold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               active
                 ? 'bg-gradient-to-b from-[#C62828] to-[#8B1E23] text-white border-transparent shadow-[0_6px_14px_-6px_rgba(139,30,35,0.7),inset_0_1px_0_rgba(255,255,255,0.25)]'
                 : 'bg-white border-slate-200 text-slate-700 hover:border-[#8B1E23]/50 hover:bg-[#FFF5F5] hover:text-[#68151A]'
@@ -181,19 +197,18 @@ export default function ReportIncidentPage() {
   const [locationId, setLocationId] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [subcategoryCode, setSubcategoryCode] = useState('');
-  const [patientInvolved, setPatientInvolved] = useState(false);
-  const [patient, setPatient] = useState({
-    uhid: '',
-    ipNumber: '',
-    name: '',
-    age: '',
-    gender: 'Male',
-    ward: '',
-    bed: '',
-  });
+  const [affectedPersonType, setAffectedPersonType] = useState('');
+  // Fields asked per affected person type (see AFFECTED_DETAIL_COPY below)
+  const [inpatient, setInpatient] = useState({ name: '', ipNumber: '', ward: '' });
+  const [outpatient, setOutpatient] = useState({ name: '', regNo: '', consultant: '' });
+  const [visitor, setVisitor] = useState({ name: '', contactNumber: '' });
+  const [employee, setEmployee] = useState({ name: '', employeeNumber: '', departmentId: '' });
+  const [other, setOther] = useState({ name: '', contactNumber: '', description: '' });
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
+  const [witness, setWitness] = useState('');
   const [immediateAction, setImmediateAction] = useState('');
+  const [remarks, setRemarks] = useState('');
   const [severity, setSeverity] = useState(1);
   const [uploadedFiles, setUploadedFiles] = useState<any[]>([]);
   const [uploading, setUploading] = useState(false);
@@ -240,12 +255,13 @@ export default function ReportIncidentPage() {
   const selectedDepartment = departments.find((d: any) => d._id === departmentId);
   const currentSeverity = SEVERITY_LEVELS[severity - 1];
 
-  // ---- Progress: the seven required fields ----
+  // ---- Progress: the eight required fields ----
   const requiredChecks = [
     Boolean(incidentDateTime),
     Boolean(departmentId),
     Boolean(selectedFloor),
     Boolean(selectedZone),
+    Boolean(affectedPersonType),
     Boolean(categoryId),
     Boolean(title.trim()),
     Boolean(description.trim()),
@@ -253,16 +269,14 @@ export default function ReportIncidentPage() {
   const requiredDone = requiredChecks.filter(Boolean).length;
   const progress = Math.round((requiredDone / requiredChecks.length) * 100);
 
-  const whereDone = requiredChecks.slice(0, 4).every(Boolean);
-  const categoryDone = requiredChecks[4];
-  const detailsDone = requiredChecks[5] && requiredChecks[6];
-  const patientDone = patientInvolved && Boolean(patient.name.trim() || patient.uhid.trim());
+  const whereDone = requiredChecks.slice(0, 5).every(Boolean);
+  const categoryDone = requiredChecks[5];
+  const detailsDone = requiredChecks[6] && requiredChecks[7];
   const evidenceDone = uploadedFiles.length > 0;
 
   const steps = [
-    { id: 'sec-where', label: 'Where & when', done: whereDone, optional: false },
+    { id: 'sec-where', label: 'Where, when & who', done: whereDone, optional: false },
     { id: 'sec-category', label: 'Category & severity', done: categoryDone, optional: false },
-    { id: 'sec-patient', label: 'Patient details', done: patientDone, optional: true },
     { id: 'sec-details', label: 'What happened', done: detailsDone, optional: false },
     { id: 'sec-evidence', label: 'Evidence', done: evidenceDone, optional: true },
   ];
@@ -353,6 +367,7 @@ export default function ReportIncidentPage() {
     if (!departmentId) return setError('Please select the department where it occurred.');
     if (!selectedFloor) return setError('Please select the hospital floor.');
     if (!selectedZone) return setError('Please select the zone.');
+    if (!affectedPersonType) return setError('Please select the affected person.');
     if (!categoryId) return setError('Please select an incident category.');
 
     setLoading(true);
@@ -366,23 +381,44 @@ export default function ReportIncidentPage() {
         zone: selectedZone || undefined,
         categoryId,
         subcategoryCode: subcategoryCode || undefined,
-        patientInvolved,
+        affectedPersonType,
+        affectedOtherDetail: affectedPersonType === 'OTHER' ? other.description || undefined : undefined,
         title,
         description,
+        witness: witness || undefined,
         immediateAction: immediateAction || undefined,
+        remarks: remarks || undefined,
         severity: Number(severity),
         attachments: uploadedFiles.map((f) => f._id),
       };
 
-      if (patientInvolved) {
+      if (affectedPersonType === 'INPATIENT') {
         payload.patient = {
-          uhid: patient.uhid || undefined,
-          ipNumber: patient.ipNumber || undefined,
-          name: patient.name || undefined,
-          age: patient.age ? Number(patient.age) : undefined,
-          gender: patient.gender,
-          ward: patient.ward || undefined,
-          bed: patient.bed || undefined,
+          name: inpatient.name || undefined,
+          ipNumber: inpatient.ipNumber || undefined,
+          ward: inpatient.ward || undefined,
+        };
+      } else if (affectedPersonType === 'OUTPATIENT') {
+        payload.patient = {
+          name: outpatient.name || undefined,
+          uhid: outpatient.regNo || undefined,
+          consultant: outpatient.consultant || undefined,
+        };
+      } else if (affectedPersonType === 'VISITOR_FAMILY') {
+        payload.affectedPersonDetail = {
+          name: visitor.name || undefined,
+          contactNumber: visitor.contactNumber || undefined,
+        };
+      } else if (affectedPersonType === 'EMPLOYEE') {
+        payload.affectedPersonDetail = {
+          name: employee.name || undefined,
+          employeeId: employee.employeeNumber || undefined,
+          departmentId: employee.departmentId || undefined,
+        };
+      } else if (affectedPersonType === 'OTHER') {
+        payload.affectedPersonDetail = {
+          name: other.name || undefined,
+          contactNumber: other.contactNumber || undefined,
         };
       }
 
@@ -504,6 +540,12 @@ export default function ReportIncidentPage() {
                   <dd className="text-slate-700 font-medium min-w-0 truncate">{selectedDepartment?.name || '—'}</dd>
                 </div>
                 <div className="flex gap-2">
+                  <dt className="text-slate-400 w-16 shrink-0">Who</dt>
+                  <dd className="text-slate-700 font-medium min-w-0">
+                    {AFFECTED_PERSON_TYPES.find((o) => o.value === affectedPersonType)?.label || '—'}
+                  </dd>
+                </div>
+                <div className="flex gap-2">
                   <dt className="text-slate-400 w-16 shrink-0">Category</dt>
                   <dd className="text-slate-700 font-medium min-w-0">{selectedCategory?.name || '—'}</dd>
                 </div>
@@ -518,16 +560,16 @@ export default function ReportIncidentPage() {
 
         {/* ---------- Form sections ---------- */}
         <div className="space-y-5 min-w-0">
-          {/* 1. Where & when */}
+          {/* 1. Where, when & who */}
           <Section
             id="sec-where"
             step={1}
             icon={MapPin}
-            title="Where & when"
-            subtitle="When it happened and the exact place in the hospital."
+            title="Where, when & who"
+            subtitle="When and where it happened, and who it affected."
             done={whereDone}
           >
-            <div className="grid sm:grid-cols-2 gap-5">
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               <Field label="Date & time of incident" required htmlFor="incident-datetime">
                 <input
                   id="incident-datetime"
@@ -553,14 +595,204 @@ export default function ReportIncidentPage() {
                 />
               </Field>
 
-              <Field label="Hospital floor" required className="sm:col-span-2">
+              <Field label="Affected Person" required>
+                <SearchableSelect
+                  value={affectedPersonType}
+                  onChange={setAffectedPersonType}
+                  containerClassName="block w-full"
+                  options={[
+                    { value: '', label: 'Select Affected Person' },
+                    ...AFFECTED_PERSON_TYPES.map((o) => ({ value: o.value, label: o.label })),
+                  ]}
+                  searchPlaceholder="Search..."
+                  className={inputClass}
+                />
+              </Field>
+
+              {affectedPersonType && (
+                <div className="sm:col-span-2 lg:col-span-3 pt-4 mt-1 border-t border-slate-100 animate-tab-panel-in">
+                  <p className="text-xs font-semibold text-slate-700 mb-3">
+                    {AFFECTED_DETAIL_COPY[affectedPersonType]?.title}
+                  </p>
+
+                  {affectedPersonType === 'INPATIENT' && (
+                    <div className="grid sm:grid-cols-3 gap-4">
+                      <Field label="Name" htmlFor="ip-name">
+                        <input
+                          id="ip-name"
+                          type="text"
+                          placeholder="Full name"
+                          value={inpatient.name}
+                          onChange={(e) => setInpatient({ ...inpatient, name: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="IP number" htmlFor="ip-number">
+                        <input
+                          id="ip-number"
+                          type="text"
+                          placeholder="e.g. IP07024"
+                          value={inpatient.ipNumber}
+                          onChange={(e) => setInpatient({ ...inpatient, ipNumber: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Ward" htmlFor="ip-ward">
+                        <input
+                          id="ip-ward"
+                          type="text"
+                          placeholder="e.g. Ward 3"
+                          value={inpatient.ward}
+                          onChange={(e) => setInpatient({ ...inpatient, ward: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                  )}
+
+                  {affectedPersonType === 'OUTPATIENT' && (
+                    <div className="grid sm:grid-cols-3 gap-4">
+                      <Field label="Name" htmlFor="op-name">
+                        <input
+                          id="op-name"
+                          type="text"
+                          placeholder="Full name"
+                          value={outpatient.name}
+                          onChange={(e) => setOutpatient({ ...outpatient, name: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Reg No" htmlFor="op-regno">
+                        <input
+                          id="op-regno"
+                          type="text"
+                          placeholder="e.g. OP07024"
+                          value={outpatient.regNo}
+                          onChange={(e) => setOutpatient({ ...outpatient, regNo: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Consultant" htmlFor="op-consultant">
+                        <input
+                          id="op-consultant"
+                          type="text"
+                          placeholder="Treating consultant"
+                          value={outpatient.consultant}
+                          onChange={(e) => setOutpatient({ ...outpatient, consultant: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                  )}
+
+                  {affectedPersonType === 'VISITOR_FAMILY' && (
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <Field label="Name" htmlFor="vis-name">
+                        <input
+                          id="vis-name"
+                          type="text"
+                          placeholder="Full name"
+                          value={visitor.name}
+                          onChange={(e) => setVisitor({ ...visitor, name: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Contact number" htmlFor="vis-contact">
+                        <input
+                          id="vis-contact"
+                          type="tel"
+                          placeholder="Phone number"
+                          value={visitor.contactNumber}
+                          onChange={(e) => setVisitor({ ...visitor, contactNumber: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                  )}
+
+                  {affectedPersonType === 'EMPLOYEE' && (
+                    <div className="grid sm:grid-cols-3 gap-4">
+                      <Field label="Name" htmlFor="emp-name">
+                        <input
+                          id="emp-name"
+                          type="text"
+                          placeholder="Full name"
+                          value={employee.name}
+                          onChange={(e) => setEmployee({ ...employee, name: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Employee number" htmlFor="emp-number">
+                        <input
+                          id="emp-number"
+                          type="text"
+                          placeholder="e.g. EMP-104"
+                          value={employee.employeeNumber}
+                          onChange={(e) => setEmployee({ ...employee, employeeNumber: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Department">
+                        <SearchableSelect
+                          value={employee.departmentId}
+                          onChange={(v) => setEmployee({ ...employee, departmentId: v })}
+                          containerClassName="block w-full"
+                          options={[
+                            { value: '', label: 'Select department' },
+                            ...departmentOptions(departments, (d) => `${d.name} (${d.code})`),
+                          ]}
+                          searchPlaceholder="Search departments..."
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                  )}
+
+                  {affectedPersonType === 'OTHER' && (
+                    <div className="grid sm:grid-cols-2 gap-4">
+                      <Field label="Name" htmlFor="other-name">
+                        <input
+                          id="other-name"
+                          type="text"
+                          placeholder="Full name, if known"
+                          value={other.name}
+                          onChange={(e) => setOther({ ...other, name: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Contact number" htmlFor="other-contact">
+                        <input
+                          id="other-contact"
+                          type="tel"
+                          placeholder="Phone number"
+                          value={other.contactNumber}
+                          onChange={(e) => setOther({ ...other, contactNumber: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                      <Field label="Describe who was affected" className="sm:col-span-2" htmlFor="other-description">
+                        <input
+                          id="other-description"
+                          type="text"
+                          placeholder="e.g. Contractor, vendor, student"
+                          value={other.description}
+                          onChange={(e) => setOther({ ...other, description: e.target.value })}
+                          className={inputClass}
+                        />
+                      </Field>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <Field label="Hospital floor" required className="sm:col-span-2 lg:col-span-3">
                 <ChipGroup label="Hospital floor" options={FLOORS} value={selectedFloor} onChange={handleFloorChange} />
               </Field>
 
               <Field
                 label="Zone"
                 required
-                className="sm:col-span-2"
+                className="sm:col-span-2 lg:col-span-3"
                 hint={!selectedFloor ? 'Select a floor first.' : undefined}
               >
                 <ChipGroup
@@ -575,7 +807,7 @@ export default function ReportIncidentPage() {
               {selectedFloor && selectedZone && matchingLocations.length > 1 && (
                 <Field
                   label={`Specific room / ward / bay in ${selectedFloor} • ${selectedZone}`}
-                  className="sm:col-span-2"
+                  className="sm:col-span-2 lg:col-span-3"
                   hint="Optional — pick a more precise place if you know it."
                 >
                   <SearchableSelect
@@ -593,7 +825,7 @@ export default function ReportIncidentPage() {
               )}
 
               {selectedFloor && selectedZone && (
-                <div className="sm:col-span-2 flex items-center gap-2.5 text-sm text-[#68151A] bg-[#FFF5F5] px-4 py-3 rounded-xl border border-[#FBD5D5] animate-tab-panel-in">
+                <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-2.5 text-sm text-[#68151A] bg-[#FFF5F5] px-4 py-3 rounded-xl border border-[#FBD5D5] animate-tab-panel-in">
                   <MapPin className="w-4 h-4 shrink-0" />
                   <span>
                     Incident location: <strong>{selectedFloor}</strong> &bull; <strong>{selectedZone}</strong>
@@ -658,7 +890,7 @@ export default function ReportIncidentPage() {
               <p className="text-xs font-semibold text-slate-700 mb-2">
                 Harm / severity level <span className="text-[#C62828]">*</span>
               </p>
-              <div role="radiogroup" aria-label="Harm severity level" className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+              <div role="radiogroup" aria-label="Harm severity level" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {SEVERITY_LEVELS.map((s) => {
                   const active = severity === s.lvl;
                   return (
@@ -706,120 +938,10 @@ export default function ReportIncidentPage() {
             </div>
           </Section>
 
-          {/* 3. Patient */}
-          <Section
-            id="sec-patient"
-            step={3}
-            icon={User}
-            title="Patient details"
-            subtitle="Only if a patient was involved or affected."
-            optional
-            done={patientDone}
-            action={
-              <label className="inline-flex items-center gap-2.5 cursor-pointer select-none shrink-0">
-                <span className="hidden sm:inline text-xs font-semibold text-slate-600">Patient involved</span>
-                <input
-                  type="checkbox"
-                  checked={patientInvolved}
-                  onChange={(e) => setPatientInvolved(e.target.checked)}
-                  className="sr-only peer"
-                  aria-label="Patient involved"
-                />
-                <span className="relative w-11 h-6 rounded-full bg-slate-300 peer-checked:bg-[#8B1E23] peer-focus-visible:ring-4 peer-focus-visible:ring-[#8B1E23]/20 transition-colors after:content-[''] after:absolute after:top-[3px] after:left-[3px] after:w-[18px] after:h-[18px] after:rounded-full after:bg-white after:shadow after:transition-transform peer-checked:after:translate-x-5"></span>
-              </label>
-            }
-          >
-            {patientInvolved ? (
-              <div className="grid sm:grid-cols-3 gap-4 animate-tab-panel-in">
-                <Field label="UHID (Unique Health ID)" htmlFor="pt-uhid">
-                  <input
-                    id="pt-uhid"
-                    type="text"
-                    placeholder="e.g. UHID-61501"
-                    value={patient.uhid}
-                    onChange={(e) => setPatient({ ...patient, uhid: e.target.value })}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="IP number" htmlFor="pt-ip">
-                  <input
-                    id="pt-ip"
-                    type="text"
-                    placeholder="e.g. IP07024"
-                    value={patient.ipNumber}
-                    onChange={(e) => setPatient({ ...patient, ipNumber: e.target.value })}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Patient name" htmlFor="pt-name">
-                  <input
-                    id="pt-name"
-                    type="text"
-                    placeholder="Full name"
-                    value={patient.name}
-                    onChange={(e) => setPatient({ ...patient, name: e.target.value })}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Age" htmlFor="pt-age">
-                  <input
-                    id="pt-age"
-                    type="number"
-                    min={0}
-                    placeholder="Years"
-                    value={patient.age}
-                    onChange={(e) => setPatient({ ...patient, age: e.target.value })}
-                    className={inputClass}
-                  />
-                </Field>
-                <Field label="Gender">
-                  <SearchableSelect
-                    value={patient.gender}
-                    onChange={(v) => setPatient({ ...patient, gender: v })}
-                    containerClassName="block w-full"
-                    options={[
-                      { value: 'Male', label: 'Male' },
-                      { value: 'Female', label: 'Female' },
-                      { value: 'Other', label: 'Other' },
-                    ]}
-                    searchPlaceholder="Search..."
-                    className={inputClass}
-                  />
-                </Field>
-                <div className="grid grid-cols-2 gap-3">
-                  <Field label="Ward" htmlFor="pt-ward">
-                    <input
-                      id="pt-ward"
-                      type="text"
-                      placeholder="e.g. Ward 3"
-                      value={patient.ward}
-                      onChange={(e) => setPatient({ ...patient, ward: e.target.value })}
-                      className={inputClass}
-                    />
-                  </Field>
-                  <Field label="Bed" htmlFor="pt-bed">
-                    <input
-                      id="pt-bed"
-                      type="text"
-                      placeholder="e.g. 12"
-                      value={patient.bed}
-                      onChange={(e) => setPatient({ ...patient, bed: e.target.value })}
-                      className={inputClass}
-                    />
-                  </Field>
-                </div>
-              </div>
-            ) : (
-              <p className="text-sm text-slate-500">
-                No patient involved — nothing to fill in here. Switch on <strong>Patient involved</strong> to add details.
-              </p>
-            )}
-          </Section>
-
-          {/* 4. What happened */}
+          {/* 3. What happened */}
           <Section
             id="sec-details"
-            step={4}
+            step={3}
             icon={FileText}
             title="What happened"
             subtitle="A short title, the facts, and what was done straight away."
@@ -850,6 +972,17 @@ export default function ReportIncidentPage() {
                 ></textarea>
               </Field>
 
+              <Field label="Witness(es)" htmlFor="inc-witness" hint="Name and contact number, if known.">
+                <input
+                  id="inc-witness"
+                  type="text"
+                  placeholder="e.g. Ravi Kumar, Ward 3 Orderly, 98765xxxxx"
+                  value={witness}
+                  onChange={(e) => setWitness(e.target.value)}
+                  className={inputClass}
+                />
+              </Field>
+
               <Field label="Immediate action taken" htmlFor="inc-action">
                 <textarea
                   id="inc-action"
@@ -860,13 +993,24 @@ export default function ReportIncidentPage() {
                   className={textareaClass}
                 ></textarea>
               </Field>
+
+              <Field label="Remarks" htmlFor="inc-remarks" hint="Anything else worth noting.">
+                <textarea
+                  id="inc-remarks"
+                  rows={2}
+                  placeholder="Optional additional remarks..."
+                  value={remarks}
+                  onChange={(e) => setRemarks(e.target.value)}
+                  className={textareaClass}
+                ></textarea>
+              </Field>
             </div>
           </Section>
 
-          {/* 5. Evidence */}
+          {/* 4. Evidence */}
           <Section
             id="sec-evidence"
-            step={5}
+            step={4}
             icon={Paperclip}
             title="Evidence & attachments"
             subtitle="Photos, reports, logs or witness statements — PDF, PNG, JPG, DOCX up to 10MB each."

@@ -61,7 +61,11 @@ export default function AppLayout() {
       };
       return {
         triage: hasPermission(user, 'incident.triage') ? await count('/incidents/triage-queue') : 0,
-        review: hasPermission(user, 'incident.review') ? await count('/incidents/review-queue') : 0,
+        review:
+          hasPermission(user, 'incident.review') || hasPermission(user, 'rca.write')
+            ? (hasPermission(user, 'incident.review') ? await count('/incidents/review-queue') : 0) +
+              (await count('/incidents/review-queue', { status: 'RCA_REQUESTED' }))
+            : 0,
         department: hasPermission(user, 'incident.read_assigned')
           ? await count('/incidents/my-department', undefined, (i) => ['ASSIGNED', 'UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'].includes(i.status))
           : 0,
@@ -129,7 +133,7 @@ export default function AppLayout() {
     { label: 'Report Incident', path: '/incidents/new', icon: PlusCircle, permission: 'incident.create' },
     { label: 'My Reports', path: '/my-reports', icon: FileText, permission: 'incident.read_own', count: queueCounts.myReports },
     { label: 'Triage Inbox', path: '/triage', icon: Inbox, permission: 'incident.triage', count: queueCounts.triage },
-    { label: 'Review Queue', path: '/review', icon: ClipboardCheck, permission: 'incident.review', count: queueCounts.review },
+    { label: 'Review & RCA Queue', path: '/review', icon: ClipboardCheck, anyPermissions: ['incident.review', 'rca.write'], count: queueCounts.review },
     { label: "My Department's Incidents", path: '/my-department', icon: Building2, permission: 'incident.read_assigned', count: queueCounts.department },
     { label: 'All Incidents', path: '/incidents', icon: FileSpreadsheet, permission: 'incident.read_all' },
     { label: 'CAPA', path: '/capas', icon: CheckSquare, permission: 'capa.read' },

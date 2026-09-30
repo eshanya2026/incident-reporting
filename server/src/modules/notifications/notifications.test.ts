@@ -60,6 +60,7 @@ describe.skipIf(!MONGO_URI)('notifications (MongoDB)', () => {
       categoryId: oid(),
       title: 'Test incident',
       description: 'Test description',
+      affectedPersonType: 'EMPLOYEE',
       initialSeverity: 3,
       severity: 3,
       status: 'SUBMITTED',
@@ -140,13 +141,13 @@ describe.skipIf(!MONGO_URI)('notifications (MongoDB)', () => {
     expect(await received()).toEqual({ quality1: ['INCIDENT_SUBMIT_CLOSURE'], quality2: ['INCIDENT_SUBMIT_CLOSURE'] });
 
     await Notification.deleteMany({});
-    await perform(incident, 'REVIEW_RETURN', quality, { text: 'More evidence', capaResults: [{ capaId: capa._id.toString(), effective: false }] });
+    await perform(incident, 'REVIEW_RETURN', quality, { text: 'More evidence' });
     expect(await received()).toEqual({ hod: ['INCIDENT_REVIEW_RETURN'] });
 
     await Capa.updateOne({ _id: capa._id }, { status: 'DONE' });
     await perform(incident, 'SUBMIT_CLOSURE', hod, { text: 'Evidence added' });
     await Notification.deleteMany({});
-    await perform(incident, 'REVIEW_ACCEPT', quality, { text: 'Effective', capaResults: [{ capaId: capa._id.toString(), effective: true }] });
+    await perform(incident, 'REVIEW_ACCEPT', quality, { text: 'Effective' });
     expect(await received()).toEqual({ staff: ['INCIDENT_REVIEW_ACCEPT'], hod: ['INCIDENT_REVIEW_ACCEPT'] });
 
     const toReporter = await Notification.findOne({ userId: ids.staff });

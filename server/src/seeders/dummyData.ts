@@ -10,10 +10,9 @@ import { Counter } from '../common/models/counter.model.js';
 
 const SEVERITY_LABELS: Record<number, string> = {
   1: 'Near Miss',
-  2: 'Minor Harm',
-  3: 'Moderate Harm',
-  4: 'Major Harm',
-  5: 'Critical / Sentinel Event',
+  2: 'No Harm',
+  3: 'Harm',
+  4: 'Sentinel Event',
 };
 
 // The HOD of the receiving department is assigned the incident and writes/owns its CAPA
@@ -301,9 +300,9 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'Suspected acute ischemic stroke. CT completed at 28 minutes but neurology consult and thrombolysis decision delayed. Door-to-needle 82 minutes against 60-minute target.',
     immediateAction: 'Stroke code re-activated, thrombolysis given after eligibility confirmation, family counselled.',
-    severity: 4,
+    severity: 3,
     status: 'UNDER_INVESTIGATION',
-    requiresRca: true,
+    requiresRca: false,
     investigation: {
       status: 'IN_PROGRESS',
       dueOffsetDays: 3,
@@ -343,7 +342,7 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'Left inguinal hernia listed. Site marked on right groin in holding area. Time-out in OT Suite 1 identified mismatch before incision. Procedure stopped and remarking completed.',
     immediateAction: 'Time-out halted case, site re-verified with consent and imaging, WHO checklist repeated.',
-    severity: 5,
+    severity: 4,
     status: 'UNDER_INVESTIGATION',
     requiresRca: true,
     requiresCapa: true,
@@ -407,7 +406,7 @@ const INCIDENTS: DummyIncidentDef[] = [
     immediateAction: 'Samples rejected, re-collection ordered, no results released.',
     severity: 3,
     status: 'CAPA_IN_PROGRESS',
-    requiresRca: true,
+    requiresRca: false,
     requiresCapa: true,
     investigation: {
       status: 'COMPLETED',
@@ -480,7 +479,7 @@ const INCIDENTS: DummyIncidentDef[] = [
     immediateAction: 'Contrast stopped, emergency trolley used, physician called, observation for 2 hours.',
     severity: 3,
     status: 'PENDING_QUALITY_REVIEW',
-    requiresRca: true,
+    requiresRca: false,
     requiresCapa: true,
     investigation: {
       status: 'COMPLETED',
@@ -614,9 +613,9 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'During second unit of PRBC, patient developed fever 38.9°C and chills. Transfusion stopped. Clerical check matched. Blood bank workup consistent with FNHTR. Recovered.',
     immediateAction: 'Transfusion stopped, vitals monitored, blood bank notified, remaining unit returned.',
-    severity: 4,
+    severity: 3,
     status: 'CLOSED',
-    requiresRca: true,
+    requiresRca: false,
     requiresCapa: true,
     closedDaysAgo: 3,
     closureRemarks: 'Workup complete. Pre-medication protocol updated for previously transfused patients. CAPA verified.',
@@ -684,9 +683,9 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'Ventilator on ICU Bed 01 produced repeated disconnect alarms despite intact circuit. Patient desaturated to 88%. Manual ventilation then backup ventilator used. Biomedical found faulty flow sensor.',
     immediateAction: 'Bagged patient, backup ventilator connected, biomedical called, incident escalated to HOD.',
-    severity: 4,
+    severity: 3,
     status: 'CAPA_IN_PROGRESS',
-    requiresRca: true,
+    requiresRca: false,
     requiresCapa: true,
     investigation: {
       status: 'IN_PROGRESS',
@@ -1032,9 +1031,9 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'Serum potassium 6.4 mmol/L auto-verified at 09:12. Critical call to ward only at 10:00 because the LIS critical-call queue was paused during analyser maintenance.',
     immediateAction: 'Ward notified, ECG done, treatment started, LIS queue restored.',
-    severity: 4,
+    severity: 3,
     status: 'UNDER_INVESTIGATION',
-    requiresRca: true,
+    requiresRca: false,
     requiresCapa: true,
     investigation: {
       status: 'COMPLETED',
@@ -1164,8 +1163,8 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'PRBC unit labelled for ICU Bed 02 was carried to Bed 01. Bedside two-person check identified mismatch before spike. No transfusion started. Treated as sentinel near-event.',
     immediateAction: 'Unit returned to blood bank, both patients re-identified, transfusion SOP huddle held.',
-    initialSeverity: 5,
-    severity: 5,
+    initialSeverity: 4,
+    severity: 4,
     status: 'CLOSED',
     requiresRca: true,
     requiresCapa: true,
@@ -1271,7 +1270,7 @@ const INCIDENTS: DummyIncidentDef[] = [
     initialSeverity: 3,
     severity: 3,
     status: 'CAPA_IN_PROGRESS',
-    requiresRca: true,
+    requiresRca: false,
     requiresCapa: true,
     investigation: {
       status: 'COMPLETED',
@@ -1484,6 +1483,8 @@ export async function seedDummyOperationalData(params: {
           locationId,
           categoryId,
           subcategoryCode: def.subcategory,
+          // Demo data predates the affectedPersonType field; derive a reasonable value from patientInvolved
+          affectedPersonType: def.patientInvolved ? 'INPATIENT' : 'EMPLOYEE',
           patientInvolved: def.patientInvolved,
           patient,
           title: def.title,
@@ -1493,7 +1494,8 @@ export async function seedDummyOperationalData(params: {
           severityLabel: SEVERITY_LABELS[def.severity] || 'Near Miss',
           status: def.status,
           requiresRca: Boolean(def.requiresRca),
-          requiresCapa: Boolean(def.requiresCapa),
+          // CAPA is required at every severity, regardless of def.requiresCapa (kept only for requiresRca)
+          requiresCapa: true,
           escalationLevel: def.severity >= 4 ? 1 : 0,
           escalatedAt: def.severity >= 4 ? reportedAt : undefined,
           ...(def.status === 'CLOSED' ? { closureRemarks: def.closureRemarks, closedAt, closedBy: qualityId } : {}),

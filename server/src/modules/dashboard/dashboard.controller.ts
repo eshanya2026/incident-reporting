@@ -1,9 +1,11 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
-import { Incident } from '../incidents/incident.model.js';
+import { Incident, INCIDENT_STATUSES, AFFECTED_PERSON_TYPES } from '../incidents/incident.model.js';
 import { Capa } from '../capa/capa.model.js';
 import { IncidentCategory } from '../categories/category.model.js';
 import { Department } from '../departments/department.model.js';
+import { Location } from '../locations/location.model.js';
+import { User } from '../users/user.model.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { AppError } from '../../common/errors/appError.js';
 import { hasPermission } from '../../common/helpers/incidentAccess.js';
@@ -29,6 +31,45 @@ const daysBetween = (from?: Date, to?: Date): number | null =>
 // Month buckets use the server's time zone (same as monthKey below), not MongoDB's default UTC
 const TIME_ZONE = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
 const monthKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+
+/**
+ * Turns a flat {location, series, count} list into one row per (top) location, with one column
+ * per (top) series and everything else folded into "Other" — the shape a stacked bar chart wants.
+ */
+function pivotByLocation(
+  rows: Array<{ locId: string; locName: string; seriesName: string; count: number }>,
+  topLocations = 8,
+  topSeries = 8
+): { data: Array<Record<string, number | string>>; seriesKeys: string[] } {
+  const locTotals = new Map<string, number>();
+  const seriesTotals = new Map<string, number>();
+  const locNameById = new Map<string, string>();
+  for (const row of rows) {
+    locTotals.set(row.locId, (locTotals.get(row.locId) ?? 0) + row.count);
+    seriesTotals.set(row.seriesName, (seriesTotals.get(row.seriesName) ?? 0) + row.count);
+    locNameById.set(row.locId, row.locName);
+  }
+  const topLocIds = [...locTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, topLocations).map(([id]) => id);
+  const topSeriesNames = [...seriesTotals.entries()].sort((a, b) => b[1] - a[1]).slice(0, topSeries).map(([name]) => name);
+
+  const data = topLocIds
+    .map((locId) => {
+      const point: Record<string, number | string> = { location: locNameById.get(locId) || 'Unknown' };
+      for (const s of topSeriesNames) point[s] = 0;
+      point.Other = 0;
+      for (const row of rows) {
+        if (row.locId !== locId) continue;
+        const key = topSeriesNames.includes(row.seriesName) ? row.seriesName : 'Other';
+        point[key] = (point[key] as number) + row.count;
+      }
+      return { locId, point };
+    })
+    .sort((a, b) => (locTotals.get(b.locId) ?? 0) - (locTotals.get(a.locId) ?? 0))
+    .map((x) => x.point);
+
+  const seriesKeys = [...topSeriesNames, ...(rows.some((r) => !topSeriesNames.includes(r.seriesName)) ? ['Other'] : [])];
+  return { data, seriesKeys };
+}
 
 export const getDashboardOverview = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
@@ -64,40 +105,121 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
 
     const startOfToday = new Date(now);
     startOfToday.setHours(0, 0, 0, 0);
-    const [capaCounts, overdueCapas] = await Promise.all([
+    const [capaCounts, overdueCapas, hodsPendingCapaAgg, topReportersAgg] = await Promise.all([
       Capa.aggregate([{ $match: capaScope }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
       Capa.countDocuments({ ...capaScope, status: 'OPEN', targetDate: { $lt: startOfToday } }),
+      // Every department's HODs own their own CAPAs, so this is meaningful hospital-wide or scoped
+      Capa.aggregate([
+        { $match: { ...capaScope, status: 'OPEN' } },
+        { $group: { _id: '$ownerUserId', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]),
+      Incident.aggregate([
+        { $match: { ...scope, status: { $ne: 'REJECTED' } } },
+        { $group: { _id: '$reportedBy', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]),
     ]);
     const capa = { OPEN: 0, DONE: 0, EFFECTIVE: 0, overdue: overdueCapas };
     capaCounts.forEach((c) => ((capa as any)[c._id] = c.count));
+
+    const [hodUsers, reporterUsers] = await Promise.all([
+      User.find({ _id: { $in: hodsPendingCapaAgg.map((h) => h._id) } }).select('name employeeId'),
+      User.find({ _id: { $in: topReportersAgg.map((r) => r._id) } })
+        .select('name employeeId designation departmentId')
+        .populate('departmentId', 'name'),
+    ]);
+    const hodsPendingCapa = hodsPendingCapaAgg.map((h) => {
+      const u = hodUsers.find((x) => x._id.toString() === String(h._id));
+      return { name: u?.name ?? 'Unknown', employeeId: u?.employeeId ?? '—', count: h.count };
+    });
+    const topReporters = topReportersAgg.map((r) => {
+      const u: any = reporterUsers.find((x) => x._id.toString() === String(r._id));
+      return {
+        name: u?.name ?? 'Unknown',
+        employeeId: u?.employeeId ?? '—',
+        department: u?.departmentId?.name ?? u?.designation ?? '—',
+        count: r.count,
+      };
+    });
 
     // ---------- In the period ----------
     const reportedFilter = { ...scope, ...inPeriod('reportedAt') };
     const closedFilter = { ...scope, status: 'CLOSED', ...inPeriod('closedAt') };
 
-    const [reported, rejected, closedIncidents, severityAgg, categoryAgg, departmentAgg, monthlyReported, monthlyClosed] =
-      await Promise.all([
-        Incident.countDocuments(reportedFilter),
-        Incident.countDocuments({ ...reportedFilter, status: 'REJECTED' }),
-        Incident.find(closedFilter).select('reportedAt closedAt assignments assignedAt closureSubmission qualityReviews hodReturns').lean(),
-        Incident.aggregate([{ $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } }, { $group: { _id: '$severity', count: { $sum: 1 } } }]),
-        Incident.aggregate([{ $match: reportedFilter }, { $group: { _id: '$categoryId', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
-        hospitalWide
-          ? Incident.aggregate([
-              { $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } },
-              { $group: { _id: '$departmentId', count: { $sum: 1 } } },
-              { $sort: { count: -1 } },
-            ])
-          : Promise.resolve([]),
-        Incident.aggregate([
-          { $match: reportedFilter },
-          { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$reportedAt', timezone: TIME_ZONE } }, count: { $sum: 1 } } },
-        ]),
-        Incident.aggregate([
-          { $match: closedFilter },
-          { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$closedAt', timezone: TIME_ZONE } }, count: { $sum: 1 } } },
-        ]),
-      ]);
+    const [
+      reported,
+      rejected,
+      closedIncidents,
+      severityAgg,
+      categoryAgg,
+      departmentAgg,
+      monthlyReported,
+      monthlyClosed,
+      statusAgg,
+      locationAgg,
+      affectedPersonAgg,
+      overdueOpenIncidents,
+      locationCategoryAgg,
+      locationSubcategoryAgg,
+    ] = await Promise.all([
+      Incident.countDocuments(reportedFilter),
+      Incident.countDocuments({ ...reportedFilter, status: 'REJECTED' }),
+      Incident.find(closedFilter).select('reportedAt closedAt assignments assignedAt closureSubmission qualityReviews hodReturns').lean(),
+      Incident.aggregate([{ $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } }, { $group: { _id: '$severity', count: { $sum: 1 } } }]),
+      Incident.aggregate([{ $match: reportedFilter }, { $group: { _id: '$categoryId', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
+      hospitalWide
+        ? Incident.aggregate([
+            { $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } },
+            { $group: { _id: '$departmentId', count: { $sum: 1 } } },
+            { $sort: { count: -1 } },
+          ])
+        : Promise.resolve([]),
+      Incident.aggregate([
+        { $match: reportedFilter },
+        { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$reportedAt', timezone: TIME_ZONE } }, count: { $sum: 1 } } },
+      ]),
+      Incident.aggregate([
+        { $match: closedFilter },
+        { $group: { _id: { $dateToString: { format: '%Y-%m', date: '$closedAt', timezone: TIME_ZONE } }, count: { $sum: 1 } } },
+      ]),
+      // Every status this period's reports are currently in, including terminal ones (closed/rejected)
+      Incident.aggregate([{ $match: reportedFilter }, { $group: { _id: '$status', count: { $sum: 1 } } }]),
+      // Excludes rejected (duplicate / not an incident) reports, same as severity and department above
+      Incident.aggregate([
+        { $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } },
+        { $group: { _id: '$locationId', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 10 },
+      ]),
+      Incident.aggregate([
+        { $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } },
+        { $group: { _id: '$affectedPersonType', count: { $sum: 1 } } },
+      ]),
+      // Reports still open (not closed or rejected) — reportedAt only, to bucket by age in JS below
+      Incident.find({ ...reportedFilter, status: { $nin: ['CLOSED', 'REJECTED'] } }).select('reportedAt').lean(),
+      Incident.aggregate([
+        { $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } },
+        { $group: { _id: { locationId: '$locationId', categoryId: '$categoryId' }, count: { $sum: 1 } } },
+      ]),
+      Incident.aggregate([
+        { $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } },
+        {
+          $group: {
+            _id: { locationId: '$locationId', categoryId: '$categoryId', subcategoryCode: '$subcategoryCode' },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    // Overdue buckets are cumulative: an incident open 40 days counts in all three
+    const overdueBuckets = [7, 15, 30].map((days) => ({
+      days,
+      count: (overdueOpenIncidents as any[]).filter((i) => (daysBetween(i.reportedAt, now) ?? 0) > days).length,
+    }));
 
     // Turnaround medians over incidents closed in the period
     const toAssign: number[] = [];
@@ -119,12 +241,61 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
       if ((i.qualityReviews || []).some((r: any) => r.decision === 'RETURNED')) sentBack += 1;
     }
 
-    // Names for categories and departments
-    const [categories, departments] = await Promise.all([
-      IncidentCategory.find({ _id: { $in: categoryAgg.map((c) => c._id) } }).select('name'),
+    // Names for categories, departments and locations — gathered from every aggregation that
+    // groups by one of these ids, since the cross-tabs below may reference ids outside the
+    // "top 10" lists (locationAgg, categoryAgg) computed above
+    const categoryIds = new Set([
+      ...categoryAgg.map((c) => String(c._id)),
+      ...locationCategoryAgg.map((r: any) => String(r._id.categoryId)),
+      ...locationSubcategoryAgg.map((r: any) => String(r._id.categoryId)),
+    ]);
+    const locationIds = new Set([
+      ...locationAgg.map((l: any) => String(l._id)),
+      ...locationCategoryAgg.map((r: any) => String(r._id.locationId)),
+      ...locationSubcategoryAgg.map((r: any) => String(r._id.locationId)),
+    ]);
+    const [categories, departments, locations] = await Promise.all([
+      IncidentCategory.find({ _id: { $in: [...categoryIds] } }).select('name domain subcategories'),
       Department.find({ _id: { $in: departmentAgg.map((d: any) => d._id).filter(Boolean) } }).select('name'),
+      Location.find({ _id: { $in: [...locationIds] } }).select('name'),
     ]);
     const nameOf = (list: any[], id: any) => list.find((x) => x._id.toString() === String(id))?.name ?? 'Unknown';
+    const subcategoryNameOf = (categoryId: any, code?: string) => {
+      if (!code) return 'Unspecified';
+      const cat = categories.find((c) => c._id.toString() === String(categoryId));
+      return cat?.subcategories?.find((sc: any) => sc.code === code)?.name ?? code;
+    };
+
+    // Categories don't carry their domain group on the incident itself, so roll the per-category
+    // counts above up to their domain (e.g. "Clinical Care", "Patient Safety") here
+    const domainTotals = new Map<string, number>();
+    for (const c of categoryAgg) {
+      const domain = categories.find((cat) => cat._id.toString() === String(c._id))?.domain?.trim() || 'Other';
+      domainTotals.set(domain, (domainTotals.get(domain) ?? 0) + c.count);
+    }
+    const domains = [...domainTotals.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+
+    const affectedPersons = AFFECTED_PERSON_TYPES.map((type) => ({
+      type,
+      count: (affectedPersonAgg as any[]).find((a) => a._id === type)?.count ?? 0,
+    }));
+
+    const locationByType = pivotByLocation(
+      (locationCategoryAgg as any[]).map((r) => ({
+        locId: r._id.locationId ? String(r._id.locationId) : 'none',
+        locName: r._id.locationId ? nameOf(locations, r._id.locationId) : 'Not recorded',
+        seriesName: nameOf(categories, r._id.categoryId),
+        count: r.count,
+      }))
+    );
+    const locationBySubtype = pivotByLocation(
+      (locationSubcategoryAgg as any[]).map((r) => ({
+        locId: r._id.locationId ? String(r._id.locationId) : 'none',
+        locName: r._id.locationId ? nameOf(locations, r._id.locationId) : 'Not recorded',
+        seriesName: subcategoryNameOf(r._id.categoryId, r._id.subcategoryCode),
+        count: r.count,
+      }))
+    );
 
     // Month buckets: every month in the period (or since the first report for "all")
     const reportedByMonth = new Map(monthlyReported.map((m) => [m._id, m.count]));
@@ -151,6 +322,8 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
           oldestAwaitingReview: (oldestReview as any)?.closureSubmission?.at ?? null,
           activeRework,
           capa,
+          hodsPendingCapa,
+          topReporters,
         },
         inPeriod: {
           reported,
@@ -168,12 +341,22 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
             rate: closedIncidents.length ? Math.round((sentBack / closedIncidents.length) * 100) : null,
             activeRework,
           },
-          severity: [1, 2, 3, 4, 5].map((s) => ({ severity: s, count: severityAgg.find((x) => x._id === s)?.count ?? 0 })),
+          severity: [1, 2, 3, 4].map((s) => ({ severity: s, count: severityAgg.find((x) => x._id === s)?.count ?? 0 })),
           categories: categoryAgg.map((c) => ({ name: nameOf(categories, c._id), count: c.count })),
+          domains,
           departments: (departmentAgg as any[]).map((d) => ({
             name: d._id ? nameOf(departments, d._id) : 'Not assigned yet',
             count: d.count,
           })),
+          locations: (locationAgg as any[]).map((l) => ({
+            name: l._id ? nameOf(locations, l._id) : 'Not recorded',
+            count: l.count,
+          })),
+          statuses: INCIDENT_STATUSES.map((s) => ({ status: s, count: statusAgg.find((x) => x._id === s)?.count ?? 0 })),
+          affectedPersons,
+          overdueBuckets,
+          locationByType,
+          locationBySubtype,
           monthly,
         },
       },

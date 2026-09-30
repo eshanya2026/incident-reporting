@@ -6,6 +6,15 @@ import { toast } from '../../../store/useToastStore';
 
 const fmt = (d?: string) => (d ? dayjs(d).format('DD MMM YYYY HH:mm') : '');
 
+// Matches server/src/modules/incidents/incident.model.ts AFFECTED_PERSON_TYPES
+const AFFECTED_PERSON_LABELS: Record<string, string> = {
+  INPATIENT: 'Inpatient',
+  OUTPATIENT: 'Outpatient',
+  VISITOR_FAMILY: 'Visitor/Family',
+  EMPLOYEE: 'Employee',
+  OTHER: 'Other',
+};
+
 /** What the reporter wrote. */
 export function ReportDetails({ incident }: { incident: any }) {
   const subcategory = incident.categoryId?.subcategories?.find((s: any) => s.code === incident.subcategoryCode)?.name;
@@ -17,6 +26,7 @@ export function ReportDetails({ incident }: { incident: any }) {
         <div className="md:col-span-2">
           <Field label="Description">{incident.description}</Field>
         </div>
+        <Field label="Witness(es)">{incident.witness}</Field>
         <Field label="Immediate action taken">{incident.immediateAction}</Field>
         <Field label="Category">
           <div>
@@ -48,12 +58,54 @@ export function ReportDetails({ incident }: { incident: any }) {
           </div>
         </Field>
         <Field label="When it occurred">{fmt(incident.incidentDateTime)}</Field>
-        {incident.patientInvolved && (
-          <div className="md:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-2 md:grid-cols-4 gap-3">
-            <Field label="Patient">{p?.name}</Field>
-            <Field label="UHID / IP No">{[p?.uhid, p?.ipNumber].filter(Boolean).join(' / ')}</Field>
-            <Field label="Age / Gender">{[p?.age, p?.gender].filter(Boolean).join(' / ')}</Field>
-            <Field label="Ward / Bed">{[p?.ward, p?.bed].filter(Boolean).join(' / ')}</Field>
+        {incident.affectedPersonType && (
+          <Field label="Affected Person">
+            <span className="px-2 py-0.5 rounded-full bg-slate-100 text-clinicalText-primary text-[11.5px] font-semibold">
+              {AFFECTED_PERSON_LABELS[incident.affectedPersonType] || incident.affectedPersonType}
+            </span>
+            {incident.affectedPersonType === 'OTHER' && incident.affectedOtherDetail && (
+              <span className="block text-[12.5px] text-clinicalText-muted mt-1 font-normal">
+                {incident.affectedOtherDetail}
+              </span>
+            )}
+          </Field>
+        )}
+        {incident.affectedPersonType === 'INPATIENT' && incident.patientInvolved && (
+          <div className="md:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="Name">{p?.name}</Field>
+            <Field label="IP number">{p?.ipNumber}</Field>
+            <Field label="Ward">{p?.ward}</Field>
+          </div>
+        )}
+        {incident.affectedPersonType === 'OUTPATIENT' && incident.patientInvolved && (
+          <div className="md:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="Name">{p?.name}</Field>
+            <Field label="Reg No">{p?.uhid}</Field>
+            <Field label="Consultant">{p?.consultant}</Field>
+          </div>
+        )}
+        {incident.affectedPersonType === 'VISITOR_FAMILY' && incident.affectedPersonDetail && (
+          <div className="md:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-2 gap-3">
+            <Field label="Name">{incident.affectedPersonDetail.name}</Field>
+            <Field label="Contact number">{incident.affectedPersonDetail.contactNumber}</Field>
+          </div>
+        )}
+        {incident.affectedPersonType === 'EMPLOYEE' && incident.affectedPersonDetail && (
+          <div className="md:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-2 md:grid-cols-3 gap-3">
+            <Field label="Name">{incident.affectedPersonDetail.name}</Field>
+            <Field label="Employee number">{incident.affectedPersonDetail.employeeId}</Field>
+            <Field label="Department">{incident.affectedPersonDetail.departmentId?.name}</Field>
+          </div>
+        )}
+        {incident.affectedPersonType === 'OTHER' && incident.affectedPersonDetail && (
+          <div className="md:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-2 gap-3">
+            <Field label="Name">{incident.affectedPersonDetail.name}</Field>
+            <Field label="Contact number">{incident.affectedPersonDetail.contactNumber}</Field>
+          </div>
+        )}
+        {incident.remarks && (
+          <div className="md:col-span-2">
+            <Field label="Remarks">{incident.remarks}</Field>
           </div>
         )}
       </div>
@@ -91,10 +143,16 @@ export function HistorySection({ incident }: { incident: any }) {
     if (r.response) entries.push({ at: r.respondedAt, title: 'Reporter answered', text: r.response, tone: 'border-amber-200' });
   }
   for (const a of incident.assignments || []) {
+    const additional = a.notifiedDepartmentIds?.length
+      ? ` + Involved: ${a.notifiedDepartmentIds.map((d: any) => d.name || d).join(', ')}`
+      : '';
+    const cc = a.intimatedUserIds?.length
+      ? ` · CC: ${a.intimatedUserIds.map((u: any) => `${u.name || u}${u.designation ? ` (${u.designation})` : ''}`).join(', ')}`
+      : '';
     entries.push({
       at: a.at,
       who: a.by?.name,
-      title: `Assigned to ${a.departmentId?.name || 'department'}${a.hodUserId?.name ? ` (${a.hodUserId.name})` : ''} · severity ${a.severity}`,
+      title: `Assigned to ${a.departmentId?.name || 'department'}${additional}${a.hodUserId?.name ? ` (${a.hodUserId.name})` : ''} · severity ${a.severity}${cc}`,
       text: a.remarks,
       tone: 'border-violet-300',
     });

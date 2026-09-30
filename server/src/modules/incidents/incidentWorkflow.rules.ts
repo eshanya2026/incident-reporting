@@ -17,6 +17,8 @@ export const WORKFLOW_ACTIONS = [
   'SUBMIT_CLOSURE',
   'REVIEW_RETURN',
   'REVIEW_ACCEPT',
+  'REQUEST_RCA',
+  'SUBMIT_RCA',
 ] as const;
 
 export type WorkflowAction = (typeof WORKFLOW_ACTIONS)[number];
@@ -25,7 +27,8 @@ export type WorkflowAction = (typeof WORKFLOW_ACTIONS)[number];
 export type WorkflowActor =
   | 'QUALITY' // any Quality user
   | 'REPORTER' // the Staff member who reported the incident
-  | 'RESPONSIBLE_HOD'; // HOD of the department the incident is currently assigned to
+  | 'RESPONSIBLE_HOD' // HOD of the department the incident is currently assigned to
+  | 'QUALITY_MEMBER'; // Quality Committee Member (or Quality user)
 
 export interface WorkflowContext {
   incident: {
@@ -46,12 +49,10 @@ export interface WorkflowContext {
   input: {
     /** Question, response, reason, summary or remarks, depending on the action. */
     text?: string;
-    /** ASSIGN: severity Quality confirms (1–5). */
+    /** ASSIGN: severity Quality confirms (1–4). */
     severity?: number;
     /** ASSIGN: whether the chosen department has an active HOD. */
     departmentHasActiveHod?: boolean;
-    /** REVIEW_*: Quality's verdict per CAPA. */
-    capaResults?: Array<{ capaId: string; effective: boolean }>;
   };
 }
 
@@ -76,23 +77,10 @@ const investigationComplete = (ctx: WorkflowContext): string | null => {
 
 const rcaIfRequired = (ctx: WorkflowContext): string | null =>
   ctx.incident.requiresRca && ctx.rca?.status !== 'COMPLETED'
-    ? 'A completed RCA is required for severity 4 and 5 incidents'
+    ? 'A completed RCA is required for Sentinel Event incidents'
     : null;
 
 const firstError = (...checks: Array<string | null>): string | null => checks.find((c) => c) ?? null;
-
-/** Applies Quality's per-CAPA results on top of current statuses. */
-const capaStatusesAfterReview = (ctx: WorkflowContext): CapaStatus[] =>
-  ctx.capas.map((c) => {
-    const result = ctx.input.capaResults?.find((r) => r.capaId === c.id);
-    if (!result) return c.status;
-    return result.effective ? 'EFFECTIVE' : 'OPEN';
-  });
-
-const reviewCoversEveryDoneCapa = (ctx: WorkflowContext): string | null => {
-  const missing = ctx.capas.filter((c) => c.status === 'DONE' && !ctx.input.capaResults?.some((r) => r.capaId === c.id));
-  return missing.length ? `A verdict is required for every completed CAPA (${missing.length} missing)` : null;
-};
 
 export const TRANSITIONS: Record<WorkflowAction, TransitionRule> = {
   REQUEST_INFO: {
@@ -123,7 +111,7 @@ export const TRANSITIONS: Record<WorkflowAction, TransitionRule> = {
     label: "Quality assigns the responsible department's HOD",
     gate: (ctx) => {
       const s = ctx.input.severity;
-      if (!s || !Number.isInteger(s) || s < 1 || s > 5) return 'Severity must be between 1 and 5';
+      if (!s || !Number.isInteger(s) || s < 1 || s > 4) return 'Severity must be between 1 and 4';
       if (!ctx.input.departmentHasActiveHod) return 'The selected department has no active HOD';
       return null;
     },
@@ -146,28 +134,21 @@ export const TRANSITIONS: Record<WorkflowAction, TransitionRule> = {
     to: 'CAPA_IN_PROGRESS',
     actor: 'RESPONSIBLE_HOD',
     label: 'HOD completes the investigation and moves on to CAPA',
-    gate: (ctx) =>
-      firstError(
-        ctx.incident.requiresCapa ? null : 'CAPA is not required at this severity; submit for closure instead',
-        investigationComplete(ctx),
-        rcaIfRequired(ctx)
-      ),
+    gate: (ctx) => firstError(investigationComplete(ctx), rcaIfRequired(ctx)),
   },
   SUBMIT_CLOSURE: {
-    from: ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'],
+    // Every incident writes a CAPA before closure, regardless of severity — so this is reached
+    // only via CAPA_IN_PROGRESS (COMPLETE_INVESTIGATION), never directly from UNDER_INVESTIGATION.
+    from: ['CAPA_IN_PROGRESS'],
     to: 'PENDING_QUALITY_REVIEW',
     actor: 'RESPONSIBLE_HOD',
     label: 'HOD submits the incident for Quality review',
     gate: (ctx) => {
-      const { requiresCapa } = ctx.incident;
-      if (requiresCapa && ctx.incident.status === 'UNDER_INVESTIGATION') {
-        return 'Complete the investigation and write the CAPA before submitting';
-      }
       const open = ctx.capas.filter((c) => c.status === 'OPEN').length;
       return firstError(
         investigationComplete(ctx),
         rcaIfRequired(ctx),
-        requiresCapa && ctx.capas.length === 0 ? 'At least one CAPA is required for severity 3 and above' : null,
+        ctx.capas.length === 0 ? 'At least one CAPA is required' : null,
         open ? `${open} CAPA action(s) are not marked done` : null,
         requireText('A closure summary')(ctx)
       );
@@ -178,20 +159,34 @@ export const TRANSITIONS: Record<WorkflowAction, TransitionRule> = {
     to: 'CAPA_IN_PROGRESS',
     actor: 'QUALITY',
     label: 'Quality sends the incident back to the HOD',
-    gate: (ctx) => firstError(reviewCoversEveryDoneCapa(ctx), requireText('Review remarks')(ctx)),
+    // Every completed CAPA goes back to OPEN for the HOD to redo (see incidentWorkflow.service.ts)
+    gate: requireText('Review remarks'),
   },
   REVIEW_ACCEPT: {
     from: ['PENDING_QUALITY_REVIEW'],
     to: 'CLOSED',
     actor: 'QUALITY',
     label: 'Quality accepts the CAPA and completes the incident',
+    // Every completed CAPA is auto-marked EFFECTIVE on close (see incidentWorkflow.service.ts)
+    gate: requireText('Closure remarks'),
+  },
+  REQUEST_RCA: {
+    from: ['PENDING_QUALITY_REVIEW'],
+    to: 'RCA_REQUESTED',
+    actor: 'QUALITY',
+    label: 'Quality requests RCA from Quality members',
+    gate: requireText('Reason for requesting RCA'),
+  },
+  SUBMIT_RCA: {
+    from: ['RCA_REQUESTED'],
+    to: 'PENDING_QUALITY_REVIEW',
+    actor: 'QUALITY_MEMBER',
+    label: 'Quality member reports RCA findings to Quality',
     gate: (ctx) => {
-      const notEffective = capaStatusesAfterReview(ctx).filter((s) => s !== 'EFFECTIVE').length;
-      return firstError(
-        reviewCoversEveryDoneCapa(ctx),
-        notEffective ? `${notEffective} CAPA action(s) are not accepted as effective; send the incident back instead` : null,
-        requireText('Closure remarks')(ctx)
-      );
+      if (ctx.rca?.status !== 'COMPLETED') {
+        return 'Root Cause Analysis must be completed before reporting to Quality';
+      }
+      return null;
     },
   },
 };
@@ -201,7 +196,7 @@ export type TransitionCheck =
   | { ok: false; code: 'INVALID_STATE' | 'NOT_ALLOWED' | 'GATE_FAILED'; message: string };
 
 export const isActor = (actor: WorkflowActor, ctx: WorkflowContext): boolean => {
-  const { roles, userId, departmentId } = ctx.actor;
+  const { roles = [], userId, departmentId } = ctx.actor || {};
   switch (actor) {
     case 'QUALITY':
       return roles.includes(ROLE_CODES.QUALITY);
@@ -211,6 +206,8 @@ export const isActor = (actor: WorkflowActor, ctx: WorkflowContext): boolean => 
       return (
         roles.includes(ROLE_CODES.HOD) && Boolean(departmentId) && departmentId === ctx.incident.departmentId
       );
+    case 'QUALITY_MEMBER':
+      return roles.includes(ROLE_CODES.QUALITY_MEMBER);
   }
 };
 
@@ -218,6 +215,7 @@ const ACTOR_NAMES: Record<WorkflowActor, string> = {
   QUALITY: 'Quality',
   REPORTER: 'the staff member who reported the incident',
   RESPONSIBLE_HOD: 'the HOD of the responsible department',
+  QUALITY_MEMBER: 'a Quality Member',
 };
 
 /** Checks, in order, the current status, the actor and the gate. */

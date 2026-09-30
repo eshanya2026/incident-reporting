@@ -6,7 +6,7 @@ export default function WorkflowStepper({ status }: { status: string }) {
   if (status === 'REJECTED') {
     return (
       <div className="flex items-center gap-2 text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3">
-        <XCircle className="w-4 h-4 text-slate-500" /> Rejected by Quality — no further action
+        <XCircle className="w-4 h-4 text-slate-500" /> Closed by Quality — no further action
       </div>
     );
   }

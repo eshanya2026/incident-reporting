@@ -1,9 +1,19 @@
 import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
-import { Incident, IIncident, INCIDENT_STATUSES, severityRequirements } from './incident.model.js';
+import {
+  AFFECTED_PERSON_TYPES,
+  Incident,
+  IIncident,
+  INCIDENT_PRIORITIES,
+  INCIDENT_STATUSES,
+  PATIENT_AFFECTED_TYPES,
+  severityRequirements,
+} from './incident.model.js';
 import { Department } from '../departments/department.model.js';
 import { Location } from '../locations/location.model.js';
+import { User } from '../users/user.model.js';
+import { Role } from '../roles/role.model.js';
 import { IncidentWorkflowService, WorkflowInput } from './incidentWorkflow.service.js';
 import { WorkflowAction } from './incidentWorkflow.rules.js';
 import { AppError } from '../../common/errors/appError.js';
@@ -15,7 +25,7 @@ import {
   incidentScopeFilter,
   loadIncidentForView,
 } from '../../common/helpers/incidentAccess.js';
-import { PERMISSIONS } from '../../common/enums/permissions.js';
+import { PERMISSIONS, ROLE_CODES } from '../../common/enums/permissions.js';
 import { JwtPayload } from '../auth/auth.utils.js';
 import { assertAttachmentsUsable, linkAttachments } from '../attachments/attachmentAccess.js';
 
@@ -32,7 +42,9 @@ const createIncidentSchema = z.object({
   zone: z.string().optional(),
   categoryId: objectId('Incident category'),
   subcategoryCode: z.string().optional(),
-  patientInvolved: z.boolean().default(false),
+  // Who the incident affected; patientInvolved/patient are derived from this (see below)
+  affectedPersonType: z.enum(AFFECTED_PERSON_TYPES, { errorMap: () => ({ message: 'Select the affected person' }) }),
+  affectedOtherDetail: z.string().trim().max(200).optional(),
   patient: z
     .object({
       uhid: z.string().optional(),
@@ -46,10 +58,23 @@ const createIncidentSchema = z.object({
       admissionDate: z.string().or(z.date()).optional(),
     })
     .optional(),
+  // VISITOR_FAMILY / EMPLOYEE details (patients use `patient` above instead)
+  affectedPersonDetail: z
+    .object({
+      name: z.string().trim().optional(),
+      contactNumber: z.string().trim().optional(),
+      relationship: z.string().trim().optional(),
+      employeeId: z.string().trim().optional(),
+      designation: z.string().trim().optional(),
+      departmentId: objectId('Department').optional(),
+    })
+    .optional(),
   title: z.string().trim().min(3, 'Incident title is required'),
   description: z.string().trim().min(5, 'Incident description is required'),
+  witness: z.string().trim().max(500).optional(),
   immediateAction: z.string().optional(),
-  severity: z.number().int().min(1).max(5).default(1),
+  remarks: z.string().trim().max(2000).optional(),
+  severity: z.number().int().min(1).max(4).default(1),
   attachments: z.array(z.string()).optional(),
 });
 
@@ -59,13 +84,18 @@ const populateDetail = (query: any) =>
   query
     .populate('reportedBy', 'name email designation employeeId phone')
     .populate('departmentId', 'name code hodUserId')
+    .populate('notifiedDepartmentIds', 'name code hodUserId')
+    .populate('intimatedUserIds', 'name email designation phone departmentId')
     .populate('reportingDepartmentId', 'name code')
     .populate('occurredInDepartmentId', 'name code')
+    .populate('affectedPersonDetail.departmentId', 'name code')
     .populate('locationId', 'name code type floor zone')
     .populate('categoryId', 'name code subcategories')
     .populate('assignedHod', 'name email designation')
     .populate('assignedBy', 'name designation')
     .populate('assignments.departmentId', 'name code')
+    .populate('assignments.notifiedDepartmentIds', 'name code')
+    .populate('assignments.intimatedUserIds', 'name designation')
     .populate('assignments.hodUserId', 'name')
     .populate('assignments.by', 'name')
     .populate('infoRequests.askedBy', 'name')
@@ -74,16 +104,22 @@ const populateDetail = (query: any) =>
     .populate('qualityReviews.by', 'name')
     .populate('rejection.by', 'name')
     .populate('closedBy', 'name email designation')
+    .populate('assignedQualityMemberId', 'name email designation employeeId')
+    .populate('rcaRequestedBy', 'name designation')
+    .populate('rcaSubmittedBy', 'name designation')
     .populate('attachments', 'originalName mimeType size createdAt');
 
 const populateList = (query: any) =>
   query
     .populate('reportedBy', 'name designation employeeId')
     .populate('departmentId', 'name code')
+    .populate('notifiedDepartmentIds', 'name code')
+    .populate('intimatedUserIds', 'name designation')
     .populate('occurredInDepartmentId', 'name code')
     .populate('locationId', 'name code floor zone')
     .populate('categoryId', 'name code')
-    .populate('assignedHod', 'name email');
+    .populate('assignedHod', 'name email')
+    .populate('assignedQualityMemberId', 'name email designation');
 
 /** Staff only see the parts of an incident listed here (decision D6). */
 const isStaffView = (user: JwtPayload | undefined) =>
@@ -105,11 +141,16 @@ const toStaffView = (incident: any) => ({
     'zone',
     'categoryId',
     'subcategoryCode',
+    'affectedPersonType',
+    'affectedOtherDetail',
     'patientInvolved',
     'patient',
+    'affectedPersonDetail',
     'title',
     'description',
+    'witness',
     'immediateAction',
+    'remarks',
     'initialSeverity',
     'status',
     'attachments',
@@ -119,10 +160,12 @@ const toStaffView = (incident: any) => ({
   ]),
   // Current owner: the responsible department's name only
   departmentId: incident.departmentId ? pick(incident.departmentId, ['_id', 'name', 'code']) : undefined,
+  notifiedDepartmentIds: (incident.notifiedDepartmentIds || []).map((d: any) => pick(d, ['_id', 'name', 'code'])),
+  intimatedUserIds: (incident.intimatedUserIds || []).map((u: any) => pick(u, ['_id', 'name', 'designation'])),
   infoRequests: (incident.infoRequests || []).map((r: any) => pick(r, ['_id', 'question', 'askedAt', 'response', 'respondedAt'])),
   rejection: incident.rejection ? pick(incident.rejection, ['reason', 'at']) : undefined,
   // Final closure summary (Quality's closing remarks)
-  ...(incident.status === 'CLOSED' ? pick(incident, ['closureRemarks', 'closedAt']) : {}),
+  ...(incident.status === 'CLOSED' ? pick(incident, ['closureRemarks', 'closedAt', 'qualityScore']) : {}),
 });
 
 /** Full incident as returned by the API, with the actions this user can take now. */
@@ -179,11 +222,18 @@ export const createIncident = async (req: Request, res: Response, next: NextFunc
       zone,
       categoryId: data.categoryId,
       subcategoryCode: data.subcategoryCode,
-      patientInvolved: data.patientInvolved,
-      patient: data.patientInvolved ? data.patient : undefined,
+      affectedPersonType: data.affectedPersonType,
+      affectedOtherDetail: data.affectedPersonType === 'OTHER' ? data.affectedOtherDetail : undefined,
+      patientInvolved: PATIENT_AFFECTED_TYPES.includes(data.affectedPersonType),
+      patient: PATIENT_AFFECTED_TYPES.includes(data.affectedPersonType) ? data.patient : undefined,
+      affectedPersonDetail: ['VISITOR_FAMILY', 'EMPLOYEE', 'OTHER'].includes(data.affectedPersonType)
+        ? data.affectedPersonDetail
+        : undefined,
       title: data.title,
       description: data.description,
+      witness: data.witness || undefined,
       immediateAction: data.immediateAction,
+      remarks: data.remarks || undefined,
       initialSeverity: severity,
       severity,
       ...severityRequirements(severity),
@@ -294,13 +344,29 @@ export const getTriageQueue = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-/** Quality's review queue: incidents the HOD submitted for closure, oldest first. */
+/** Quality's review queue: incidents the HOD submitted for closure or awaiting RCA. */
 export const getReviewQueue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const incidents = await populateList(Incident.find({ status: 'PENDING_QUALITY_REVIEW' }))
-      .sort({ 'closureSubmission.at': 1 })
+    const status = req.query.status === 'RCA_REQUESTED' ? 'RCA_REQUESTED' : 'PENDING_QUALITY_REVIEW';
+    const sortField = status === 'RCA_REQUESTED' ? { rcaRequestedAt: 1, updatedAt: 1 } : { 'closureSubmission.at': 1 };
+    const incidents = await populateList(Incident.find({ status }))
+      .sort(sortField as any)
       .limit(QUEUE_LIMIT);
     sendSuccess(res, incidents, 'Review queue retrieved', 200, { total: incidents.length });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** Active Quality Committee members eligible to be assigned for RCA. */
+export const getQualityMembers = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const roles = await Role.find({ code: { $in: [ROLE_CODES.QUALITY_MEMBER, ROLE_CODES.QUALITY] } }).select('_id');
+    const roleIds = roles.map((r) => r._id);
+    const members = await User.find({ roles: { $in: roleIds }, status: 'ACTIVE' })
+      .select('name email designation employeeId')
+      .sort({ name: 1 });
+    sendSuccess(res, members, 'Quality members retrieved');
   } catch (error) {
     next(error);
   }
@@ -312,7 +378,9 @@ export const getMyDepartmentIncidents = async (req: Request, res: Response, next
     if (!req.user?.departmentId) {
       throw AppError.badRequest('Your account has no department');
     }
-    const query: any = { departmentId: req.user.departmentId };
+    const query: any = {
+      $or: [{ departmentId: req.user.departmentId }, { notifiedDepartmentIds: req.user.departmentId }],
+    };
     const status = req.query.status as string;
     if (status) {
       if (!(INCIDENT_STATUSES as readonly string[]).includes(status)) {
@@ -378,10 +446,23 @@ export const rejectIncident = workflowEndpoint(
 export const assignIncident = workflowEndpoint(
   z.object({
     departmentId: objectId('Responsible department'),
-    severity: z.number().int().min(1).max(5),
+    notifiedDepartmentIds: z.array(objectId('Involved department')).optional().default([]),
+    intimatedUserIds: z.array(objectId('Intimated user')).optional().default([]),
+    severity: z.number().int().min(1).max(4),
+    priority: z.enum(INCIDENT_PRIORITIES).optional(),
     remarks: z.string().trim().max(5000).optional(),
   }),
-  (b) => ({ action: 'ASSIGN', input: { departmentId: b.departmentId, severity: b.severity, text: b.remarks } }),
+  (b) => ({
+    action: 'ASSIGN',
+    input: {
+      departmentId: b.departmentId,
+      notifiedDepartmentIds: b.notifiedDepartmentIds,
+      intimatedUserIds: b.intimatedUserIds,
+      severity: b.severity,
+      priority: b.priority,
+      text: b.remarks,
+    },
+  }),
   'Incident assigned to the department HOD'
 );
 
@@ -399,24 +480,46 @@ export const submitForClosure = workflowEndpoint(
   'Incident submitted for Quality review'
 );
 
-/** Quality reviews: ACCEPT → CLOSED, RETURN → CAPA_IN_PROGRESS. A verdict is required per completed CAPA. */
+/** Quality reviews: ACCEPT → CLOSED, RETURN → CAPA_IN_PROGRESS, REQUEST_RCA → RCA_REQUESTED. */
 export const reviewIncident = workflowEndpoint(
   z.object({
-    decision: z.enum(['ACCEPT', 'RETURN']),
+    decision: z.enum(['ACCEPT', 'RETURN', 'REQUEST_RCA']),
     remarks: requiredText('Review remarks'),
-    capaResults: z
-      .array(
-        z.object({
-          capaId: objectId('CAPA'),
-          effective: z.boolean(),
-          remarks: z.string().trim().max(5000).optional(),
-        })
-      )
-      .default([]),
+    qualityMemberId: z.string().optional(),
   }),
   (b) => ({
-    action: b.decision === 'ACCEPT' ? 'REVIEW_ACCEPT' : 'REVIEW_RETURN',
-    input: { text: b.remarks, capaResults: b.capaResults },
+    action:
+      b.decision === 'ACCEPT'
+        ? 'REVIEW_ACCEPT'
+        : b.decision === 'REQUEST_RCA'
+        ? 'REQUEST_RCA'
+        : 'REVIEW_RETURN',
+    input: { text: b.remarks, qualityMemberId: b.qualityMemberId },
   }),
   'Review recorded'
+);
+
+/** Quality asks for RCA and assigns to Quality member: PENDING_QUALITY_REVIEW → RCA_REQUESTED */
+export const requestRca = workflowEndpoint(
+  z.object({
+    remarks: requiredText('Reason for requesting RCA'),
+    qualityMemberId: z.string().optional(),
+  }),
+  (b) => ({
+    action: 'REQUEST_RCA',
+    input: { text: b.remarks, qualityMemberId: b.qualityMemberId },
+  }),
+  'RCA requested from Quality member'
+);
+
+/** Quality member completes RCA and reports back: RCA_REQUESTED → PENDING_QUALITY_REVIEW */
+export const submitRca = workflowEndpoint(
+  z.object({
+    remarks: z.string().trim().max(5000).optional(),
+  }),
+  (b) => ({
+    action: 'SUBMIT_RCA',
+    input: { text: b.remarks },
+  }),
+  'RCA findings reported to Quality'
 );

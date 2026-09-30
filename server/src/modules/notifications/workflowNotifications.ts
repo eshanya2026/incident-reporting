@@ -2,16 +2,17 @@ import mongoose from 'mongoose';
 import { IIncident, SEVERITY_LABELS } from '../incidents/incident.model.js';
 import type { WorkflowAction } from '../incidents/incidentWorkflow.rules.js';
 import type { JwtPayload } from '../auth/auth.utils.js';
-import { notifyUsers, qualityUserIds } from './notification.service.js';
+import { notifyUsers, qualityUserIds, qualityMemberUserIds } from './notification.service.js';
 import { sendWhatsapp, sendWhatsappTemplate, whatsappEnabled } from './whatsapp.js';
 import { User } from '../users/user.model.js';
+import { Department } from '../departments/department.model.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 
 // Who is told about each workflow step (docs/FLOW_REWORK_PLAN.md, Phase 4).
 // The person who performed the step is never notified.
 
-type Recipient = 'QUALITY' | 'REPORTER' | 'HOD';
+type Recipient = 'QUALITY' | 'REPORTER' | 'HOD' | 'QUALITY_MEMBER';
 type NotificationEvent = WorkflowAction | 'SUBMITTED';
 
 interface Message {
@@ -37,6 +38,20 @@ const MESSAGES: Partial<Record<NotificationEvent, Message[]>> = {
   ],
   RETURN_TO_QUALITY: [{ to: 'QUALITY', title: 'Incident returned by HOD', message: (i, t) => `${ref(i)} needs to be reassigned${withText(t)}` }],
   SUBMIT_CLOSURE: [{ to: 'QUALITY', title: 'Incident ready for review', message: (i) => `The HOD submitted ${ref(i)} for your review.` }],
+  REQUEST_RCA: [
+    {
+      to: 'QUALITY_MEMBER',
+      title: 'RCA requested by Quality',
+      message: (i, t) => `Quality requested Root Cause Analysis on ${ref(i)}${withText(t)}`,
+    },
+  ],
+  SUBMIT_RCA: [
+    {
+      to: 'QUALITY',
+      title: 'RCA findings submitted',
+      message: (i, t) => `Quality member submitted RCA findings for ${ref(i)}${withText(t)}`,
+    },
+  ],
   REVIEW_RETURN: [{ to: 'HOD', title: 'Quality sent an incident back', message: (i, t) => `${ref(i)} needs more work${withText(t)}` }],
   REVIEW_ACCEPT: [
     { to: 'REPORTER', title: 'Your report has been closed', message: (i, t) => `${ref(i)} was reviewed and closed${withText(t)}` },
@@ -62,7 +77,15 @@ export const notifyWorkflowEvent = async (
   try {
     for (const m of messages) {
       const userIds =
-        m.to === 'QUALITY' ? await qualityUserIds() : m.to === 'REPORTER' ? [incident.reportedBy] : [hodOf(incident)].filter(Boolean);
+        m.to === 'QUALITY'
+          ? await qualityUserIds()
+          : m.to === 'QUALITY_MEMBER'
+          ? incident.assignedQualityMemberId
+            ? [incident.assignedQualityMemberId]
+            : await qualityMemberUserIds()
+          : m.to === 'REPORTER'
+          ? [incident.reportedBy]
+          : [hodOf(incident)].filter(Boolean);
 
       await notifyUsers({
         userIds: userIds as mongoose.Types.ObjectId[],
@@ -76,6 +99,38 @@ export const notifyWorkflowEvent = async (
 
       if (m.to === 'HOD' && event === 'ASSIGN') {
         await notifyHodByWhatsapp(incident, m, text);
+
+        // Also notify HODs of additional involved departments for awareness
+        if (incident.notifiedDepartmentIds && incident.notifiedDepartmentIds.length > 0) {
+          const involvedDepts = await Department.find({ _id: { $in: incident.notifiedDepartmentIds } }).select('name hodUserId');
+          const involvedHodIds = involvedDepts.map((d) => d.hodUserId).filter(Boolean) as mongoose.Types.ObjectId[];
+          if (involvedHodIds.length > 0) {
+            const leadDept = incident.departmentId ? await Department.findById(incident.departmentId).select('name') : null;
+            await notifyUsers({
+              userIds: involvedHodIds,
+              exceptUserId: actor.userId,
+              type: 'INCIDENT_ASSIGN',
+              title: 'Your department involved in safety report',
+              message: `${ref(incident)} — marked as involved department${leadDept ? ` (Lead: ${leadDept.name})` : ''}.`,
+              entityType: 'INCIDENT',
+              entityId: incident._id as mongoose.Types.ObjectId,
+            });
+          }
+        }
+
+        // Also notify personnel who were intimated (CC'd) on this incident
+        if (incident.intimatedUserIds && incident.intimatedUserIds.length > 0) {
+          const leadDept = incident.departmentId ? await Department.findById(incident.departmentId).select('name') : null;
+          await notifyUsers({
+            userIds: incident.intimatedUserIds,
+            exceptUserId: actor.userId,
+            type: 'INCIDENT_ASSIGN',
+            title: 'Intimated on safety report (CC)',
+            message: `${ref(incident)} — you have been intimated (CC)${leadDept ? ` (Lead: ${leadDept.name})` : ''}.`,
+            entityType: 'INCIDENT',
+            entityId: incident._id as mongoose.Types.ObjectId,
+          });
+        }
       }
     }
   } catch (error) {

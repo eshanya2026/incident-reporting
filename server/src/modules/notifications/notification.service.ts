@@ -31,6 +31,7 @@ export const activeUserIdsWithRole = async (roleCode: string): Promise<mongoose.
 };
 
 export const qualityUserIds = () => activeUserIdsWithRole(ROLE_CODES.QUALITY);
+export const qualityMemberUserIds = () => activeUserIdsWithRole(ROLE_CODES.QUALITY_MEMBER);
 
 /**
  * Creates an in-app notification for each (active, distinct) recipient and, when enabled,

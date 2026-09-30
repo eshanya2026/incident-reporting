@@ -1,11 +1,12 @@
 import { Request } from 'express';
 import { AppError } from '../errors/appError.js';
-import { PERMISSIONS } from '../enums/permissions.js';
+import { PERMISSIONS, ROLE_CODES } from '../enums/permissions.js';
 import { Incident, IIncident } from '../../modules/incidents/incident.model.js';
 import { JwtPayload } from '../../modules/auth/auth.utils.js';
 
 // Access rules for incidents:
 // - Quality and Admin (incident.read_all) see every incident.
+// - Quality Members see all incidents and conduct RCA when requested.
 // - HODs (incident.read_assigned) see incidents currently or previously assigned to their department,
 //   and act only on incidents currently assigned to it.
 // - Staff (incident.read_own) see the incidents they reported.
@@ -27,18 +28,43 @@ export const isResponsibleDepartment = (user: JwtPayload | undefined, incident: 
 /** The incident is, or was at some point, assigned to the user's department. */
 const wasAssignedToDepartment = (user: JwtPayload | undefined, incident: IIncident): boolean =>
   isResponsibleDepartment(user, incident) ||
-  (incident.assignments || []).some((a) => idOf(a.departmentId) === user?.departmentId);
+  (incident.notifiedDepartmentIds || []).some((d: any) => idOf(d) === user?.departmentId) ||
+  (incident.assignments || []).some(
+    (a) =>
+      idOf(a.departmentId) === user?.departmentId ||
+      (a.notifiedDepartmentIds || []).some((d: any) => idOf(d) === user?.departmentId)
+  );
+
+/** The user was directly intimated (CC'd) on the incident. */
+const isIntimatedUser = (user: JwtPayload | undefined, incident: IIncident): boolean =>
+  Boolean(user?.userId) &&
+  ((incident.intimatedUserIds || []).some((u: any) => idOf(u) === user?.userId) ||
+    (incident.assignments || []).some((a) => (a.intimatedUserIds || []).some((u: any) => idOf(u) === user?.userId)));
 
 export const canViewIncident = (user: JwtPayload | undefined, incident: IIncident): boolean => {
   if (!user) return false;
   if (hasPermission(user, PERMISSIONS.INCIDENT_READ_ALL)) return true;
+  if (incident.assignedQualityMemberId && idOf(incident.assignedQualityMemberId) === user.userId) return true;
   if (hasPermission(user, PERMISSIONS.INCIDENT_READ_ASSIGNED) && wasAssignedToDepartment(user, incident)) return true;
+  if (isIntimatedUser(user, incident)) return true;
   return hasPermission(user, PERMISSIONS.INCIDENT_READ_OWN) && idOf(incident.reportedBy) === user.userId;
 };
 
-/** HOD work on an incident (investigation, RCA, CAPA) is limited to the responsible department's HOD. */
-export const canWorkOnIncident = (user: JwtPayload | undefined, incident: IIncident): boolean =>
-  hasPermission(user, PERMISSIONS.INCIDENT_READ_ASSIGNED) && isResponsibleDepartment(user, incident);
+/** Work on an incident:
+ * - When RCA is requested by Quality: Quality Members and Quality officers can conduct/edit the RCA.
+ * - Otherwise (investigation, CAPA): limited to the responsible department's HOD.
+ */
+export const canWorkOnIncident = (user: JwtPayload | undefined, incident: IIncident): boolean => {
+  if (!user) return false;
+  if (incident.status === 'RCA_REQUESTED') {
+    return Boolean(
+      user.roles?.includes(ROLE_CODES.QUALITY_MEMBER) ||
+      user.roles?.includes(ROLE_CODES.QUALITY) ||
+      hasPermission(user, PERMISSIONS.RCA_WRITE)
+    );
+  }
+  return hasPermission(user, PERMISSIONS.INCIDENT_READ_ASSIGNED) && isResponsibleDepartment(user, incident);
+};
 
 /** Mongo filter limiting incident lists/aggregations to what the user may see. */
 export const incidentScopeFilter = (user: JwtPayload | undefined): Record<string, any> => {
@@ -46,10 +72,18 @@ export const incidentScopeFilter = (user: JwtPayload | undefined): Record<string
   if (hasPermission(user, PERMISSIONS.INCIDENT_READ_ALL)) return {};
   const or: Record<string, any>[] = [];
   if (hasPermission(user, PERMISSIONS.INCIDENT_READ_ASSIGNED) && user.departmentId) {
-    or.push({ departmentId: user.departmentId }, { 'assignments.departmentId': user.departmentId });
+    or.push(
+      { departmentId: user.departmentId },
+      { notifiedDepartmentIds: user.departmentId },
+      { 'assignments.departmentId': user.departmentId },
+      { 'assignments.notifiedDepartmentIds': user.departmentId }
+    );
   }
   if (hasPermission(user, PERMISSIONS.INCIDENT_READ_OWN)) {
     or.push({ reportedBy: user.userId });
+  }
+  if (user.userId) {
+    or.push({ intimatedUserIds: user.userId }, { 'assignments.intimatedUserIds': user.userId });
   }
   return or.length ? { $or: or } : { _id: null };
 };
@@ -73,6 +107,9 @@ export const loadIncidentForView = async (req: Request, incidentId: string | und
 export const loadIncidentForWork = async (req: Request, incidentId: string | undefined): Promise<IIncident> => {
   const incident = await loadIncident(incidentId);
   if (!canWorkOnIncident(req.user, incident)) {
+    if (incident.status === 'RCA_REQUESTED') {
+      throw AppError.forbidden('Only Quality Members or Quality officers can work on the RCA for this incident');
+    }
     throw AppError.forbidden('Only the HOD of the department this incident is assigned to can do this');
   }
   return incident;

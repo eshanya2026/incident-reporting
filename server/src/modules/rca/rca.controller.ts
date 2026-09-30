@@ -6,8 +6,8 @@ import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { loadIncidentForView, loadIncidentForWork } from '../../common/helpers/incidentAccess.js';
 
-// The HOD writes the RCA while working on the incident; Quality reviews it at the final review
-const EDITABLE_STATUSES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'];
+// The HOD writes the RCA while working on the incident; Quality Members write/edit RCA when RCA is requested
+const EDITABLE_STATUSES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS', 'RCA_REQUESTED'];
 
 const saveRcaSchema = z.object({
   method: z.enum(['FIVE_WHY', 'FISHBONE', 'BOTH']).default('FIVE_WHY'),
