@@ -261,6 +261,17 @@ docker compose exec backend node dist/seeders/index.js
 
 **HTTPS.** For anything beyond a trusted internal network, put TLS in front (a reverse proxy or load balancer terminating HTTPS in front of port 1006), then set `APP_URL` to the `https://` address and rebuild.
 
+**Putting a domain in front of it (e.g. `inc.mapims.edu.in`).** This server already runs its own nginx on ports 80/443 for other sites — that's separate from this project's own nginx container (which stays on 1006/2006/3006) and isn't touched by `docker compose`. Once the domain's DNS A record points at the server:
+
+```bash
+sudo cp nginx/inc.mapims.edu.in.conf /etc/nginx/sites-available/
+sudo ln -s /etc/nginx/sites-available/inc.mapims.edu.in.conf /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+sudo certbot --nginx -d inc.mapims.edu.in   # gets a certificate and upgrades the vhost to HTTPS
+```
+
+Then update `APP_URL` (and `API_URL`) in the server's `.env` to `https://inc.mapims.edu.in` and redeploy (`docker compose up -d --build`). Because CORS only accepts `APP_URL`, logging in via the old `http://<server>:1006` link stops working once this is done — that's expected; share the domain link instead.
+
 ---
 
 ## 💻 Local Development Setup
