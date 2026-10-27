@@ -8,6 +8,7 @@ import { User } from '../users/user.model.js';
 import { Department } from '../departments/department.model.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { ROLE_CODES } from '../../common/enums/permissions.js';
 
 // Who is told about each workflow step (docs/FLOW_REWORK_PLAN.md, Phase 4).
 // The person who performed the step is never notified.
@@ -130,6 +131,7 @@ export const notifyWorkflowEvent = async (
             entityType: 'INCIDENT',
             entityId: incident._id as mongoose.Types.ObjectId,
           });
+          await notifyIntimationMembersByWhatsapp(incident, actor.userId, leadDept?.name);
         }
       }
     }
@@ -161,4 +163,36 @@ const notifyHodByWhatsapp = async (incident: IIncident, m: Message, text?: strin
   }
 
   await sendWhatsapp(hod.whatsappNumber, `*${m.title}*\n${m.message(incident, text)}\n\nOpen: ${link}`);
+};
+
+/**
+ * WhatsApps every intimated user who holds the Intimation Member role — that role exists purely
+ * to be notified this way, unlike other intimated users (e.g. a HOD or Quality officer CC'd for
+ * awareness), who already get an in-app notification and don't need a WhatsApp as well.
+ */
+const notifyIntimationMembersByWhatsapp = async (
+  incident: IIncident,
+  actorUserId: string,
+  leadDeptName?: string
+): Promise<void> => {
+  if (!whatsappEnabled()) return;
+
+  const members = await User.find({
+    _id: { $in: incident.intimatedUserIds, $ne: actorUserId },
+    status: 'ACTIVE',
+    whatsappNumber: { $exists: true, $ne: '' },
+  })
+    .populate('roles', 'code')
+    .select('name whatsappNumber roles');
+
+  const link = `${env.APP_URL}/incidents/${incident._id}`;
+  for (const member of members) {
+    const roles = (member.roles as unknown as Array<{ code: string }>) || [];
+    if (!roles.some((r) => r.code === ROLE_CODES.INTIMATION_MEMBER)) continue;
+
+    const message =
+      `*You have been intimated on a safety report*\n${ref(incident)}` +
+      `${leadDeptName ? ` — Lead department: ${leadDeptName}` : ''}\n\nOpen: ${link}`;
+    await sendWhatsapp(member.whatsappNumber!, message);
+  }
 };

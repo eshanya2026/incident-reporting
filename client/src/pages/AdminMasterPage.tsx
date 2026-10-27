@@ -241,6 +241,9 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
   const selectedRoleCode = roleById(roleId)?.code;
   const needsDepartment = selectedRoleCode === 'STAFF' || selectedRoleCode === 'HOD';
   const isHodRole = selectedRoleCode === 'HOD';
+  const isIntimationRole = selectedRoleCode === 'INTIMATION_MEMBER';
+  // WhatsApped when an incident is assigned (HOD) or when Quality intimates them (Intimation Member)
+  const needsWhatsapp = isHodRole || isIntimationRole;
   const selectedDept = departments.find((d: any) => d._id === deptId);
   const currentDeptHod = selectedDept?.hodUserId;
   const hodConflict =
@@ -311,7 +314,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
         name,
         email,
         designation,
-        whatsappNumber: isHodRole ? whatsappNumber : '',
+        whatsappNumber: needsWhatsapp ? whatsappNumber : '',
         departmentId: deptId || null,
         roles: [roleId],
         replaceDepartmentHod: replaceHod,
@@ -998,10 +1001,15 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   <input type="text" required={isHodRole} value={designation} onChange={(e) => setDesignation(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
                 </div>
               )}
-              {isHodRole && (
+              {needsWhatsapp && (
                 <div>
                   <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">WhatsApp Number *</label>
                   <input type="tel" required value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="e.g. +91 98765 43210" className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
+                  <p className="mt-1 text-[11.5px] text-clinicalText-muted">
+                    {isIntimationRole
+                      ? 'Sent a WhatsApp message whenever Quality intimates them on an incident.'
+                      : 'Sent a WhatsApp message whenever an incident is assigned to their department.'}
+                  </p>
                 </div>
               )}
               {editingUser && (
