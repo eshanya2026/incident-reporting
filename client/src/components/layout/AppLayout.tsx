@@ -19,6 +19,7 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../lib/api';
 import { hasAnyPermission, hasPermission } from '../../lib/rbac';
+import { useSlidingIndicator } from '../../lib/useSlidingIndicator';
 import StatlogLogo from '../ui/StatlogLogo';
 
 dayjs.extend(relativeTime);
@@ -146,11 +147,14 @@ export default function AppLayout() {
     if (item.anyPermissions) return hasAnyPermission(user, item.anyPermissions);
     return true;
   });
+  // The active pill glides to the current tab instead of snapping (no match on a sub-route, e.g.
+  // /incidents/:id, just collapses the indicator to width 0 — nothing to glide to).
+  const { indicatorStyle, registerTab } = useSlidingIndicator(location.pathname);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-[#172033]">
       {/* Top Header Bar */}
-      <header className="bg-white/95 backdrop-blur border-b border-[#E9DFE0] shadow-[0_4px_18px_-8px_rgba(104,21,26,0.18)] sticky top-0 z-40">
+      <header className="bg-white/95 backdrop-blur border-b border-[#E3D5BE] shadow-[0_4px_18px_-8px_rgba(61,15,22,0.18)] sticky top-0 z-40">
         {/* Brand accent strip */}
         <div className="h-[3px] brand-gradient"></div>
 
@@ -162,7 +166,7 @@ export default function AppLayout() {
               className="h-10 sm:h-[52px] w-auto shrink-0 transition-transform duration-200 group-hover:scale-105"
             />
             <span
-              className="hidden sm:block h-10 w-px bg-gradient-to-b from-transparent via-[#D9C7C8] to-transparent shrink-0"
+              className="hidden sm:block h-10 w-px bg-gradient-to-b from-transparent via-[#D6C09A] to-transparent shrink-0"
               aria-hidden="true"
             ></span>
             <div className="min-w-0 flex flex-col gap-1.5">
@@ -171,7 +175,7 @@ export default function AppLayout() {
               </h1>
               <p className="hidden sm:flex items-center gap-1.5 text-[11.5px] text-[#64748B] uppercase tracking-[0.14em] font-semibold truncate">
                 <span>Incident Reporting</span>
-                <span className="w-1 h-1 rounded-full bg-[#C62828]/60 shrink-0"></span>
+                <span className="w-1 h-1 rounded-full bg-[#7A2430]/60 shrink-0"></span>
                 <span>Patient Safety</span>
               </p>
             </div>
@@ -188,14 +192,14 @@ export default function AppLayout() {
                 }}
                 className={`w-10 h-10 rounded-xl border flex items-center justify-center relative transition duration-180 cursor-pointer ${
                   showNotifications
-                    ? 'bg-[#FDECEC] border-[#F8B4B4] text-[#8B1E23]'
-                    : 'bg-white hover:bg-[#FFF5F5] border-[#E2E8F0] hover:border-[#F8B4B4] text-[#64748B] hover:text-[#8B1E23]'
+                    ? 'bg-[#F4E6D7] border-[#DDBD9A] text-[#5C1A22]'
+                    : 'bg-white hover:bg-[#FAF3EC] border-[#E2E8F0] hover:border-[#DDBD9A] text-[#64748B] hover:text-[#5C1A22]'
                 }`}
                 title="Notifications"
               >
                 <Bell className="w-5 h-5" />
                 {unreadCount > 0 && (
-                  <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-gradient-to-br from-[#E53935] to-[#B71C1C] text-white text-[11.5px] font-bold flex items-center justify-center ring-2 ring-white shadow-sm">
+                  <span className="absolute -top-1.5 -right-1.5 min-w-[20px] h-5 px-1 rounded-full bg-gradient-to-br from-[#9C3A42] to-[#4F161C] text-white text-[11.5px] font-bold flex items-center justify-center ring-2 ring-white shadow-sm">
                     {unreadCount > 99 ? '99+' : unreadCount}
                   </span>
                 )}
@@ -203,12 +207,12 @@ export default function AppLayout() {
 
               {showNotifications && (
                 <div className="fixed left-4 right-4 top-[4.5rem] sm:absolute sm:left-auto sm:top-auto sm:right-0 sm:mt-2 sm:w-[22rem] sm:max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-xl border border-[#E2E8F0] z-50 text-[#172033] overflow-hidden">
-                  <div className="px-4 py-3 bg-[#FFF5F5] border-b border-[#FDECEC] flex items-center justify-between">
-                    <span className="font-bold text-xs uppercase tracking-wider text-[#8B1E23]">Notifications</span>
+                  <div className="px-4 py-3 bg-[#FAF3EC] border-b border-[#F4E6D7] flex items-center justify-between">
+                    <span className="font-bold text-xs uppercase tracking-wider text-[#5C1A22]">Notifications</span>
                     {unreadCount > 0 && (
                       <button
                         onClick={handleMarkAllRead}
-                        className="text-xs text-[#8B1E23] hover:text-[#68151A] font-semibold hover:underline flex items-center space-x-1 cursor-pointer"
+                        className="text-xs text-[#5C1A22] hover:text-[#3D0F16] font-semibold hover:underline flex items-center space-x-1 cursor-pointer"
                       >
                         <Check className="w-3.5 h-3.5 text-[#159A68]" />
                         <span>Mark all read</span>
@@ -224,7 +228,7 @@ export default function AppLayout() {
                           key={n._id}
                           type="button"
                           onClick={() => openNotification(n)}
-                          className={`w-full text-left p-3.5 text-xs transition cursor-pointer hover:bg-[#F8FAFC] ${n.read ? 'bg-white' : 'bg-[#FFF5F5]/60 border-l-4 border-[#C62828] font-medium'}`}
+                          className={`w-full text-left p-3.5 text-xs transition cursor-pointer hover:bg-[#F8FAFC] ${n.read ? 'bg-white' : 'bg-[#FAF3EC]/60 border-l-4 border-[#7A2430] font-medium'}`}
                         >
                           <div className="flex items-start justify-between gap-2">
                             <span className="font-semibold text-[#172033]">{n.title}</span>
@@ -241,12 +245,12 @@ export default function AppLayout() {
 
             {/* User Profile Capsule */}
             <div className="flex items-center gap-2.5 bg-white pl-1.5 pr-3 sm:pr-4 h-10 rounded-xl border border-[#E2E8F0]">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#8B1E23] to-[#E53935] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
+              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#5C1A22] to-[#9C3A42] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
                 {user?.name?.charAt(0) || <UserIcon className="w-4 h-4" />}
               </div>
               <div className="hidden sm:flex flex-col items-start gap-0.5 text-left">
                 <div className="text-xs font-bold leading-none text-[#172033]">{user?.name || 'User'}</div>
-                <div className="text-[11px] leading-none px-1.5 py-[3px] rounded-full bg-[#FDECEC] text-[#8B1E23] font-bold uppercase tracking-wider">
+                <div className="text-[11px] leading-none px-1.5 py-[3px] rounded-full bg-[#F4E6D7] text-[#5C1A22] font-bold uppercase tracking-wider">
                   {user?.roles?.[0]?.replace(/_/g, ' ') || 'User'}
                 </div>
               </div>
@@ -258,7 +262,7 @@ export default function AppLayout() {
                 logout();
                 navigate('/login');
               }}
-              className="h-10 px-3 sm:px-3.5 rounded-xl bg-white hover:bg-[#FFF5F5] text-[#64748B] hover:text-[#C62828] border border-[#E2E8F0] hover:border-[#F8B4B4] transition duration-180 cursor-pointer flex items-center gap-2 text-xs font-semibold"
+              className="h-10 px-3 sm:px-3.5 rounded-xl bg-white hover:bg-[#FAF3EC] text-[#64748B] hover:text-[#7A2430] border border-[#E2E8F0] hover:border-[#DDBD9A] transition duration-180 cursor-pointer flex items-center gap-2 text-xs font-semibold"
               title="Logout"
             >
               <LogOut className="w-[18px] h-[18px]" />
@@ -268,34 +272,47 @@ export default function AppLayout() {
         </div>
 
         {/* Navigation Bar - soft tinted tray with pill items */}
-        <div className="bg-gradient-to-b from-[#FBF6F6] to-[#F8F4F4] border-t border-[#F1E7E8]">
-          <div className="w-full px-4 sm:px-6 lg:px-8 flex justify-start md:justify-center gap-1.5 py-2 overflow-x-auto scrollbar-none">
+        <div className="bg-gradient-to-b from-[#FAF4E9] to-[#FAF4E9] border-t border-[#E9DDC9]">
+          <div className="relative w-full px-4 sm:px-6 lg:px-8 flex justify-start md:justify-center gap-1.5 py-2 overflow-x-auto scrollbar-none">
+            {/*
+              Active pill — glides to the current tab instead of snapping. Position animates via
+              `transform: translateX`, not `left`: a `left` transition forces the browser to
+              recompute layout on every frame (main-thread work, easily janked by other JS running
+              at the same time, e.g. the queue-count badges loading in); `transform` is handled
+              entirely by the compositor, so it stays smooth regardless of what else is going on.
+              Width still snaps directly to the new tab's size (unanimated) rather than stretching,
+              which avoids the same per-frame layout cost for comparatively little visual loss.
+            */}
+            <span
+              aria-hidden="true"
+              className="absolute top-2 left-0 h-9 rounded-full bg-gradient-to-r from-[#5C1A22] via-[#7A2430] to-[#9C3A42] shadow-[0_6px_14px_-4px_rgba(92,26,34,0.55)] overflow-hidden transition-transform duration-300 ease-out pointer-events-none will-change-transform"
+              style={{ width: indicatorStyle.width, transform: `translateX(${indicatorStyle.left}px)` }}
+            >
+              <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent"></span>
+            </span>
+
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
               return (
                 <Link
                   key={item.path}
+                  ref={registerTab(item.path)}
                   to={item.path}
-                  className={`group/nav flex items-center gap-2 h-9 px-4 text-[14px] whitespace-nowrap rounded-full transition duration-180 ${
+                  className={`group/nav relative flex items-center gap-2 h-9 px-4 text-[14px] whitespace-nowrap rounded-full transition-colors duration-180 ${
                     isActive
-                      ? 'bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] text-white font-semibold shadow-[0_6px_14px_-4px_rgba(139,30,35,0.55)] relative overflow-hidden'
-                      : 'text-[#475569] font-medium hover:text-[#68151A] hover:bg-white hover:shadow-[0_2px_8px_-2px_rgba(104,21,26,0.18)]'
+                      ? 'text-white font-semibold'
+                      : 'text-[#475569] font-medium hover:text-[#3D0F16] hover:bg-white hover:shadow-[0_2px_8px_-2px_rgba(61,15,22,0.18)]'
                   }`}
                 >
-                  {isActive && (
-                    <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none"></span>
-                  )}
                   <Icon
-                    className={`w-4 h-4 relative z-10 transition-colors ${
-                      isActive ? 'text-white' : 'text-[#94A3B8] group-hover/nav:text-[#C62828]'
-                    }`}
+                    className={`w-4 h-4 transition-colors ${isActive ? 'text-white' : 'text-[#94A3B8] group-hover/nav:text-[#7A2430]'}`}
                   />
-                  <span className="relative z-10">{item.label}</span>
+                  <span>{item.label}</span>
                   {Boolean(item.count) && (
                     <span
-                      className={`relative z-10 min-w-[18px] px-1.5 py-0.5 rounded-full text-[11.5px] font-bold text-center ${
-                        isActive ? 'bg-white text-[#8B1E23]' : 'bg-[#8B1E23] text-white'
+                      className={`min-w-[18px] px-1.5 py-0.5 rounded-full text-[11.5px] font-bold text-center ${
+                        isActive ? 'bg-white text-[#5C1A22]' : 'bg-[#5C1A22] text-white'
                       }`}
                     >
                       {item.count}

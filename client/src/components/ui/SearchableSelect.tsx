@@ -167,11 +167,11 @@ export function SearchableSelect({
                         onMouseEnter={() => setHighlight(idx)}
                         onClick={() => commit(opt)}
                         className={`w-full text-left px-3 py-1.5 text-xs flex items-center justify-between gap-2 cursor-pointer ${
-                          isHighlighted ? 'bg-[#FFF5F5] text-[#8B1E23]' : 'text-clinicalText-primary hover:bg-slate-50'
+                          isHighlighted ? 'bg-[#FAF3EC] text-[#5C1A22]' : 'text-clinicalText-primary hover:bg-slate-50'
                         }`}
                       >
                         <span className="truncate">{opt.label}</span>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-[#8B1E23] shrink-0" />}
+                        {isSelected && <Check className="w-3.5 h-3.5 text-[#5C1A22] shrink-0" />}
                       </button>
                     );
                   })}

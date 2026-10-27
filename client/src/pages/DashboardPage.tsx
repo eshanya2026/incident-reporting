@@ -22,6 +22,9 @@ import {
   Users,
   UserCog,
   Hourglass,
+  Repeat,
+  ArrowUp,
+  ArrowDown,
 } from 'lucide-react';
 import {
   BarChart,
@@ -65,20 +68,13 @@ const AFFECTED_PERSON_LABELS: Record<string, { label: string; color: string }> =
   OTHER: { label: 'Other', color: '#94A3B8' },
 };
 
-/** Repeating palette for charts with a dynamic, data-driven number of series (stacked bars). */
-const SERIES_PALETTE = [
-  '#DC2626',
-  '#EA580C',
-  '#D97706',
-  '#65A30D',
-  '#059669',
-  '#0891B2',
-  '#2563EB',
-  '#7C3AED',
-  '#C026D3',
-  '#DB2777',
-  '#94A3B8',
-];
+/**
+ * Validated categorical palette (dataviz skill) for charts with a dynamic, data-driven number of
+ * series (the location x type / sub-type stacked bars) — fixed order, never cycled; a 9th series
+ * folds into "Other" (last slot, a neutral) rather than generating a new hue.
+ */
+const SERIES_PALETTE = ['#2a78d6', '#eb6834', '#1baf7a', '#eda100', '#e87ba4', '#008300', '#6250d6', '#e34948'];
+const SERIES_OTHER_COLOR = '#94A3B8';
 
 dayjs.extend(relativeTime);
 
@@ -108,6 +104,120 @@ const truncatedTick =
       </g>
     );
   };
+
+/**
+ * Horizontal stacked bar for a location crossed with a second dimension (incident type / sub-type).
+ * Horizontal avoids the rotated, colliding location labels a vertical layout forces; a custom
+ * legend (small swatch + label, ink-coloured text) replaces recharts' default, which otherwise
+ * wraps into a cramped multi-line block that collides with the axis above it.
+ */
+function StackedLocationChart({
+  data,
+  seriesKeys,
+  seriesColor,
+}: {
+  data: Array<Record<string, number | string>>;
+  seriesKeys: string[];
+  seriesColor: (key: string, index: number) => string;
+}) {
+  if (data.length === 0) {
+    return <div className="h-60 flex items-center justify-center text-xs text-[#94A3B8]">No location data recorded in this period</div>;
+  }
+  const rowHeight = 40;
+  const chartHeight = Math.max(220, data.length * rowHeight + 20);
+
+  return (
+    <div>
+      <div style={{ height: chartHeight }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} layout="vertical" barSize={22} margin={{ top: 4, right: 24, left: 4, bottom: 4 }}>
+            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+            <XAxis type="number" tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
+            <YAxis
+              type="category"
+              dataKey="location"
+              tick={truncatedTick(22, { textAnchor: 'end' })}
+              width={150}
+              axisLine={{ stroke: '#E2E8F0' }}
+              tickLine={false}
+            />
+            <Tooltip
+              contentStyle={{
+                backgroundColor: '#FFFFFF',
+                borderRadius: '10px',
+                border: '1px solid #E2E8F0',
+                boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
+                fontSize: '13px',
+              }}
+            />
+            {seriesKeys.map((key, i) => (
+              <Bar key={key} dataKey={key} stackId="loc" fill={seriesColor(key, i)} stroke="#FFFFFF" strokeWidth={2} />
+            ))}
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      {/* Custom legend — text stays in ink tokens, the swatch alone carries colour */}
+      <div className="flex flex-wrap gap-x-4 gap-y-1.5 mt-3 pt-3 border-t border-[#F1F5F9]">
+        {seriesKeys.map((key, i) => (
+          <div key={key} className="flex items-center gap-1.5 text-[11.5px] text-[#475569]">
+            <span className="w-2.5 h-2.5 rounded-[3px] shrink-0" style={{ backgroundColor: seriesColor(key, i) }}></span>
+            <span className="truncate max-w-[14rem]" title={key}>
+              {key}
+            </span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Horizontal single-series bar — same rationale as StackedLocationChart: avoids rotated,
+ * truncated category-name labels. A single series needs no legend; the card title names it.
+ */
+function HorizontalBarChart({
+  data,
+  color,
+}: {
+  data: Array<{ name: string; count: number }>;
+  color: string;
+}) {
+  if (data.length === 0) {
+    return <div className="h-60 flex items-center justify-center text-xs text-[#94A3B8]">No data recorded in this period</div>;
+  }
+  const rowHeight = 34;
+  const chartHeight = Math.max(200, data.length * rowHeight + 20);
+
+  return (
+    <div style={{ height: chartHeight }}>
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={data} layout="vertical" barSize={18} margin={{ top: 4, right: 24, left: 4, bottom: 4 }}>
+          <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#F1F5F9" />
+          <XAxis type="number" tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
+          <YAxis
+            type="category"
+            dataKey="name"
+            tick={truncatedTick(22, { textAnchor: 'end' })}
+            width={150}
+            axisLine={{ stroke: '#E2E8F0' }}
+            tickLine={false}
+          />
+          <Tooltip
+            contentStyle={{
+              backgroundColor: '#FFFFFF',
+              borderRadius: '10px',
+              border: '1px solid #E2E8F0',
+              boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
+              fontSize: '13px',
+            }}
+          />
+          <Bar dataKey="count" fill={color} radius={[0, 4, 4, 0]} />
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
 
 /**
  * Minimal KPI tile: one flat, solid-color icon badge carries the card's identity; the number
@@ -273,11 +383,32 @@ export default function DashboardPage() {
   // Location x Type / Sub-Type Chart Data (stacked bars, dynamic series)
   const locationByTypeData = inPeriod.locationByType || { data: [], seriesKeys: [] };
   const locationBySubtypeData = inPeriod.locationBySubtype || { data: [], seriesKeys: [] };
-  const seriesColor = (index: number) => SERIES_PALETTE[index % SERIES_PALETTE.length];
+  const seriesColor = (key: string, index: number) => (key === 'Other' ? SERIES_OTHER_COLOR : SERIES_PALETTE[index % SERIES_PALETTE.length]);
 
   // Top Reporters / HODs with Pending CAPA (not period-scoped — a current snapshot, like the KPI cards)
   const topReporters = nowStats.topReporters || [];
   const hodsPendingCapa = nowStats.hodsPendingCapa || [];
+
+  // Resolved vs Unresolved Chart Data — of each month's reports, how many have since closed
+  const resolutionChartData = (inPeriod.resolvedVsUnresolved || []).map((m: any) => ({
+    month: m.month,
+    Resolved: m.resolved,
+    Unresolved: m.unresolved,
+  }));
+
+  // CAPA Effectiveness
+  const capaEffectiveness = inPeriod.capaEffectiveness || { effective: 0, notEffective: 0, rate: null };
+
+  // Recurring Incident Hotspots — same location + category repeating 2+ times in the period
+  const recurringHotspots = inPeriod.recurringHotspots || [];
+
+  // Month-over-month change on reports — compares the last two months actually in the series,
+  // not a value judgement (more reports can mean a healthier reporting culture, not a worse one)
+  const momMonths = (inPeriod.monthly || []).filter((m: any) => m.reported > 0 || m.closed > 0);
+  const momDelta =
+    momMonths.length >= 2
+      ? Math.round(((momMonths[momMonths.length - 1].reported - momMonths[momMonths.length - 2].reported) / Math.max(1, momMonths[momMonths.length - 2].reported)) * 100)
+      : null;
 
   const formatAge = (dateStr: string | null | undefined) => {
     if (!dateStr) return 'None waiting';
@@ -290,8 +421,8 @@ export default function DashboardPage() {
       <div className="hero-banner rounded-2xl p-6 sm:p-7 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
         {/* Editorial Content */}
         <div className="max-w-2xl">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-[#F5A5A8] text-[12.5px] font-bold tracking-wide uppercase mb-3">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#F06B70]"></span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/10 text-[#E8C988] text-[12.5px] font-bold tracking-wide uppercase mb-3">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#D4A954]"></span>
             <span>
               {isHod
                 ? `${overview?.department?.name || 'Department'} Incident Tracking`
@@ -318,7 +449,7 @@ export default function DashboardPage() {
                 onClick={() => setPeriod(opt.key)}
                 className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition duration-150 cursor-pointer ${
                   period === opt.key
-                    ? 'bg-gradient-to-b from-[#EF5350] to-[#B71C1C] text-white shadow-[0_4px_10px_-2px_rgba(229,57,53,0.6),inset_0_1px_0_rgba(255,255,255,0.35)]'
+                    ? 'bg-gradient-to-b from-[#A8554F] to-[#4F161C] text-white shadow-[0_4px_10px_-2px_rgba(156,58,66,0.6),inset_0_1px_0_rgba(255,255,255,0.35)]'
                     : 'text-slate-300 hover:text-white hover:bg-white/10'
                 }`}
               >
@@ -340,7 +471,7 @@ export default function DashboardPage() {
           {canReport && (
             <Link
               to="/incidents/new"
-              className="px-4 py-2.5 bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] hover:brightness-110 active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red transition duration-180 flex items-center space-x-2 shrink-0 cursor-pointer"
+              className="px-4 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#7A2430] to-[#9C3A42] hover:brightness-110 active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red transition duration-180 flex items-center space-x-2 shrink-0 cursor-pointer"
             >
               <PlusCircle className="w-4 h-4 text-white" />
               <span>Report Incident</span>
@@ -371,7 +502,7 @@ export default function DashboardPage() {
               <KpiCard
                 to="/triage"
                 icon={Inbox}
-                badgeColor="#8B1E23"
+                badgeColor="#5C1A22"
                 label="Awaiting Triage"
                 value={nowStats.byStatus?.SUBMITTED || 0}
                 caption={formatAge(nowStats.oldestAwaitingTriage)}
@@ -427,7 +558,7 @@ export default function DashboardPage() {
               <KpiCard
                 to="/my-department"
                 icon={Building2}
-                badgeColor="#8B1E23"
+                badgeColor="#5C1A22"
                 label="Assigned to Dept"
                 value={nowStats.open || 0}
                 caption="Active department load"
@@ -477,7 +608,7 @@ export default function DashboardPage() {
           <div className="bg-white rounded-2xl border border-[#E2E8F0] p-5 shadow-card">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-[#F1F5F9] pb-3 mb-4">
               <div className="flex items-center space-x-2">
-                <Clock className="w-4.5 h-4.5 text-[#8B1E23]" />
+                <Clock className="w-4.5 h-4.5 text-[#5C1A22]" />
                 <h3 className="font-bold text-sm text-[#172033]">
                   Workflow Turnaround Times (Median Days over Closed Incidents)
                 </h3>
@@ -524,16 +655,16 @@ export default function DashboardPage() {
                 <span className="text-[11.5px] text-[#94A3B8] mt-1">Effectiveness audit & sign-off</span>
               </div>
 
-              <div className="p-3.5 rounded-xl bg-[#FFF5F5] border border-[#FCDADA] flex flex-col justify-between">
-                <span className="text-[12.5px] font-semibold text-[#8B1E23] uppercase tracking-wider">
+              <div className="p-3.5 rounded-xl bg-[#FAF3EC] border border-[#E9D3BC] flex flex-col justify-between">
+                <span className="text-[12.5px] font-semibold text-[#5C1A22] uppercase tracking-wider">
                   Total End-to-End Cycle
                 </span>
-                <div className="text-2xl font-bold text-[#8B1E23] mt-2">
+                <div className="text-2xl font-bold text-[#5C1A22] mt-2">
                   {inPeriod.turnaroundDays?.reportToClose !== null
                     ? `${inPeriod.turnaroundDays.reportToClose} days`
                     : '—'}
                 </div>
-                <span className="text-[11.5px] text-[#C62828] mt-1">Report submission to closure</span>
+                <span className="text-[11.5px] text-[#7A2430] mt-1">Report submission to closure</span>
               </div>
             </div>
           </div>
@@ -544,12 +675,23 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <TrendingUp className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <TrendingUp className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Monthly Trend — Reported vs Closed</span>
                 </h3>
-                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
-                  {period.toUpperCase()} View
-                </span>
+                <div className="flex items-center gap-2">
+                  {momDelta !== null && (
+                    <span
+                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#475569] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]"
+                      title="Reports in the latest month vs the month before"
+                    >
+                      {momDelta >= 0 ? <ArrowUp className="w-3.5 h-3.5" /> : <ArrowDown className="w-3.5 h-3.5" />}
+                      {Math.abs(momDelta)}% vs last month
+                    </span>
+                  )}
+                  <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                    {period.toUpperCase()} View
+                  </span>
+                </div>
               </div>
 
               <div className="h-72">
@@ -573,7 +715,7 @@ export default function DashboardPage() {
                         }}
                       />
                       <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
-                      <Bar dataKey="Reported" fill="#8B1E23" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Reported" fill="#5C1A22" radius={[4, 4, 0, 0]} />
                       <Bar dataKey="Closed" fill="#10B981" radius={[4, 4, 0, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
@@ -585,7 +727,7 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <ShieldAlert className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <ShieldAlert className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Severity Distribution (NABH Scale)</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -663,7 +805,7 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <PieChartIcon className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <PieChartIcon className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>All Incidents by Status</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -740,7 +882,7 @@ export default function DashboardPage() {
               <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
                 <div className="flex items-center justify-between mb-4">
                   <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                    <Building2 className="w-4.5 h-4.5 text-[#8B1E23]" />
+                    <Building2 className="w-4.5 h-4.5 text-[#5C1A22]" />
                     <span>Incidents by Responsible Department</span>
                   </h3>
                   <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -748,37 +890,7 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                <div className="h-72">
-                  {departmentChartData.length === 0 ? (
-                    <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
-                      No department data available
-                    </div>
-                  ) : (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={departmentChartData} margin={{ top: 10, right: 10, left: 4, bottom: 25 }}>
-                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                        <XAxis
-                          dataKey="name"
-                          tick={truncatedTick(14, { angle: -35, textAnchor: 'end' })}
-                          interval={0}
-                          axisLine={{ stroke: '#E2E8F0' }}
-                          tickLine={false}
-                        />
-                        <YAxis tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          contentStyle={{
-                            backgroundColor: '#FFFFFF',
-                            borderRadius: '10px',
-                            border: '1px solid #E2E8F0',
-                            boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                            fontSize: '13px',
-                          }}
-                        />
-                        <Bar dataKey="count" fill="#C62828" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  )}
-                </div>
+                <HorizontalBarChart data={departmentChartData} color="#7A2430" />
               </div>
             )}
 
@@ -786,7 +898,7 @@ export default function DashboardPage() {
             <div className={`bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between ${!isHospitalWide ? 'lg:col-span-2' : ''}`}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <BarChart2 className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <BarChart2 className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Top Incident Categories</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -825,7 +937,7 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <Tag className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <Tag className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Incidents by Type</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -864,7 +976,7 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between lg:col-span-2">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <MapPin className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <MapPin className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Highest Incidents Reported — Location Wise</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -872,44 +984,14 @@ export default function DashboardPage() {
                 </span>
               </div>
 
-              <div className="h-72">
-                {locationChartData.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
-                    No location data recorded in this period
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={locationChartData} margin={{ top: 10, right: 10, left: 4, bottom: 45 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis
-                        dataKey="name"
-                        tick={truncatedTick(14, { angle: -35, textAnchor: 'end' })}
-                        interval={0}
-                        axisLine={{ stroke: '#E2E8F0' }}
-                        tickLine={false}
-                      />
-                      <YAxis tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#FFFFFF',
-                          borderRadius: '10px',
-                          border: '1px solid #E2E8F0',
-                          boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                          fontSize: '13px',
-                        }}
-                      />
-                      <Bar dataKey="count" fill="#7C3AED" radius={[4, 4, 0, 0]} />
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
+              <HorizontalBarChart data={locationChartData} color="#C79A3E" />
             </div>
 
             {/* Overdue Incidents */}
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <Hourglass className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <Hourglass className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Overdue Incidents</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -937,18 +1019,152 @@ export default function DashboardPage() {
                           fontSize: '13px',
                         }}
                       />
-                      <Bar dataKey="count" fill="#8B1E23" radius={[0, 4, 4, 0]} />
+                      <Bar dataKey="count" fill="#5C1A22" radius={[0, 4, 4, 0]} />
                     </BarChart>
                   </ResponsiveContainer>
                 )}
               </div>
             </div>
 
+            {/* Resolved vs Unresolved Incidents */}
+            <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                  <CheckCircle2 className="w-4.5 h-4.5 text-[#5C1A22]" />
+                  <span>Resolved vs Unresolved Incidents</span>
+                </h3>
+                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                  By Month Reported
+                </span>
+              </div>
+
+              <div className="h-72">
+                {resolutionChartData.every((m: any) => m.Resolved === 0 && m.Unresolved === 0) ? (
+                  <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
+                    No monthly incident history in this period
+                  </div>
+                ) : (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={resolutionChartData} margin={{ top: 10, right: 10, left: -20, bottom: 5 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
+                      <XAxis dataKey="month" tick={{ fontSize: 12, fill: '#64748B' }} axisLine={{ stroke: '#E2E8F0' }} />
+                      <YAxis tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: '#FFFFFF',
+                          borderRadius: '10px',
+                          border: '1px solid #E2E8F0',
+                          boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
+                          fontSize: '13px',
+                        }}
+                      />
+                      <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
+                      <Bar dataKey="Resolved" fill="#15803D" radius={[4, 4, 0, 0]} />
+                      <Bar dataKey="Unresolved" fill="#D97706" radius={[4, 4, 0, 0]} />
+                    </BarChart>
+                  </ResponsiveContainer>
+                )}
+              </div>
+              <p className="text-[11px] text-[#94A3B8] mt-2">
+                Of the incidents reported in each month, how many have since reached Closed versus how many are still somewhere in the workflow.
+              </p>
+            </div>
+
+            {/* CAPA Effectiveness */}
+            <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-center">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                  <CheckCircle2 className="w-4.5 h-4.5 text-[#5C1A22]" />
+                  <span>CAPA Effectiveness</span>
+                </h3>
+                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                  Reviewed This Period
+                </span>
+              </div>
+
+              {capaEffectiveness.rate === null ? (
+                <div className="h-48 flex items-center justify-center text-xs text-[#94A3B8]">
+                  No CAPAs have been reviewed by Quality in this period yet
+                </div>
+              ) : (
+                <div className="py-4">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-extrabold text-[#5C1A22] leading-none">{capaEffectiveness.rate}%</span>
+                    <span className="text-xs text-[#64748B] font-medium">accepted as effective</span>
+                  </div>
+
+                  <div className="mt-5 h-2.5 rounded-full bg-[#F3E6D7] overflow-hidden flex">
+                    <div className="h-full bg-[#15803D]" style={{ width: `${capaEffectiveness.rate}%` }}></div>
+                    <div className="h-full bg-[#D97706]" style={{ width: `${100 - capaEffectiveness.rate}%` }}></div>
+                  </div>
+
+                  <div className="mt-4 flex items-center justify-between text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#15803D] shrink-0"></span>
+                      <span className="text-[#475569]">Effective</span>
+                      <span className="font-bold text-[#172033]">{capaEffectiveness.effective}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-2.5 h-2.5 rounded-full bg-[#D97706] shrink-0"></span>
+                      <span className="text-[#475569]">Sent back</span>
+                      <span className="font-bold text-[#172033]">{capaEffectiveness.notEffective}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Recurring Incident Hotspots */}
+            <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between lg:col-span-2">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                  <Repeat className="w-4.5 h-4.5 text-[#5C1A22]" />
+                  <span>Recurring Incident Hotspots</span>
+                </h3>
+                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                  Same Location & Category, 2+ Times
+                </span>
+              </div>
+
+              {recurringHotspots.length === 0 ? (
+                <div className="h-24 flex items-center justify-center text-xs text-[#94A3B8]">
+                  No category has repeated at the same location in this period
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="text-[11px] uppercase tracking-wide text-[#94A3B8] border-b border-[#F1F5F9]">
+                        <th className="py-2 pr-2 font-semibold w-8">#</th>
+                        <th className="py-2 pr-2 font-semibold">Location</th>
+                        <th className="py-2 pr-2 font-semibold">Category</th>
+                        <th className="py-2 pl-2 font-semibold text-right">Times</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {recurringHotspots.map((h: any, i: number) => (
+                        <tr key={i} className="border-b border-[#F8FAFC] last:border-0">
+                          <td className="py-2 pr-2">
+                            <span className="w-5 h-5 rounded-full bg-[#F4E6D7] text-[#5C1A22] text-[10.5px] font-bold flex items-center justify-center">
+                              {i + 1}
+                            </span>
+                          </td>
+                          <td className="py-2 pr-2 font-semibold text-[#172033]">{h.location}</td>
+                          <td className="py-2 pr-2 text-[#475569]">{h.category}</td>
+                          <td className="py-2 pl-2 text-right font-bold text-[#5C1A22]">{h.count}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
             {/* All Incidents by Affected Victims */}
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <Users className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <Users className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>All Incidents by Affected Victims</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -1024,7 +1240,7 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <Users className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <Users className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Top 10 Incident Reporters</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -1071,7 +1287,7 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <UserCog className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <UserCog className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>HODs With Most Pending CAPA</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -1095,7 +1311,7 @@ export default function DashboardPage() {
                       {hodsPendingCapa.map((h: any, i: number) => (
                         <tr key={i} className="border-b border-[#F8FAFC] last:border-0">
                           <td className="py-2 pr-2">
-                            <span className="w-5 h-5 rounded-full bg-[#FFF5F5] text-[#8B1E23] text-[10.5px] font-bold flex items-center justify-center">
+                            <span className="w-5 h-5 rounded-full bg-[#FAF3EC] text-[#5C1A22] text-[10.5px] font-bold flex items-center justify-center">
                               {i + 1}
                             </span>
                           </td>
@@ -1103,7 +1319,7 @@ export default function DashboardPage() {
                             <div className="font-semibold text-[#172033]">{h.name}</div>
                             <div className="text-[11px] text-[#94A3B8]">{h.employeeId}</div>
                           </td>
-                          <td className="py-2 pl-2 text-right font-bold text-[#8B1E23]">{h.count}</td>
+                          <td className="py-2 pl-2 text-right font-bold text-[#5C1A22]">{h.count}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1116,7 +1332,7 @@ export default function DashboardPage() {
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between lg:col-span-2">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <Tag className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <Tag className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Number of Incidents by Location and Type</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -1124,47 +1340,14 @@ export default function DashboardPage() {
                 </span>
               </div>
 
-              <div className="h-80">
-                {locationByTypeData.data.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
-                    No location data recorded in this period
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={locationByTypeData.data} margin={{ top: 10, right: 10, left: 4, bottom: 45 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis
-                        dataKey="location"
-                        tick={truncatedTick(14, { angle: -35, textAnchor: 'end' })}
-                        interval={0}
-                        axisLine={{ stroke: '#E2E8F0' }}
-                        tickLine={false}
-                      />
-                      <YAxis tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#FFFFFF',
-                          borderRadius: '10px',
-                          border: '1px solid #E2E8F0',
-                          boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                          fontSize: '13px',
-                        }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                      {locationByTypeData.seriesKeys.map((key: string, i: number) => (
-                        <Bar key={key} dataKey={key} stackId="type" fill={seriesColor(i)} />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
+              <StackedLocationChart data={locationByTypeData.data} seriesKeys={locationByTypeData.seriesKeys} seriesColor={seriesColor} />
             </div>
 
             {/* Number of Incidents by Location and Sub-Type */}
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between lg:col-span-2">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
-                  <Tag className="w-4.5 h-4.5 text-[#8B1E23]" />
+                  <Tag className="w-4.5 h-4.5 text-[#5C1A22]" />
                   <span>Number of Incidents by Location and Sub-Type</span>
                 </h3>
                 <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
@@ -1172,40 +1355,7 @@ export default function DashboardPage() {
                 </span>
               </div>
 
-              <div className="h-80">
-                {locationBySubtypeData.data.length === 0 ? (
-                  <div className="h-full flex items-center justify-center text-xs text-[#94A3B8]">
-                    No location data recorded in this period
-                  </div>
-                ) : (
-                  <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={locationBySubtypeData.data} margin={{ top: 10, right: 10, left: 4, bottom: 45 }}>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#F1F5F9" />
-                      <XAxis
-                        dataKey="location"
-                        tick={truncatedTick(14, { angle: -35, textAnchor: 'end' })}
-                        interval={0}
-                        axisLine={{ stroke: '#E2E8F0' }}
-                        tickLine={false}
-                      />
-                      <YAxis tick={{ fontSize: 12, fill: '#64748B' }} allowDecimals={false} axisLine={false} tickLine={false} />
-                      <Tooltip
-                        contentStyle={{
-                          backgroundColor: '#FFFFFF',
-                          borderRadius: '10px',
-                          border: '1px solid #E2E8F0',
-                          boxShadow: '0 4px 12px rgba(15,23,42,0.08)',
-                          fontSize: '13px',
-                        }}
-                      />
-                      <Legend wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                      {locationBySubtypeData.seriesKeys.map((key: string, i: number) => (
-                        <Bar key={key} dataKey={key} stackId="subtype" fill={seriesColor(i)} />
-                      ))}
-                    </BarChart>
-                  </ResponsiveContainer>
-                )}
-              </div>
+              <StackedLocationChart data={locationBySubtypeData.data} seriesKeys={locationBySubtypeData.seriesKeys} seriesColor={seriesColor} />
             </div>
           </div>
         </>

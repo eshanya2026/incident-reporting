@@ -25,13 +25,13 @@ export default function WorkflowStepper({ status }: { status: string }) {
                   done
                     ? 'bg-emerald-600 text-white'
                     : active
-                    ? 'bg-[#8B1E23] text-white ring-4 ring-[#8B1E23]/15'
+                    ? 'bg-[#5C1A22] text-white ring-4 ring-[#5C1A22]/15'
                     : 'bg-slate-100 text-slate-400 border border-slate-200'
                 }`}
               >
                 {done ? <Check className="w-3.5 h-3.5" /> : i + 1}
               </span>
-              <span className={`text-[12.5px] whitespace-nowrap ${active ? 'font-bold text-[#8B1E23]' : done ? 'font-semibold text-clinicalText-primary' : 'text-clinicalText-muted'}`}>
+              <span className={`text-[12.5px] whitespace-nowrap ${active ? 'font-bold text-[#5C1A22]' : done ? 'font-semibold text-clinicalText-primary' : 'text-clinicalText-muted'}`}>
                 {step.label}
               </span>
             </div>

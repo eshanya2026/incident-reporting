@@ -36,7 +36,7 @@ export default function MyReportsPage() {
       <PageHeader icon={FileText} title="My Reports" description="Incidents you reported and where each one is now.">
         <Link
           to="/incidents/new"
-          className="px-5 py-2.5 bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] hover:brightness-110 text-white font-semibold text-xs rounded-xl shadow-button-red transition flex items-center space-x-2 self-start md:self-auto"
+          className="px-5 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#7A2430] to-[#9C3A42] hover:brightness-110 text-white font-semibold text-xs rounded-xl shadow-button-red transition flex items-center space-x-2 self-start md:self-auto"
         >
           <PlusCircle className="w-4 h-4" />
           <span>Report Incident</span>

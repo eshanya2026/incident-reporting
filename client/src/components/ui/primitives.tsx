@@ -14,7 +14,7 @@ const buttonBase =
 
 const BUTTON_VARIANTS = {
   primary:
-    'bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:brightness-110 active:scale-[0.99] text-white shadow-button-red',
+    'bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:brightness-110 active:scale-[0.99] text-white shadow-button-red',
   success: 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white shadow-md',
   secondary: 'bg-white hover:bg-slate-50 text-clinicalText-primary border border-clinicalBorder shadow-xs',
   danger: 'bg-white hover:bg-red-50 text-red-700 border border-red-200',
@@ -50,7 +50,7 @@ export function PageHeader({
   return (
     <div className="hero-banner p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4">
       <div className="flex items-center gap-4 min-w-0">
-        <span className="relative w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-[#E53935] via-[#C62828] to-[#8B1E23] ring-1 ring-white/25 shadow-[0_8px_18px_-6px_rgba(229,57,53,0.7),inset_0_1px_0_rgba(255,255,255,0.4)] flex items-center justify-center overflow-hidden">
+        <span className="relative w-12 h-12 shrink-0 rounded-2xl bg-gradient-to-br from-[#9C3A42] via-[#7A2430] to-[#5C1A22] ring-1 ring-white/25 shadow-[0_8px_18px_-6px_rgba(156,58,66,0.7),inset_0_1px_0_rgba(255,255,255,0.4)] flex items-center justify-center overflow-hidden">
           <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/30 to-transparent pointer-events-none"></span>
           <Icon className="w-6 h-6 text-white relative" />
         </span>
@@ -80,7 +80,7 @@ export function Card({
   tone?: 'default' | 'action';
 }) {
   const toneClass =
-    tone === 'action' ? 'border-[#8B1E23]/30 ring-1 ring-[#8B1E23]/10 bg-gradient-to-b from-[#FFFBFB] to-white' : 'border-clinicalBorder bg-white';
+    tone === 'action' ? 'border-[#5C1A22]/30 ring-1 ring-[#5C1A22]/10 bg-gradient-to-b from-[#FFFBFB] to-white' : 'border-clinicalBorder bg-white';
   return (
     <section className={`rounded-2xl border shadow-card p-5 space-y-4 ${toneClass} ${className}`}>
       {(title || actions) && (
@@ -124,7 +124,7 @@ export function EditToggle({ onClick }: { onClick: () => void }) {
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex items-center gap-1 px-2.5 py-1 text-[12.5px] font-semibold text-[#8B1E23] bg-white hover:bg-[#FFF5F5] border border-clinicalBorder rounded-lg cursor-pointer"
+      className="inline-flex items-center gap-1 px-2.5 py-1 text-[12.5px] font-semibold text-[#5C1A22] bg-white hover:bg-[#FAF3EC] border border-clinicalBorder rounded-lg cursor-pointer"
     >
       <Pencil className="w-3 h-3" /> Edit
     </button>

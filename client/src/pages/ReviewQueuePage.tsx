@@ -35,7 +35,7 @@ export default function ReviewQueuePage() {
         <div className="flex items-center gap-3">
           <div className="self-start md:self-auto shrink-0 px-4 py-2.5 rounded-2xl bg-black/20 border border-white/15 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
             <div className="text-xl font-extrabold text-white leading-none">{pendingIncidents.length}</div>
-            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#FBC9CB] mt-0.5">Awaiting Review</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wider text-[#E8C988] mt-0.5">Awaiting Review</div>
           </div>
           <div className="self-start md:self-auto shrink-0 px-4 py-2.5 rounded-2xl bg-black/20 border border-white/15 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
             <div className="text-xl font-extrabold text-white leading-none">{rcaIncidents.length}</div>
@@ -51,7 +51,7 @@ export default function ReviewQueuePage() {
           onClick={() => setTab('PENDING')}
           className={`flex items-center gap-2 px-4 py-2.5 text-xs font-semibold border-b-2 cursor-pointer transition ${
             tab === 'PENDING'
-              ? 'border-[#8B1E23] text-[#8B1E23]'
+              ? 'border-[#5C1A22] text-[#5C1A22]'
               : 'border-transparent text-clinicalText-secondary hover:text-clinicalText-primary'
           }`}
         >

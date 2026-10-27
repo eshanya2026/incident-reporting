@@ -15,14 +15,14 @@ interface StatlogLogoProps {
  */
 export default function StatlogLogo({ tone = 'light', delay = 0, className = 'text-3xl' }: StatlogLogoProps) {
   const dark = tone === 'dark';
-  const statColor = dark ? 'text-white' : 'text-[#68151A]';
+  const statColor = dark ? 'text-white' : 'text-[#3D0F16]';
   const logColor = dark
-    ? 'text-[#FDECEC]'
-    : 'bg-gradient-to-r from-[#C62828] to-[#E53935] bg-clip-text text-transparent';
-  const ringColor = dark ? 'border-[#FDECEC]' : 'border-[#C62828]';
-  const dotColor = dark ? 'bg-white' : 'bg-[#E53935]';
-  const lineColor = dark ? 'bg-white/60' : 'bg-[#C62828]/70';
-  const blipColor = dark ? '#FFFFFF' : '#C62828';
+    ? 'text-[#F4E6D7]'
+    : 'bg-gradient-to-r from-[#7A2430] to-[#9C3A42] bg-clip-text text-transparent';
+  const ringColor = dark ? 'border-[#F4E6D7]' : 'border-[#7A2430]';
+  const dotColor = dark ? 'bg-white' : 'bg-[#9C3A42]';
+  const lineColor = dark ? 'bg-white/60' : 'bg-[#7A2430]/70';
+  const blipColor = dark ? '#FFFFFF' : '#7A2430';
 
   return (
     <span

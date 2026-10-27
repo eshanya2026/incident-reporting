@@ -77,7 +77,7 @@ export default function IncidentTable({
     switch (column) {
       case 'number':
         return (
-          <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">
+          <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">
             {inc.incidentNumber}
           </span>
         );
@@ -119,7 +119,7 @@ export default function IncidentTable({
             <div className="text-slate-900 font-semibold">{inc.occurredInDepartmentId?.name || '—'}</div>
             {(floor || zone || room) && (
               <div className="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                <MapPin className="w-3 h-3 shrink-0 text-[#C62828]" />
+                <MapPin className="w-3 h-3 shrink-0 text-[#7A2430]" />
                 <span>
                   {floor}
                   {floor && zone ? ' • ' : ''}
@@ -137,7 +137,7 @@ export default function IncidentTable({
             <div className="font-semibold text-slate-900">{inc.departmentId.name}</div>
             {inc.notifiedDepartmentIds?.length > 0 && (
               <div
-                className="text-[11px] text-[#8B1E23] font-medium"
+                className="text-[11px] text-[#5C1A22] font-medium"
                 title={`Involved: ${inc.notifiedDepartmentIds.map((d: any) => d.name || d).join(', ')}`}
               >
                 +{inc.notifiedDepartmentIds.length} involved
@@ -159,7 +159,7 @@ export default function IncidentTable({
       case 'reporter':
         return (
           <div className="flex items-center gap-2.5">
-            <span className="w-8 h-8 rounded-full bg-gradient-to-br from-[#8B1E23] to-[#E53935] text-white text-[11px] font-bold flex items-center justify-center shrink-0">
+            <span className="w-8 h-8 rounded-full bg-gradient-to-br from-[#5C1A22] to-[#9C3A42] text-white text-[11px] font-bold flex items-center justify-center shrink-0">
               {initials(inc.reportedBy?.name)}
             </span>
             <span className="font-medium text-slate-800">{inc.reportedBy?.name || '—'}</span>
@@ -235,7 +235,7 @@ export default function IncidentTable({
                       <Link
                         to={`/incidents/${inc._id}`}
                         onClick={(e) => e.stopPropagation()}
-                        className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-white group-hover:bg-gradient-to-b group-hover:from-[#C62828] group-hover:to-[#8B1E23] text-slate-700 group-hover:text-white rounded-xl font-semibold text-[13px] transition border border-slate-200 group-hover:border-transparent shadow-xs"
+                        className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-white group-hover:bg-gradient-to-b group-hover:from-[#7A2430] group-hover:to-[#5C1A22] text-slate-700 group-hover:text-white rounded-xl font-semibold text-[13px] transition border border-slate-200 group-hover:border-transparent shadow-xs"
                       >
                         <span>Open</span>
                         <ArrowRight className="w-3.5 h-3.5" />

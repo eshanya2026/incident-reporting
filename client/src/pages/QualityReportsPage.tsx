@@ -212,7 +212,7 @@ export default function QualityReportsPage() {
           <h3>Adhiparasakthi Hospitals - Master Incident Register</h3>
           <p>Generated: ${dayjs().format('DD-MMM-YYYY HH:mm')} | Filtered Records: ${filteredIncidents.length}</p>
           <table border="1">
-            <tr style="background-color: #8B1E23; color: #ffffff; font-weight: bold;">
+            <tr style="background-color: #5C1A22; color: #ffffff; font-weight: bold;">
               <th>Incident #</th><th>Reported Date</th><th>Occurred Date</th><th>Reporting Dept</th>
               <th>Occurred In Dept</th><th>Responsible Dept</th><th>Assigned HOD</th><th>Category</th>
               <th>Subcategory</th><th>Title</th><th>UHID</th><th>Reported Severity</th><th>Confirmed Severity</th>
@@ -260,7 +260,7 @@ export default function QualityReportsPage() {
           <h3>Adhiparasakthi Hospitals - CAPA Compliance Register</h3>
           <p>Generated: ${dayjs().format('DD-MMM-YYYY HH:mm')} | Filtered Records: ${filteredCapas.length}</p>
           <table border="1">
-            <tr style="background-color: #8B1E23; color: #ffffff; font-weight: bold;">
+            <tr style="background-color: #5C1A22; color: #ffffff; font-weight: bold;">
               <th>CAPA #</th><th>Incident #</th><th>Incident Title</th><th>Department</th>
               <th>Owner</th><th>Type</th><th>Action</th><th>Priority</th><th>Assigned Date</th>
               <th>Target Date</th><th>Status</th><th>Overdue</th><th>Completed Date</th>
@@ -312,11 +312,11 @@ export default function QualityReportsPage() {
       {/* Title Card / Banner - dark theme */}
       <div className="hero-banner p-6 sm:p-7 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-4 print:hidden">
         <div>
-          <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-white/10 text-[#F5A5A8] text-[12.5px] font-bold tracking-wide uppercase mb-2">
+          <div className="inline-flex items-center gap-2 px-3 py-0.5 rounded-full bg-white/10 text-[#E8C988] text-[12.5px] font-bold tracking-wide uppercase mb-2">
             <span>AUDIT & COMPLIANCE REGISTERS</span>
           </div>
           <h2 className="text-2xl font-bold text-white flex items-start space-x-2.5">
-            <BarChart3 className="w-6 h-6 shrink-0 mt-1 text-[#F06B70]" />
+            <BarChart3 className="w-6 h-6 shrink-0 mt-1 text-[#D4A954]" />
             <span>NABH & Quality Compliance Registers</span>
           </h2>
           <p className="text-xs text-slate-300/80 mt-1">
@@ -333,7 +333,7 @@ export default function QualityReportsPage() {
             className="px-4 py-2.5 bg-white/10 border border-white/15 hover:bg-white/15 text-white font-semibold text-xs rounded-xl flex items-center space-x-2 transition cursor-pointer disabled:opacity-50"
             title="Download CSV"
           >
-            <Download className="w-4 h-4 text-[#F5A5A8]" />
+            <Download className="w-4 h-4 text-[#E8C988]" />
             <span>Export CSV</span>
           </button>
 
@@ -350,7 +350,7 @@ export default function QualityReportsPage() {
           <button
             type="button"
             onClick={handlePrint}
-            className="px-4 py-2.5 bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] hover:brightness-110 active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red flex items-center space-x-2 transition cursor-pointer"
+            className="px-4 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#7A2430] to-[#9C3A42] hover:brightness-110 active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red flex items-center space-x-2 transition cursor-pointer"
             title="Print or Save PDF"
           >
             <Printer className="w-4 h-4 text-white" />
@@ -360,10 +360,10 @@ export default function QualityReportsPage() {
       </div>
 
       {/* Printable Header (Visible only when printing) */}
-      <div className="hidden print:block mb-6 border-b-2 border-[#8B1E23] pb-4">
+      <div className="hidden print:block mb-6 border-b-2 border-[#5C1A22] pb-4">
         <div className="flex justify-between items-start">
           <div>
-            <h1 className="text-xl font-bold text-[#8B1E23]">ADHIPARASAKTHI HOSPITALS</h1>
+            <h1 className="text-xl font-bold text-[#5C1A22]">ADHIPARASAKTHI HOSPITALS</h1>
             <h2 className="text-sm font-semibold text-[#172033]">
               {activeTab === 'INCIDENTS' ? 'MASTER INCIDENT REGISTER' : 'CAPA COMPLIANCE REGISTER'}
             </h2>
@@ -430,7 +430,7 @@ export default function QualityReportsPage() {
       <FilterBar className="space-y-3 print:hidden">
         <div className="flex items-center justify-between">
           <span className="text-xs font-bold uppercase tracking-wider text-[#64748B] flex items-center space-x-1.5">
-            <Filter className="w-3.5 h-3.5 text-[#8B1E23]" />
+            <Filter className="w-3.5 h-3.5 text-[#5C1A22]" />
             <span>Filter Audit Register</span>
           </span>
           <button
@@ -445,7 +445,7 @@ export default function QualityReportsPage() {
               setCapaOverdueOnly(false);
               setSearchQuery('');
             }}
-            className="text-xs text-[#8B1E23] hover:underline font-semibold cursor-pointer"
+            className="text-xs text-[#5C1A22] hover:underline font-semibold cursor-pointer"
           >
             Reset Filters
           </button>
@@ -566,7 +566,7 @@ export default function QualityReportsPage() {
               Showing {activeTab === 'INCIDENTS' ? filteredIncidents.length : filteredCapas.length} records
             </span>
           </div>
-          <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#FFF5F5] border border-[#FBD5D5] text-[#8B1E23]">
+          <span className="text-xs font-semibold px-3 py-1.5 rounded-full bg-[#FAF3EC] border border-[#E9D3BC] text-[#5C1A22]">
             NABH Accreditation Reference Standard PSQ.2
           </span>
         </div>
@@ -607,7 +607,7 @@ export default function QualityReportsPage() {
                         className="whitespace-nowrap"
                         style={{ boxShadow: `inset 4px 0 0 ${SEVERITY_COLOR[inc.severity] ?? '#CBD5E1'}` }}
                       >
-                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs">
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs">
                           {inc.incidentNumber}
                         </span>
                       </td>
@@ -725,7 +725,7 @@ export default function QualityReportsPage() {
                         className="whitespace-nowrap"
                         style={capa.overdue ? { boxShadow: 'inset 4px 0 0 #DC2626' } : undefined}
                       >
-                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs">
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs">
                           {capa.capaNumber}
                         </span>
                       </td>

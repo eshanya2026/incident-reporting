@@ -75,22 +75,22 @@ export default function LoginPage() {
   ];
 
   const inputClass =
-    'w-full px-4 py-3.5 bg-white border border-[#E2E8F0] rounded-xl text-sm text-[#172033] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#8B1E23]/20 focus:border-[#8B1E23] transition';
+    'w-full px-4 py-3.5 bg-white border border-[#E2E8F0] rounded-xl text-sm text-[#172033] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#5C1A22]/20 focus:border-[#5C1A22] transition';
 
   return (
     <div className="min-h-screen bg-white p-3 sm:p-5 text-[#172033]">
       {/* Full-screen brand panel */}
-      <div className="relative min-h-[calc(100vh-1.5rem)] sm:min-h-[calc(100vh-2.5rem)] rounded-3xl brand-gradient shadow-[0_24px_50px_-20px_rgba(104,21,26,0.55)] overflow-hidden flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-12 xl:gap-20 lg:px-10">
+      <div className="relative min-h-[calc(100vh-1.5rem)] sm:min-h-[calc(100vh-2.5rem)] rounded-3xl brand-gradient shadow-[0_24px_50px_-20px_rgba(61,15,22,0.55)] overflow-hidden flex flex-col lg:flex-row lg:items-center lg:justify-center lg:gap-12 xl:gap-20 lg:px-10">
         {/* Decorative circles */}
         <div className="animate-fade-in absolute -top-[30%] right-[8%] w-[55vw] max-w-[820px] aspect-square rounded-full bg-white/[0.06] pointer-events-none"></div>
-        <div className="animate-fade-in absolute -bottom-[38%] -left-[8%] w-[46vw] min-w-[320px] max-w-[760px] aspect-square rounded-full bg-gradient-to-br from-[#E53935]/50 via-[#A8252C]/60 to-[#3D0A0D]/70 shadow-[0_0_80px_rgba(0,0,0,0.15)] pointer-events-none"></div>
+        <div className="animate-fade-in absolute -bottom-[38%] -left-[8%] w-[46vw] min-w-[320px] max-w-[760px] aspect-square rounded-full bg-gradient-to-br from-[#9C3A42]/50 via-[#6E2129]/60 to-[#200809]/70 shadow-[0_0_80px_rgba(0,0,0,0.15)] pointer-events-none"></div>
 
         {/* Welcome copy */}
         <div className="relative z-10 text-white px-8 pt-14 pb-6 sm:px-14 lg:p-0 lg:w-[42%] lg:max-w-[520px]">
           {/* Logo on a light plate so the red artwork stays legible on the red panel */}
           <div
             style={delay(150)}
-            className="animate-fade-in-up inline-block bg-gradient-to-br from-white to-[#FFF5F5] rounded-2xl p-3 sm:p-3.5 shadow-[0_12px_30px_-10px_rgba(61,10,13,0.5)] ring-1 ring-white/60"
+            className="animate-fade-in-up inline-block bg-gradient-to-br from-white to-[#FAF3EC] rounded-2xl p-3 sm:p-3.5 shadow-[0_12px_30px_-10px_rgba(32,8,9,0.5)] ring-1 ring-white/60"
           >
             <img
               src="/logo.png"
@@ -121,7 +121,7 @@ export default function LoginPage() {
           >
             <h2
               style={delay(500)}
-              className="animate-fade-in-up text-3xl xl:text-4xl font-extrabold tracking-wide text-[#68151A]"
+              className="animate-fade-in-up text-3xl xl:text-4xl font-extrabold tracking-wide text-[#3D0F16]"
             >
               Sign in
             </h2>
@@ -131,14 +131,14 @@ export default function LoginPage() {
 
             <form onSubmit={handleLogin} className="mt-7 space-y-4">
               {error && (
-                <div className="p-3 bg-[#FFF5F5] border border-[#FDECEC] text-[#C62828] rounded-xl text-sm flex items-center space-x-2">
+                <div className="p-3 bg-[#FAF3EC] border border-[#F4E6D7] text-[#7A2430] rounded-xl text-sm flex items-center space-x-2">
                   <AlertCircle className="w-5 h-5 shrink-0" />
                   <span className="font-medium">{error}</span>
                 </div>
               )}
               {info && (
                 <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] text-[#172033] rounded-xl text-sm flex items-center space-x-2">
-                  <Info className="w-5 h-5 shrink-0 text-[#8B1E23]" />
+                  <Info className="w-5 h-5 shrink-0 text-[#5C1A22]" />
                   <span className="font-medium">{info}</span>
                 </div>
               )}
@@ -169,7 +169,7 @@ export default function LoginPage() {
                 <button
                   type="button"
                   onClick={() => setShowPassword((s) => !s)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[12.5px] font-bold tracking-wide text-[#68151A] hover:text-[#C62828] transition cursor-pointer"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-[12.5px] font-bold tracking-wide text-[#3D0F16] hover:text-[#7A2430] transition cursor-pointer"
                 >
                   {showPassword ? 'HIDE' : 'SHOW'}
                 </button>
@@ -186,7 +186,7 @@ export default function LoginPage() {
                     onChange={(e) => setRemember(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <span className="w-4 h-4 rounded-[4px] border border-[#94A3B8] bg-white flex items-center justify-center peer-checked:bg-[#8B1E23] peer-checked:border-[#8B1E23] peer-focus-visible:ring-2 peer-focus-visible:ring-[#8B1E23]/30 [&>svg]:opacity-0 peer-checked:[&>svg]:opacity-100">
+                  <span className="w-4 h-4 rounded-[4px] border border-[#94A3B8] bg-white flex items-center justify-center peer-checked:bg-[#5C1A22] peer-checked:border-[#5C1A22] peer-focus-visible:ring-2 peer-focus-visible:ring-[#5C1A22]/30 [&>svg]:opacity-0 peer-checked:[&>svg]:opacity-100">
                     <Check className="w-3 h-3 text-white" strokeWidth={3} />
                   </span>
                   Remember me
@@ -197,7 +197,7 @@ export default function LoginPage() {
                     setError('');
                     setInfo('Please contact the system administrator to reset your password.');
                   }}
-                  className="text-[#172033] hover:text-[#C62828] transition cursor-pointer"
+                  className="text-[#172033] hover:text-[#7A2430] transition cursor-pointer"
                 >
                   Forgot Password?
                 </button>
@@ -207,7 +207,7 @@ export default function LoginPage() {
                 type="submit"
                 disabled={loading}
                 style={delay(900)}
-                className="animate-fade-in-up w-full py-3.5 bg-gradient-to-r from-[#8B1E23] via-[#C62828] to-[#E53935] hover:brightness-110 active:scale-[0.99] disabled:opacity-70 text-white font-bold rounded-xl shadow-button-red transition duration-180 flex items-center justify-center relative overflow-hidden cursor-pointer"
+                className="animate-fade-in-up w-full py-3.5 bg-gradient-to-r from-[#5C1A22] via-[#7A2430] to-[#9C3A42] hover:brightness-110 active:scale-[0.99] disabled:opacity-70 text-white font-bold rounded-xl shadow-button-red transition duration-180 flex items-center justify-center relative overflow-hidden cursor-pointer"
               >
                 <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/15 to-transparent pointer-events-none"></span>
                 {loading ? (
@@ -228,7 +228,7 @@ export default function LoginPage() {
                   key={p.key}
                   type="button"
                   onClick={() => handleQuickLogin(p.key)}
-                  className="px-2.5 py-1 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] hover:bg-[#FDECEC] hover:border-[#F8B4B4] hover:text-[#68151A] font-semibold transition cursor-pointer"
+                  className="px-2.5 py-1 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] hover:bg-[#F4E6D7] hover:border-[#DDBD9A] hover:text-[#3D0F16] font-semibold transition cursor-pointer"
                 >
                   {p.label}
                 </button>
@@ -236,7 +236,7 @@ export default function LoginPage() {
             </div>
             <p style={delay(1060)} className="animate-fade-in-up mt-4 text-[12.5px] text-[#64748B]">
               Don&rsquo;t have an account?{' '}
-              <span className="font-semibold text-[#68151A]">Contact your administrator</span>
+              <span className="font-semibold text-[#3D0F16]">Contact your administrator</span>
             </p>
           </div>
         </div>

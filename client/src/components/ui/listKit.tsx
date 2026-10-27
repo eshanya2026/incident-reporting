@@ -7,7 +7,7 @@ import type { LucideIcon } from 'lucide-react';
 
 /** Class for a SearchableSelect (or input) inside a filter bar. */
 export const filterControlClass =
-  'w-full h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-4 focus:ring-[#8B1E23]/10 focus:border-[#8B1E23] transition';
+  'w-full h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 hover:border-slate-300 focus:outline-none focus:ring-4 focus:ring-[#5C1A22]/10 focus:border-[#5C1A22] transition';
 
 /** Segmented tab control with optional counts. */
 export function TabBar<K extends string>({
@@ -32,15 +32,15 @@ export function TabBar<K extends string>({
             onClick={() => onChange(t.key)}
             className={`flex items-center gap-2 px-4 h-10 rounded-xl text-sm whitespace-nowrap transition cursor-pointer ${
               isActive
-                ? 'bg-white text-[#8B1E23] font-bold shadow-[0_2px_8px_-2px_rgba(15,23,42,0.18)]'
-                : 'text-slate-600 font-medium hover:text-[#8B1E23] hover:bg-white/60'
+                ? 'bg-white text-[#5C1A22] font-bold shadow-[0_2px_8px_-2px_rgba(15,23,42,0.18)]'
+                : 'text-slate-600 font-medium hover:text-[#5C1A22] hover:bg-white/60'
             }`}
           >
             {t.label}
             {t.count !== undefined && (
               <span
                 className={`min-w-[22px] px-1.5 py-0.5 rounded-full text-[11.5px] font-bold text-center ${
-                  isActive ? 'bg-gradient-to-br from-[#C62828] to-[#8B1E23] text-white' : 'bg-white text-slate-500 border border-slate-200'
+                  isActive ? 'bg-gradient-to-br from-[#7A2430] to-[#5C1A22] text-white' : 'bg-white text-slate-500 border border-slate-200'
                 }`}
               >
                 {t.count}
@@ -75,8 +75,8 @@ export function FilterChips<K extends string>({
             onClick={() => onChange(o.key)}
             className={`h-9 px-4 rounded-full text-[13px] font-semibold border transition cursor-pointer inline-flex items-center gap-2 ${
               active
-                ? 'bg-gradient-to-b from-[#C62828] to-[#8B1E23] text-white border-transparent shadow-[0_6px_14px_-6px_rgba(139,30,35,0.7),inset_0_1px_0_rgba(255,255,255,0.25)]'
-                : 'bg-white text-slate-600 border-slate-200 hover:border-[#8B1E23]/40 hover:bg-[#FFF5F5] hover:text-[#68151A]'
+                ? 'bg-gradient-to-b from-[#7A2430] to-[#5C1A22] text-white border-transparent shadow-[0_6px_14px_-6px_rgba(92,26,34,0.7),inset_0_1px_0_rgba(255,255,255,0.25)]'
+                : 'bg-white text-slate-600 border-slate-200 hover:border-[#5C1A22]/40 hover:bg-[#FAF3EC] hover:text-[#3D0F16]'
             }`}
           >
             {o.label}
@@ -110,7 +110,7 @@ export function SearchInput({
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
-        className="w-full h-10 pl-10 pr-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:ring-4 focus:ring-[#8B1E23]/10 focus:border-[#8B1E23] transition"
+        className="w-full h-10 pl-10 pr-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-700 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:ring-4 focus:ring-[#5C1A22]/10 focus:border-[#5C1A22] transition"
       />
     </div>
   );
@@ -171,7 +171,7 @@ export function Pagination({
   onChange: (page: number) => void;
 }) {
   const btn =
-    'h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-[#FFF5F5] hover:text-[#8B1E23] hover:border-[#8B1E23]/30 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-600 disabled:hover:border-slate-200';
+    'h-9 px-3 inline-flex items-center gap-1 rounded-xl border border-slate-200 bg-white text-sm font-semibold text-slate-600 hover:bg-[#FAF3EC] hover:text-[#5C1A22] hover:border-[#5C1A22]/30 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-600 disabled:hover:border-slate-200';
   return (
     <div className="flex items-center justify-between gap-3 flex-wrap">
       <span>
@@ -191,7 +191,7 @@ export function Pagination({
 }
 
 const STAT_TONES = {
-  red: { bar: '#C62828', tint: '#FDECEC', text: '#8B1E23' },
+  red: { bar: '#7A2430', tint: '#F4E6D7', text: '#5C1A22' },
   amber: { bar: '#F59E0B', tint: '#FEF3C7', text: '#B45309' },
   blue: { bar: '#2563EB', tint: '#DBEAFE', text: '#1D4ED8' },
   violet: { bar: '#7C3AED', tint: '#EDE9FE', text: '#6D28D9' },
@@ -235,7 +235,7 @@ export function StatTile({
 export function EmptyState({ icon: Icon = Inbox, title, message }: { icon?: LucideIcon; title?: string; message: string }) {
   return (
     <div className="py-14 px-6 text-center">
-      <span className="w-14 h-14 mx-auto rounded-2xl bg-[#FFF5F5] border border-[#FBD5D5] text-[#C62828] flex items-center justify-center">
+      <span className="w-14 h-14 mx-auto rounded-2xl bg-[#FAF3EC] border border-[#E9D3BC] text-[#7A2430] flex items-center justify-center">
         <Icon className="w-6 h-6" />
       </span>
       {title && <p className="mt-4 text-base font-bold text-slate-800">{title}</p>}

@@ -164,6 +164,8 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
       overdueOpenIncidents,
       locationCategoryAgg,
       locationSubcategoryAgg,
+      resolutionAgg,
+      capaVerificationAgg,
     ] = await Promise.all([
       Incident.countDocuments(reportedFilter),
       Incident.countDocuments({ ...reportedFilter, status: 'REJECTED' }),
@@ -213,6 +215,27 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
           },
         },
       ]),
+      // Resolved (now CLOSED) vs still-unresolved, grouped by the month each incident was
+      // *reported* (not closed) — tracks how each month's intake has since worked through,
+      // excluding rejected (duplicate / not an incident) reports
+      Incident.aggregate([
+        { $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } },
+        {
+          $group: {
+            _id: {
+              month: { $dateToString: { format: '%Y-%m', date: '$reportedAt', timezone: TIME_ZONE } },
+              resolved: { $eq: ['$status', 'CLOSED'] },
+            },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+      // CAPAs Quality has reviewed (assigned in the period): effective, or sent back as not
+      // effective. CAPAs never yet reviewed (still OPEN/DONE) aren't counted either way.
+      Capa.aggregate([
+        { $match: { ...capaScope, ...inPeriod('assignedDate'), 'verification.effective': { $exists: true } } },
+        { $group: { _id: '$verification.effective', count: { $sum: 1 } } },
+      ]),
     ]);
 
     // Overdue buckets are cumulative: an incident open 40 days counts in all three
@@ -260,10 +283,20 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
       Location.find({ _id: { $in: [...locationIds] } }).select('name'),
     ]);
     const nameOf = (list: any[], id: any) => list.find((x) => x._id.toString() === String(id))?.name ?? 'Unknown';
+    // Older incidents can carry a subcategoryCode from a taxonomy version that's since been
+    // re-seeded, so the code; fall back to a readable label (e.g. WRONG_DOSE -> Wrong Dose)
+    // instead of showing the raw code.
+    const humanize = (code: string) =>
+      code
+        .toLowerCase()
+        .split('_')
+        .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+        .join(' ');
     const subcategoryNameOf = (categoryId: any, code?: string) => {
       if (!code) return 'Unspecified';
       const cat = categories.find((c) => c._id.toString() === String(categoryId));
-      return cat?.subcategories?.find((sc: any) => sc.code === code)?.name ?? code;
+      const match = cat?.subcategories?.find((sc: any) => sc.code === code)?.name;
+      return match ?? humanize(code);
     };
 
     // Categories don't carry their domain group on the incident itself, so roll the per-category
@@ -303,10 +336,40 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
     const allKeys = [...reportedByMonth.keys(), ...closedByMonth.keys()].sort();
     const firstMonth = since ?? (allKeys[0] ? new Date(`${allKeys[0]}-01T00:00:00`) : new Date(now.getFullYear(), now.getMonth(), 1));
     const monthly: Array<{ month: string; reported: number; closed: number }> = [];
+    const resolvedByMonth = new Map<string, number>();
+    const unresolvedByMonth = new Map<string, number>();
+    for (const r of resolutionAgg as any[]) {
+      (r._id.resolved ? resolvedByMonth : unresolvedByMonth).set(r._id.month, r.count);
+    }
+    const resolvedVsUnresolved: Array<{ month: string; resolved: number; unresolved: number }> = [];
     for (let d = new Date(firstMonth.getFullYear(), firstMonth.getMonth(), 1); d <= now; d.setMonth(d.getMonth() + 1)) {
       const key = monthKey(d);
       monthly.push({ month: key, reported: reportedByMonth.get(key) ?? 0, closed: closedByMonth.get(key) ?? 0 });
+      resolvedVsUnresolved.push({ month: key, resolved: resolvedByMonth.get(key) ?? 0, unresolved: unresolvedByMonth.get(key) ?? 0 });
     }
+
+    // CAPA effectiveness: of the CAPAs Quality has reviewed (assigned in this period), how many
+    // were accepted as effective vs sent back
+    const capaEffective = (capaVerificationAgg as any[]).find((c) => c._id === true)?.count ?? 0;
+    const capaNotEffective = (capaVerificationAgg as any[]).find((c) => c._id === false)?.count ?? 0;
+    const capaReviewed = capaEffective + capaNotEffective;
+    const capaEffectiveness = {
+      effective: capaEffective,
+      notEffective: capaNotEffective,
+      rate: capaReviewed ? Math.round((capaEffective / capaReviewed) * 100) : null,
+    };
+
+    // Recurring hotspots: the same location + category repeating within the period (2+ times) —
+    // reuses the pair counts already computed for the location x type chart above
+    const recurringHotspots = (locationCategoryAgg as any[])
+      .filter((r) => r.count >= 2)
+      .map((r) => ({
+        location: r._id.locationId ? nameOf(locations, r._id.locationId) : 'Not recorded',
+        category: nameOf(categories, r._id.categoryId),
+        count: r.count,
+      }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
 
     sendSuccess(
       res,
@@ -357,6 +420,9 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
           overdueBuckets,
           locationByType,
           locationBySubtype,
+          resolvedVsUnresolved,
+          capaEffectiveness,
+          recurringHotspots,
           monthly,
         },
       },

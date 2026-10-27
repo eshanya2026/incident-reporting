@@ -22,7 +22,7 @@ export function StatTile({
   const body = (
     <div
       className={`h-full bg-white border rounded-xl p-4 shadow-card transition ${
-        to ? 'hover:border-[#8B1E23]/40 hover:shadow-md cursor-pointer' : ''
+        to ? 'hover:border-[#5C1A22]/40 hover:shadow-md cursor-pointer' : ''
       } ${status === 'critical' ? 'border-[#d03b3b]/40' : 'border-clinicalBorder'}`}
     >
       <div className="text-xs font-medium text-clinicalText-secondary">{label}</div>
@@ -76,7 +76,7 @@ export function ChartCard({
           <button
             type="button"
             onClick={() => setAsTable(!asTable)}
-            className="inline-flex items-center gap-1 px-2 py-1 text-[12.5px] font-semibold text-clinicalText-secondary hover:text-[#8B1E23] border border-clinicalBorder rounded-lg cursor-pointer"
+            className="inline-flex items-center gap-1 px-2 py-1 text-[12.5px] font-semibold text-clinicalText-secondary hover:text-[#5C1A22] border border-clinicalBorder rounded-lg cursor-pointer"
             aria-pressed={asTable}
           >
             {asTable ? <BarChart3 className="w-3.5 h-3.5" /> : <Table2 className="w-3.5 h-3.5" />}

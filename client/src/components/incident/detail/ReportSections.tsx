@@ -118,7 +118,7 @@ export function ReportDetails({ incident }: { incident: any }) {
                 key={a._id}
                 type="button"
                 onClick={() => openAttachment(a).catch(() => toast.error('Could not open the file'))}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-clinicalBorder rounded-lg text-xs text-[#8B1E23] hover:bg-[#FFF5F5] cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-clinicalBorder rounded-lg text-xs text-[#5C1A22] hover:bg-[#FAF3EC] cursor-pointer"
               >
                 <Paperclip className="w-3.5 h-3.5" /> {a.originalName}
               </button>

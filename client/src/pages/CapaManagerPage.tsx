@@ -96,7 +96,7 @@ export default function CapaManagerPage() {
                   return (
                     <tr key={c._id}>
                       <td style={overdue ? { boxShadow: 'inset 4px 0 0 #DC2626' } : undefined}>
-                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">
+                        <span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">
                           {c.capaNumber}
                         </span>
                         <div className="mt-1.5 flex items-center gap-1.5">
@@ -136,7 +136,7 @@ export default function CapaManagerPage() {
                         {c.incidentId?._id && (
                           <Link
                             to={`/incidents/${c.incidentId._id}`}
-                            className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-white hover:bg-gradient-to-b hover:from-[#C62828] hover:to-[#8B1E23] text-slate-700 hover:text-white rounded-xl font-semibold text-[13px] transition border border-slate-200 hover:border-transparent shadow-xs"
+                            className="inline-flex items-center gap-1.5 h-9 px-3.5 bg-white hover:bg-gradient-to-b hover:from-[#7A2430] hover:to-[#5C1A22] text-slate-700 hover:text-white rounded-xl font-semibold text-[13px] transition border border-slate-200 hover:border-transparent shadow-xs"
                           >
                             <span>Incident</span>
                             <ArrowRight className="w-3.5 h-3.5" />

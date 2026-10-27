@@ -109,7 +109,7 @@ export default function IncidentDetailPage() {
     <div className="space-y-6 text-clinicalText-primary">
       <button
         onClick={back}
-        className="inline-flex items-center space-x-2 text-xs font-semibold text-[#64748B] hover:text-[#8B1E23] bg-white hover:bg-[#FFF5F5] border border-clinicalBorder px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
+        className="inline-flex items-center space-x-2 text-xs font-semibold text-[#64748B] hover:text-[#5C1A22] bg-white hover:bg-[#FAF3EC] border border-clinicalBorder px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
       >
         <ArrowLeft className="w-4 h-4" />
         <span>Back</span>
@@ -118,7 +118,7 @@ export default function IncidentDetailPage() {
       {/* Header - dark theme */}
       <div className="hero-banner p-6 rounded-2xl space-y-3">
         <div className="flex flex-wrap items-center gap-3">
-          <span className="font-mono text-lg font-black text-[#F06B70]">{incident.incidentNumber}</span>
+          <span className="font-mono text-lg font-black text-[#D4A954]">{incident.incidentNumber}</span>
           <StatusBadge status={status} />
           {confirmedSeverity ? (
             <SeverityBadge severity={incident.severity} />
@@ -132,17 +132,17 @@ export default function IncidentDetailPage() {
         <h2 className="text-xl font-bold text-white">{incident.title}</h2>
         <div className="flex flex-wrap items-center gap-4 text-xs text-slate-300/80">
           <span className="flex items-center gap-1">
-            <Calendar className="w-3.5 h-3.5 text-[#F06B70]" /> Occurred {dayjs(incident.incidentDateTime).format('DD MMM YYYY HH:mm')}
+            <Calendar className="w-3.5 h-3.5 text-[#D4A954]" /> Occurred {dayjs(incident.incidentDateTime).format('DD MMM YYYY HH:mm')}
           </span>
           <span className="flex items-center gap-1">
-            <Building className="w-3.5 h-3.5 text-[#F06B70]" /> {incident.occurredInDepartmentId?.name || '—'}
+            <Building className="w-3.5 h-3.5 text-[#D4A954]" /> {incident.occurredInDepartmentId?.name || '—'}
           </span>
           <span className="flex items-center gap-1">
-            <Tag className="w-3.5 h-3.5 text-[#F06B70]" /> {incident.categoryId?.name}
+            <Tag className="w-3.5 h-3.5 text-[#D4A954]" /> {incident.categoryId?.name}
           </span>
           {(incident.floor || incident.zone || incident.locationId?.floor || incident.locationId?.name) && (
             <span className="flex items-center gap-1">
-              <MapPin className="w-3.5 h-3.5 text-[#F06B70]" />
+              <MapPin className="w-3.5 h-3.5 text-[#D4A954]" />
               <span>
                 {incident.floor || incident.locationId?.floor || ''}
                 {(incident.floor || incident.locationId?.floor) && (incident.zone || incident.locationId?.zone) ? ' • ' : ''}
@@ -153,7 +153,7 @@ export default function IncidentDetailPage() {
           )}
           {incident.reportedBy?.name && (
             <span className="flex items-center gap-1">
-              <UserCheck className="w-3.5 h-3.5 text-[#F06B70]" /> Reported by {isStaff ? 'you' : incident.reportedBy.name}
+              <UserCheck className="w-3.5 h-3.5 text-[#D4A954]" /> Reported by {isStaff ? 'you' : incident.reportedBy.name}
             </span>
           )}
         </div>

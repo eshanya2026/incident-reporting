@@ -502,7 +502,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               </button>
               <button
                 onClick={openCreateUser}
-                className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer"
+                className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer"
               >
                 <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
                 <span className="relative z-10 flex items-center space-x-2">
@@ -531,7 +531,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   const isDeptHod = departments.some((d: any) => d.hodUserId?._id === u._id);
                   return (
                     <tr key={u._id} className="hover:bg-slate-50/80 transition">
-                      <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">{u.employeeId}</span></td>
+                      <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{u.employeeId}</span></td>
                       <td className="py-3 px-4">
                         <div className="font-semibold text-clinicalText-primary">{u.name}</div>
                         <div className="text-[12.5px] text-clinicalText-muted">{u.designation}</div>
@@ -575,7 +575,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                             setResetUser(u);
                             setNewPassword('');
                           }}
-                          className="h-8 px-3 text-[13px] font-semibold text-[#8B1E23] bg-[#FFF5F5] hover:bg-[#FDECEC] border border-[#FBD5D5] rounded-lg transition cursor-pointer"
+                          className="h-8 px-3 text-[13px] font-semibold text-[#5C1A22] bg-[#FAF3EC] hover:bg-[#F4E6D7] border border-[#E9D3BC] rounded-lg transition cursor-pointer"
                         >
                           Reset Password
                         </button>
@@ -618,7 +618,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
             </div>
             <button
               onClick={() => setShowDeptModal(true)}
-              className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer"
+              className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer"
             >
               <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
               <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
@@ -648,7 +648,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 )}
                 {filteredDepartments.map((d: any) => (
                   <tr key={d._id} className="hover:bg-slate-50/80 transition">
-                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">{d.code}</span></td>
+                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{d.code}</span></td>
                     <td className="py-3 px-4 font-semibold text-clinicalText-primary">{d.name}</td>
                     <td className="py-3 px-4 text-clinicalText-secondary">{d.category || '—'}</td>
                     <td className="py-3 px-4">
@@ -681,7 +681,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
       {/* Tab 3: Locations */}
       {activeTab === 'locations' && (
         <div key="locations" className="space-y-4 animate-tab-panel-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-[#FFF8F8] to-white p-5 rounded-2xl border border-[#F1E0E1]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-[#FBF6EE] to-white p-5 rounded-2xl border border-[#E6D7C3]">
             <div>
               <div className="font-bold text-xs text-clinicalText-primary flex items-center space-x-2">
                 <MapPin className="w-4 h-4 text-maroon-700" />
@@ -693,7 +693,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
             </div>
             <button
               onClick={() => setShowLocationModal(true)}
-              className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer self-start sm:self-auto"
+              className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer self-start sm:self-auto"
             >
               <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
               <span className="relative z-10 flex items-center space-x-2">
@@ -766,7 +766,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               <tbody className="divide-y divide-slate-100">
                 {filteredLocations.map((l: any) => (
                   <tr key={l._id} className="hover:bg-slate-50/80 transition">
-                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">{l.code}</span></td>
+                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{l.code}</span></td>
                     <td className="py-3 px-4">
                       {l.floor ? (
                         <span className="px-2.5 py-1 rounded-full font-semibold bg-red-50 text-maroon-700 border border-red-100 text-[12.5px]">
@@ -808,7 +808,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
       {/* Tab 4: Categories */}
       {activeTab === 'categories' && (
         <div key="categories" className="space-y-4 animate-tab-panel-in">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-[#FFF8F8] to-white p-5 rounded-2xl border border-[#F1E0E1]">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-[#FBF6EE] to-white p-5 rounded-2xl border border-[#E6D7C3]">
             <div>
               <div className="font-bold text-xs text-clinicalText-primary flex items-center space-x-2">
                 <Tag className="w-4 h-4 text-maroon-700" />
@@ -820,7 +820,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
             </div>
             <button
               onClick={() => setShowCategoryModal(true)}
-              className="group relative overflow-hidden px-4 py-2 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-1.5 transition-all duration-200 cursor-pointer self-start sm:self-auto"
+              className="group relative overflow-hidden px-4 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-1.5 transition-all duration-200 cursor-pointer self-start sm:self-auto"
             >
               <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
               <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
@@ -887,7 +887,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                     <td className="py-3 px-4 text-center font-bold text-clinicalText-muted">
                       {c.order || index + 1}
                     </td>
-                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FFF5F5] border border-[#FBD5D5] font-mono font-bold text-[#8B1E23] text-xs whitespace-nowrap">{c.code}</span></td>
+                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{c.code}</span></td>
                     <td className="py-3 px-4">
                       <div className="font-semibold text-clinicalText-primary">{c.name}</div>
                       {c.domain && (
@@ -915,7 +915,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                           setTargetCategory(c);
                           setShowSubModal(true);
                         }}
-                        className="inline-flex items-center space-x-1 h-8 px-3 text-[13px] font-semibold text-[#8B1E23] bg-[#FFF5F5] hover:bg-[#FDECEC] border border-[#FBD5D5] rounded-lg transition cursor-pointer"
+                        className="inline-flex items-center space-x-1 h-8 px-3 text-[13px] font-semibold text-[#5C1A22] bg-[#FAF3EC] hover:bg-[#F4E6D7] border border-[#E9D3BC] rounded-lg transition cursor-pointer"
                         title="Add subcategory to this category"
                       >
                         <Plus className="w-3 h-3" />
@@ -1034,7 +1034,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               <button type="button" onClick={() => setShowUserModal(false)} className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary hover:text-clinicalText-primary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer">Cancel</button>
               <button
                 type="submit"
-                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
+                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
               >
                 <span className="relative z-10">{editingUser ? 'Save Changes' : 'Create User'}</span>
               </button>
@@ -1055,7 +1055,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
             </div>
             <div className="flex justify-end space-x-2 pt-2">
               <button type="button" onClick={() => setResetUser(null)} className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer">Cancel</button>
-              <button type="submit" className="px-5 py-2 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] text-white font-semibold text-xs rounded-xl shadow-button-red transition cursor-pointer">Reset Password</button>
+              <button type="submit" className="px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] text-white font-semibold text-xs rounded-xl shadow-button-red transition cursor-pointer">Reset Password</button>
             </div>
           </form>
         </div>
@@ -1132,7 +1132,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
             </div>
             <div className="flex justify-end space-x-2 pt-2">
               <button type="button" onClick={() => setShowLocationModal(false)} className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer">Cancel</button>
-              <button type="submit" className="px-5 py-2 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] text-white font-semibold text-xs rounded-xl shadow-button-red transition cursor-pointer">Create Location</button>
+              <button type="submit" className="px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] text-white font-semibold text-xs rounded-xl shadow-button-red transition cursor-pointer">Create Location</button>
             </div>
           </form>
         </div>
@@ -1165,7 +1165,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               <button type="button" onClick={() => setShowDeptModal(false)} className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary hover:text-clinicalText-primary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer">Cancel</button>
               <button
                 type="submit"
-                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
+                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
               >
                 <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
                 <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
@@ -1244,7 +1244,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               </button>
               <button
                 type="submit"
-                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
+                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
               >
                 <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
                 <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
@@ -1301,7 +1301,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               </button>
               <button
                 type="submit"
-                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
+                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
               >
                 <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
                 <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
@@ -1487,7 +1487,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 type="button"
                 disabled={bulkImportLoading || bulkParsedRows.length === 0}
                 onClick={handleExecuteBulkImport}
-                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:from-[#7A1A1E] hover:via-[#8B1E23] hover:to-[#B71C1C] disabled:opacity-50 active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
+                className="group relative overflow-hidden px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] disabled:opacity-50 active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg transition-all duration-200 cursor-pointer"
               >
                 <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
                 <span className="relative z-10 flex items-center space-x-1.5">

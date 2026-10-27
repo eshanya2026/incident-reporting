@@ -89,7 +89,7 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
               setError('');
             }}
             className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
-              mode === key ? 'bg-[#8B1E23] text-white border-[#8B1E23]' : 'bg-white text-clinicalText-secondary border-clinicalBorder hover:bg-slate-50'
+              mode === key ? 'bg-[#5C1A22] text-white border-[#5C1A22]' : 'bg-white text-clinicalText-secondary border-clinicalBorder hover:bg-slate-50'
             }`}
           >
             <Icon className="w-3.5 h-3.5" /> {label}
@@ -329,7 +329,7 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
                   onClick={() => setCloseReasonType(key)}
                   className={`px-3 py-1.5 rounded-full text-xs font-semibold border transition cursor-pointer ${
                     closeReasonType === key
-                      ? 'bg-[#8B1E23] text-white border-[#8B1E23]'
+                      ? 'bg-[#5C1A22] text-white border-[#5C1A22]'
                       : 'bg-white text-clinicalText-secondary border-clinicalBorder hover:bg-slate-50'
                   }`}
                 >

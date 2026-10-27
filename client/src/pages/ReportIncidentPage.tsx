@@ -53,9 +53,9 @@ const SEVERITY_LEVELS = [
 ] as const;
 
 const inputClass =
-  'w-full h-11 px-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:ring-4 focus:ring-[#8B1E23]/10 focus:border-[#8B1E23] transition disabled:opacity-50 disabled:bg-slate-50';
+  'w-full h-11 px-3.5 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:ring-4 focus:ring-[#5C1A22]/10 focus:border-[#5C1A22] transition disabled:opacity-50 disabled:bg-slate-50';
 const textareaClass =
-  'w-full px-3.5 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:ring-4 focus:ring-[#8B1E23]/10 focus:border-[#8B1E23] transition resize-y';
+  'w-full px-3.5 py-3 bg-white border border-slate-200 rounded-xl text-sm text-slate-800 placeholder-slate-400 hover:border-slate-300 focus:outline-none focus:ring-4 focus:ring-[#5C1A22]/10 focus:border-[#5C1A22] transition resize-y';
 
 function scrollToSection(id: string) {
   document.getElementById(id)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -81,7 +81,7 @@ function Field({
     <div className={className}>
       <label htmlFor={htmlFor} className="block text-xs font-semibold text-slate-700 mb-1.5">
         {label}
-        {required && <span className="text-[#C62828] ml-0.5">*</span>}
+        {required && <span className="text-[#7A2430] ml-0.5">*</span>}
       </label>
       {children}
       {hint && <p className="mt-1.5 text-xs text-slate-500">{hint}</p>}
@@ -117,8 +117,8 @@ function ChipGroup({
             onClick={() => onChange(opt)}
             className={`h-9 px-3.5 rounded-lg border text-sm font-semibold transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
               active
-                ? 'bg-gradient-to-b from-[#C62828] to-[#8B1E23] text-white border-transparent shadow-[0_6px_14px_-6px_rgba(139,30,35,0.7),inset_0_1px_0_rgba(255,255,255,0.25)]'
-                : 'bg-white border-slate-200 text-slate-700 hover:border-[#8B1E23]/50 hover:bg-[#FFF5F5] hover:text-[#68151A]'
+                ? 'bg-gradient-to-b from-[#7A2430] to-[#5C1A22] text-white border-transparent shadow-[0_6px_14px_-6px_rgba(92,26,34,0.7),inset_0_1px_0_rgba(255,255,255,0.25)]'
+                : 'bg-white border-slate-200 text-slate-700 hover:border-[#5C1A22]/50 hover:bg-[#FAF3EC] hover:text-[#3D0F16]'
             }`}
           >
             {opt}
@@ -156,17 +156,17 @@ function Section({
       id={id}
       className="scroll-mt-40 bg-white rounded-2xl border border-slate-200 shadow-card"
     >
-      <header className="px-5 sm:px-6 py-4 flex items-center gap-4 bg-gradient-to-r from-[#FFF8F8] to-white border-b border-slate-100 rounded-t-2xl">
+      <header className="px-5 sm:px-6 py-4 flex items-center gap-4 bg-gradient-to-r from-[#FBF6EE] to-white border-b border-slate-100 rounded-t-2xl">
         <span
           className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center font-bold text-sm text-white shadow-md transition-colors ${
-            done ? 'bg-emerald-500 shadow-emerald-500/30' : 'bg-gradient-to-br from-[#E53935] to-[#8B1E23] shadow-red-900/25'
+            done ? 'bg-emerald-500 shadow-emerald-500/30' : 'bg-gradient-to-br from-[#9C3A42] to-[#5C1A22] shadow-red-900/25'
           }`}
         >
           {done ? <Check className="w-5 h-5" strokeWidth={3} /> : step}
         </span>
         <div className="min-w-0 flex-1">
           <h3 className="text-base font-bold text-slate-900 flex items-center gap-2">
-            <Icon className="w-4 h-4 text-[#8B1E23] shrink-0" />
+            <Icon className="w-4 h-4 text-[#5C1A22] shrink-0" />
             <span>{title}</span>
             {optional && (
               <span className="text-[11px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">
@@ -441,7 +441,7 @@ export default function ReportIncidentPage() {
         title="Report Hospital Safety Incident / Near Miss"
         description="Complete the form below. Quality will review the report and route it to the responsible department."
       >
-        <span className="self-start md:self-auto shrink-0 inline-flex items-center gap-2 text-xs font-bold px-4 py-2 bg-black/20 text-[#FBC9CB] rounded-full border border-white/15">
+        <span className="self-start md:self-auto shrink-0 inline-flex items-center gap-2 text-xs font-bold px-4 py-2 bg-black/20 text-[#E8C988] rounded-full border border-white/15">
           <Clock className="w-4 h-4" />
           Report an incident
         </span>
@@ -454,7 +454,7 @@ export default function ReportIncidentPage() {
             <div className="flex items-center gap-4">
               <div className="relative w-[72px] h-[72px] shrink-0">
                 <svg viewBox="0 0 72 72" className="w-full h-full -rotate-90">
-                  <circle cx="36" cy="36" r={RING_R} fill="none" stroke="#F1E4E5" strokeWidth="7" />
+                  <circle cx="36" cy="36" r={RING_R} fill="none" stroke="#E6D7C3" strokeWidth="7" />
                   <circle
                     cx="36"
                     cy="36"
@@ -469,12 +469,12 @@ export default function ReportIncidentPage() {
                   />
                   <defs>
                     <linearGradient id="ringGrad" x1="0" y1="0" x2="1" y2="1">
-                      <stop offset="0%" stopColor="#E53935" />
-                      <stop offset="100%" stopColor="#8B1E23" />
+                      <stop offset="0%" stopColor="#9C3A42" />
+                      <stop offset="100%" stopColor="#5C1A22" />
                     </linearGradient>
                   </defs>
                 </svg>
-                <span className="absolute inset-0 flex items-center justify-center text-base font-extrabold text-[#68151A]">
+                <span className="absolute inset-0 flex items-center justify-center text-base font-extrabold text-[#3D0F16]">
                   {progress}%
                 </span>
               </div>
@@ -492,7 +492,7 @@ export default function ReportIncidentPage() {
                   <button
                     type="button"
                     onClick={() => scrollToSection(s.id)}
-                    className="w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left hover:bg-[#FFF5F5] transition cursor-pointer"
+                    className="w-full flex items-center gap-3 px-2.5 py-2 rounded-xl text-left hover:bg-[#FAF3EC] transition cursor-pointer"
                   >
                     <span
                       className={`w-6 h-6 shrink-0 rounded-full flex items-center justify-center text-[11px] font-bold transition-colors ${
@@ -825,7 +825,7 @@ export default function ReportIncidentPage() {
               )}
 
               {selectedFloor && selectedZone && (
-                <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-2.5 text-sm text-[#68151A] bg-[#FFF5F5] px-4 py-3 rounded-xl border border-[#FBD5D5] animate-tab-panel-in">
+                <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-2.5 text-sm text-[#3D0F16] bg-[#FAF3EC] px-4 py-3 rounded-xl border border-[#E9D3BC] animate-tab-panel-in">
                   <MapPin className="w-4 h-4 shrink-0" />
                   <span>
                     Incident location: <strong>{selectedFloor}</strong> &bull; <strong>{selectedZone}</strong>
@@ -888,7 +888,7 @@ export default function ReportIncidentPage() {
 
             <div className="mt-6">
               <p className="text-xs font-semibold text-slate-700 mb-2">
-                Harm / severity level <span className="text-[#C62828]">*</span>
+                Harm / severity level <span className="text-[#7A2430]">*</span>
               </p>
               <div role="radiogroup" aria-label="Harm severity level" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                 {SEVERITY_LEVELS.map((s) => {
@@ -1023,8 +1023,8 @@ export default function ReportIncidentPage() {
               onDrop={handleDrop}
               className={`group relative border-2 border-dashed rounded-2xl px-6 py-8 text-center transition-all duration-200 cursor-pointer ${
                 isDragging
-                  ? 'border-[#8B1E23] bg-[#FFF5F5] ring-4 ring-[#8B1E23]/10'
-                  : 'border-slate-300 bg-slate-50/60 hover:bg-[#FFF5F5]/50 hover:border-[#8B1E23]/60'
+                  ? 'border-[#5C1A22] bg-[#FAF3EC] ring-4 ring-[#5C1A22]/10'
+                  : 'border-slate-300 bg-slate-50/60 hover:bg-[#FAF3EC]/50 hover:border-[#5C1A22]/60'
               }`}
             >
               <input
@@ -1040,8 +1040,8 @@ export default function ReportIncidentPage() {
                 <div
                   className={`w-14 h-14 rounded-2xl border flex items-center justify-center mb-3 transition-transform duration-200 ${
                     isDragging
-                      ? 'bg-[#8B1E23] text-white border-[#8B1E23] scale-110'
-                      : 'bg-white text-[#8B1E23] border-slate-200 shadow-sm group-hover:scale-105'
+                      ? 'bg-[#5C1A22] text-white border-[#5C1A22] scale-110'
+                      : 'bg-white text-[#5C1A22] border-slate-200 shadow-sm group-hover:scale-105'
                   }`}
                 >
                   {uploading ? (
@@ -1053,10 +1053,10 @@ export default function ReportIncidentPage() {
 
                 <p className="text-sm font-semibold text-slate-800">
                   {uploading ? (
-                    <span className="text-[#8B1E23]">Uploading file(s)... please wait</span>
+                    <span className="text-[#5C1A22]">Uploading file(s)... please wait</span>
                   ) : (
                     <>
-                      <span className="text-[#8B1E23] font-bold">Click to upload</span> or drag and drop files here
+                      <span className="text-[#5C1A22] font-bold">Click to upload</span> or drag and drop files here
                     </>
                   )}
                 </p>
@@ -1071,10 +1071,10 @@ export default function ReportIncidentPage() {
                   {uploadedFiles.map((file) => (
                     <div
                       key={file._id}
-                      className="px-3.5 py-3 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-[#8B1E23]/40 flex items-center justify-between transition"
+                      className="px-3.5 py-3 bg-white border border-slate-200 rounded-xl shadow-xs hover:border-[#5C1A22]/40 flex items-center justify-between transition"
                     >
                       <div className="flex items-center gap-3 min-w-0 pr-2">
-                        <div className="w-9 h-9 rounded-lg bg-[#FFF5F5] border border-red-100 flex items-center justify-center shrink-0 text-[#8B1E23]">
+                        <div className="w-9 h-9 rounded-lg bg-[#FAF3EC] border border-red-100 flex items-center justify-center shrink-0 text-[#5C1A22]">
                           <FileText className="w-4 h-4" />
                         </div>
                         <div className="min-w-0">
@@ -1124,7 +1124,7 @@ export default function ReportIncidentPage() {
                   <p className="text-slate-600 flex items-center gap-2.5">
                     <span className="hidden sm:block w-28 h-2 rounded-full bg-slate-100 overflow-hidden">
                       <span
-                        className="block h-full rounded-full bg-gradient-to-r from-[#E53935] to-[#8B1E23] transition-[width] duration-500"
+                        className="block h-full rounded-full bg-gradient-to-r from-[#9C3A42] to-[#5C1A22] transition-[width] duration-500"
                         style={{ width: `${progress}%` }}
                       ></span>
                     </span>
@@ -1146,7 +1146,7 @@ export default function ReportIncidentPage() {
                 <button
                   type="submit"
                   disabled={loading || Boolean(success)}
-                  className="group relative overflow-hidden h-11 px-7 bg-gradient-to-r from-[#8B1E23] via-[#A82329] to-[#C62828] hover:brightness-110 active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-button-red transition-all duration-200 flex items-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
+                  className="group relative overflow-hidden h-11 px-7 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:brightness-110 active:scale-[0.99] text-white font-bold text-sm rounded-xl shadow-button-red transition-all duration-200 flex items-center gap-2 cursor-pointer disabled:opacity-70 disabled:cursor-not-allowed"
                 >
                   <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/25 to-transparent pointer-events-none" />
                   <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />

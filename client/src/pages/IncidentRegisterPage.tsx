@@ -74,7 +74,7 @@ export default function IncidentRegisterPage() {
       >
         <div className="self-start md:self-auto shrink-0 px-5 py-3 rounded-2xl bg-black/20 border border-white/15 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
           <div className="text-2xl font-extrabold text-white leading-none">{meta.total}</div>
-          <div className="text-[11.5px] font-semibold uppercase tracking-wider text-[#FBC9CB] mt-1">
+          <div className="text-[11.5px] font-semibold uppercase tracking-wider text-[#E8C988] mt-1">
             {activeFilters ? 'Matching' : 'Total'} incidents
           </div>
         </div>
@@ -155,7 +155,7 @@ export default function IncidentRegisterPage() {
             <button
               type="button"
               onClick={clearFilters}
-              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[13px] font-semibold text-[#8B1E23] hover:bg-[#FFF5F5] transition cursor-pointer"
+              className="inline-flex items-center gap-1.5 h-8 px-3 rounded-lg text-[13px] font-semibold text-[#5C1A22] hover:bg-[#FAF3EC] transition cursor-pointer"
             >
               <X className="w-3.5 h-3.5" /> Clear all
             </button>
