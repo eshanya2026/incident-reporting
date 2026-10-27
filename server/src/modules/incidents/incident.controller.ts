@@ -347,6 +347,12 @@ export const getTriageQueue = async (req: Request, res: Response, next: NextFunc
 /** Quality's review queue: incidents the HOD submitted for closure or awaiting RCA. */
 export const getReviewQueue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
+    // No single permission means "Quality or Quality Member" (RCA_WRITE is shared with HOD, for
+    // their own incidents) — check role membership directly, as getQualityMembers below does.
+    const roles = req.user?.roles || [];
+    if (!roles.includes(ROLE_CODES.QUALITY) && !roles.includes(ROLE_CODES.QUALITY_MEMBER)) {
+      throw AppError.forbidden('Only Quality and Quality Members can see the review queue');
+    }
     const status = req.query.status === 'RCA_REQUESTED' ? 'RCA_REQUESTED' : 'PENDING_QUALITY_REVIEW';
     const sortField = status === 'RCA_REQUESTED' ? { rcaRequestedAt: 1, updatedAt: 1 } : { 'closureSubmission.at': 1 };
     const incidents = await populateList(Incident.find({ status }))

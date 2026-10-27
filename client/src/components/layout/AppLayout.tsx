@@ -18,7 +18,7 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../lib/api';
-import { hasAnyPermission, hasPermission } from '../../lib/rbac';
+import { hasAnyPermission, hasAnyRole, hasPermission } from '../../lib/rbac';
 import { useSlidingIndicator } from '../../lib/useSlidingIndicator';
 import StatlogLogo from '../ui/StatlogLogo';
 
@@ -62,11 +62,11 @@ export default function AppLayout() {
       };
       return {
         triage: hasPermission(user, 'incident.triage') ? await count('/incidents/triage-queue') : 0,
-        review:
-          hasPermission(user, 'incident.review') || hasPermission(user, 'rca.write')
-            ? (hasPermission(user, 'incident.review') ? await count('/incidents/review-queue') : 0) +
-              (await count('/incidents/review-queue', { status: 'RCA_REQUESTED' }))
-            : 0,
+        // Quality and Quality Members only — RCA_WRITE alone (also held by HOD) isn't enough,
+        // and the server now rejects this call for anyone else (see getReviewQueue)
+        review: hasAnyRole(user, ['QUALITY', 'QUALITY_MEMBER'])
+          ? (await count('/incidents/review-queue')) + (await count('/incidents/review-queue', { status: 'RCA_REQUESTED' }))
+          : 0,
         department: hasPermission(user, 'incident.read_assigned')
           ? await count('/incidents/my-department', undefined, (i) => ['ASSIGNED', 'UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'].includes(i.status))
           : 0,
@@ -128,13 +128,16 @@ export default function AppLayout() {
     icon: any;
     permission?: string;
     anyPermissions?: string[];
+    anyRoles?: string[];
     count?: number;
   }> = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
     { label: 'Report Incident', path: '/incidents/new', icon: PlusCircle, permission: 'incident.create' },
     { label: 'My Reports', path: '/my-reports', icon: FileText, permission: 'incident.read_own', count: queueCounts.myReports },
     { label: 'Triage Inbox', path: '/triage', icon: Inbox, permission: 'incident.triage', count: queueCounts.triage },
-    { label: 'Review & RCA Queue', path: '/review', icon: ClipboardCheck, anyPermissions: ['incident.review', 'rca.write'], count: queueCounts.review },
+    // Not a permission check: RCA_WRITE is also held by HOD, for their own incidents, who should
+    // not see this (Quality's and Quality Members' review queue) — see server's getReviewQueue.
+    { label: 'Review & RCA Queue', path: '/review', icon: ClipboardCheck, anyRoles: ['QUALITY', 'QUALITY_MEMBER'], count: queueCounts.review },
     { label: "My Department's Incidents", path: '/my-department', icon: Building2, permission: 'incident.read_assigned', count: queueCounts.department },
     { label: 'All Incidents', path: '/incidents', icon: FileSpreadsheet, permission: 'incident.read_all' },
     { label: 'CAPA', path: '/capas', icon: CheckSquare, permission: 'capa.read' },
@@ -145,6 +148,7 @@ export default function AppLayout() {
   const visibleNavItems = navItems.filter((item) => {
     if (item.permission) return hasPermission(user, item.permission);
     if (item.anyPermissions) return hasAnyPermission(user, item.anyPermissions);
+    if (item.anyRoles) return hasAnyRole(user, item.anyRoles);
     return true;
   });
   // The active pill glides to the current tab instead of snapping (no match on a sub-route, e.g.
