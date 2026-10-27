@@ -123,6 +123,16 @@ interface DummyIncidentDef {
   subcategory: string;
   patientInvolved: boolean;
   patient?: DummyPatient;
+  // Defaults to INPATIENT/EMPLOYEE from patientInvolved when omitted (older entries predate this field)
+  affectedPersonType?: 'INPATIENT' | 'OUTPATIENT' | 'VISITOR_FAMILY' | 'EMPLOYEE' | 'OTHER';
+  affectedOtherDetail?: string;
+  affectedPersonDetail?: { name?: string; contactNumber?: string; employeeId?: string; department?: string };
+  witness?: string;
+  remarks?: string;
+  // Set by Quality at assignment, alongside severity
+  priority?: 'EXTREMELY_LOW' | 'LOW' | 'MEDIUM' | 'HIGH';
+  notifiedDepartments?: string[];
+  intimatedUsers?: string[];
   title: string;
   description: string;
   immediateAction?: string;
@@ -167,6 +177,17 @@ interface DummyIncidentDef {
   closureSubmission?: {
     summary: string;
     daysAgo?: number;
+  };
+  // PENDING_QUALITY_REVIEW -> RCA_REQUESTED: Quality wasn't satisfied and asked a Quality Member
+  rcaRequest?: {
+    remarks: string;
+    daysAgo: number;
+    qualityMember?: string;
+  };
+  // RCA_REQUESTED -> PENDING_QUALITY_REVIEW: the Quality Member's findings
+  rcaSubmission?: {
+    remarks: string;
+    daysAgo: number;
   };
 }
 
@@ -222,6 +243,9 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'Evening insulin dose of 8 units was transcribed as 18 units on the ICU medication chart. Error caught at double-check before administration. Patient not given the incorrect dose.',
     immediateAction: 'Dose withheld, physician notified, chart corrected, independent double-check restarted.',
+    witness: 'Nurse Kavitha ICU, 98841xxxxx (performed the double-check that caught the error)',
+    priority: 'HIGH',
+    intimatedUsers: ['md.director'],
     initialSeverity: 3,
     severity: 3,
     status: 'ASSIGNED',
@@ -274,6 +298,9 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'Unconscious trauma patient brought by 108 ambulance had no ID wristband. Two similar-name patients were in adjacent bays, creating identification risk before CT.',
     immediateAction: 'Temporary ID generated, two-identifier check enforced before imaging.',
+    witness: '108 ambulance crew (handed over the patient; left before full registration completed)',
+    priority: 'MEDIUM',
+    notifiedDepartments: ['RADIOLOGY'],
     severity: 2,
     status: 'ASSIGNED',
   },
@@ -473,10 +500,14 @@ const INCIDENTS: DummyIncidentDef[] = [
       consultant: 'Radiology Consultant',
       admissionDaysAgo: 14,
     },
+    affectedPersonType: 'OUTPATIENT',
     title: 'Moderate contrast reaction during CT abdomen',
     description:
       'Patient developed urticaria and mild bronchospasm 4 minutes after IV contrast. Known atopy not flagged on request form. Recovered after antihistamine and oxygen.',
     immediateAction: 'Contrast stopped, emergency trolley used, physician called, observation for 2 hours.',
+    witness: 'Radiographer Bala, CT Technologist (present throughout the reaction and treatment)',
+    remarks: 'Patient’s attendant has been informed and is satisfied with the explanation given.',
+    priority: 'HIGH',
     severity: 3,
     status: 'PENDING_QUALITY_REVIEW',
     requiresRca: false,
@@ -545,6 +576,10 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'IPD pharmacy issued cefixime 200 mg tablets instead of 50 mg/5 ml suspension. Ward nurse identified before first dose during independent double-check.',
     immediateAction: 'Pack returned, correct suspension dispensed, near-miss logged with family informed.',
+    witness: 'Nurse Selvi Ward, Ward Staff Nurse (caught the discrepancy at the bedside double-check)',
+    priority: 'MEDIUM',
+    notifiedDepartments: ['WARD'],
+    intimatedUsers: ['quality.ravi'],
     severity: 2,
     status: 'PENDING_QUALITY_REVIEW',
     requiresCapa: true,
@@ -823,10 +858,14 @@ const INCIDENTS: DummyIncidentDef[] = [
     category: 'SECURITY_WORKPLACE_SAFETY',
     subcategory: 'VIOLENCE',
     patientInvolved: false,
+    affectedPersonType: 'EMPLOYEE',
+    affectedPersonDetail: { name: 'Nurse Mary Staff', employeeId: 'EMP-004', department: 'EMERGENCY' },
     title: 'Attendant verbal aggression towards ER triage nurse',
     description:
       'Attendant of a waiting patient shouted and attempted to push past triage when wait time exceeded 45 minutes. Security escorted the attendant. No physical injury.',
     immediateAction: 'Security called, staff rotated off triage, incident documented, CCTV retained.',
+    witness: 'Security Guard on duty, ER main entrance (intervened and escorted the attendant out)',
+    priority: 'HIGH',
     severity: 3,
     status: 'ASSIGNED',
   },
@@ -897,10 +936,14 @@ const INCIDENTS: DummyIncidentDef[] = [
       consultant: 'Dr. Meena Ward HOD',
       admissionDaysAgo: 4,
     },
+    affectedPersonType: 'VISITOR_FAMILY',
+    affectedPersonDetail: { name: 'Mr. Rajan (son and attendant)', contactNumber: '98422xxxxx' },
     title: 'Family complaint about delayed discharge summary',
     description:
       'Patient medically fit for discharge at 11:00. Discharge summary ready only at 16:40. Family lodged a service complaint citing lost wages for the attendant.',
     immediateAction: 'Apology by ward in-charge, summary expedited, guest relations involved.',
+    witness: 'Ward In-charge, Ward 401 (handled the complaint directly)',
+    remarks: 'Family has asked for written confirmation that this will not recur on the next admission.',
     severity: 2,
     status: 'SUBMITTED',
   },
@@ -1087,6 +1130,10 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'Post-operative patient with known alcohol withdrawal was found near the hospital lobby in hospital gown. Bed alarm was not armed. Patient returned safely, no injury.',
     immediateAction: 'Patient returned, CIWA protocol restarted, sitter arranged, security review of CCTV.',
+    witness: 'Lobby Security Guard (spotted and stopped the patient)',
+    priority: 'HIGH',
+    notifiedDepartments: ['EMERGENCY'],
+    intimatedUsers: ['intimate.firesafety'],
     severity: 3,
     status: 'ASSIGNED',
   },
@@ -1263,10 +1310,13 @@ const INCIDENTS: DummyIncidentDef[] = [
       consultant: 'Radiology Consultant',
       admissionDaysAgo: 13,
     },
+    affectedPersonType: 'OUTPATIENT',
     title: 'Wrong patient called for non-contrast CT brain',
     description:
       'Two patients with similar names in waiting. Incorrect patient taken for CT brain. Scout image started, then identity mismatch found. No contrast given. Correct patient scanned afterwards.',
     immediateAction: 'Scan aborted, both patients re-identified, images discarded from PACS worklist, apology given.',
+    witness: 'CT Waiting Area Receptionist (called both patients forward)',
+    priority: 'MEDIUM',
     initialSeverity: 3,
     severity: 3,
     status: 'CAPA_IN_PROGRESS',
@@ -1318,6 +1368,273 @@ const INCIDENTS: DummyIncidentDef[] = [
         daysAgo: 3,
       },
     ],
+  },
+  {
+    seq: 27,
+    daysAgo: 19,
+    department: 'ICU',
+    reportingDepartment: 'ICU',
+    occurredInDepartment: 'ICU',
+    location: 'ICU-BED-01',
+    category: 'BLOOD_TRANSFUSION',
+    subcategory: 'TRANSFUSION_REACTION',
+    patientInvolved: true,
+    patient: {
+      uhid: 'UHID-2401205',
+      ipNumber: 'IP-26-09350',
+      name: 'Mr. Elumalai S',
+      age: 58,
+      gender: 'Male',
+      ward: 'ICU',
+      bed: '03',
+      consultant: 'Dr. Lakshmi ICU HOD',
+      admissionDaysAgo: 20,
+    },
+    title: 'Mild transfusion reaction not documented on the transfusion chart',
+    description:
+      'Patient developed mild fever and chills 30 minutes into a packed cell transfusion. Transfusion paused, antipyretic given, resumed after symptoms settled. Reaction was verbally handed over at shift change but never entered on the transfusion monitoring chart.',
+    immediateAction: 'Transfusion paused and restarted per protocol, vitals monitored hourly, blood bank informed verbally.',
+    witness: 'Nurse Kavitha ICU (was present for the full transfusion and the shift handover)',
+    remarks: 'Blood bank has not yet received a written reaction report, only the verbal call.',
+    priority: 'HIGH',
+    initialSeverity: 3,
+    severity: 3,
+    status: 'RCA_REQUESTED',
+    requiresRca: false,
+    requiresCapa: true,
+    investigation: {
+      status: 'COMPLETED',
+      dueOffsetDays: -12,
+      facts: 'Transfusion reaction documentation relies entirely on the bedside nurse remembering to fill a paper form; no system prompt exists.',
+      chronology: '09:40 transfusion started → 10:10 fever noted, paused → 10:15 antipyretic → 10:40 resumed → 12:15 completed.',
+      peopleInterviewed: [
+        { name: 'Nurse Kavitha ICU', designation: 'ICU Staff Nurse', statement: 'I told the next shift verbally but forgot to fill the reaction form before I left.' },
+      ],
+      contributingFactors: ['PROCESS', 'DOCUMENTATION', 'COMMUNICATION'],
+      findings: 'Transfusion reaction reporting depends on memory with no system or checklist prompt.',
+      recommendation: 'Add a mandatory transfusion-reaction field to the e-chart that blocks transfusion closure until completed.',
+    },
+    capas: [
+      {
+        seq: 11,
+        type: 'CORRECTIVE',
+        action: 'Add a mandatory transfusion-reaction field to the ICU e-chart, blocking transfusion closure until filled.',
+        priority: 'HIGH',
+        assignedDaysAgo: 10,
+        targetOffsetDays: 4,
+        status: 'DONE',
+        completionRemarks: 'Field added in HIS UAT; awaiting go-live next release window.',
+        completedDaysAgo: 2,
+      },
+    ],
+    closureSubmission: {
+      summary: 'Investigation complete and corrective action in UAT; submitted for Quality review.',
+      daysAgo: 6,
+    },
+    rcaRequest: {
+      remarks:
+        'The investigation stops at "nurse forgot" — that’s not a root cause. Please run a full 5-why / fishbone on why the transfusion-reaction workflow has no system safeguard at all, and whether this has happened before without being reported.',
+      daysAgo: 5,
+      qualityMember: 'quality.member',
+    },
+  },
+  {
+    seq: 28,
+    daysAgo: 15,
+    department: 'OT',
+    reportingDepartment: 'OT',
+    occurredInDepartment: 'OT',
+    location: 'OT-SUITE-1',
+    category: 'MEDICAL_DEVICE_EQUIPMENT',
+    subcategory: 'DEVICE_MALFUNCTION',
+    patientInvolved: true,
+    patient: {
+      uhid: 'UHID-2401609',
+      ipNumber: 'IP-26-09977',
+      name: 'Mrs. Geetha N',
+      age: 52,
+      gender: 'Female',
+      ward: 'OT Holding',
+      bed: 'OT-1',
+      consultant: 'Dr. Venkat OT HOD',
+      admissionDaysAgo: 15,
+    },
+    title: 'Electrocautery unit shut down mid-procedure and required a swap',
+    description:
+      'Electrocautery unit lost power during a laparoscopic procedure. Backup unit brought in from an adjacent theatre within 4 minutes; procedure completed without complication. Faulty unit had been reported as "working intermittently" twice in the past month.',
+    immediateAction: 'Backup cautery unit swapped in, faulty unit tagged out of service and sent to biomedical engineering.',
+    witness: 'Dr. Venkat OT HOD (operating surgeon), OT Scrub Nurse (assisted the swap)',
+    priority: 'HIGH',
+    initialSeverity: 3,
+    severity: 3,
+    status: 'RCA_REQUESTED',
+    requiresRca: false,
+    requiresCapa: true,
+    investigation: {
+      status: 'COMPLETED',
+      dueOffsetDays: -9,
+      facts: 'Biomedical maintenance log shows two prior "intermittent fault" complaints on this unit in the last 30 days, both closed as "no fault found" without a bench test.',
+      chronology: 'Day -30 and Day -12: intermittent fault reported, closed without bench test → Day 0: unit fails mid-procedure.',
+      peopleInterviewed: [
+        { name: 'Dr. Venkat OT HOD', designation: 'HOD Operation Theatre', statement: 'This unit has felt unreliable for weeks; we kept using it because a backup was always nearby.' },
+      ],
+      contributingFactors: ['EQUIPMENT', 'PROCESS'],
+      findings: 'Repeated "intermittent fault" reports on biomedical equipment were closed without a bench test before this failure.',
+      recommendation: 'Mandatory bench test and documented pass/fail before closing any repeat equipment fault ticket.',
+    },
+    capas: [
+      {
+        seq: 12,
+        type: 'CORRECTIVE',
+        action: 'Mandatory bench test with documented pass/fail before closing any repeat biomedical fault ticket.',
+        priority: 'HIGH',
+        assignedDaysAgo: 8,
+        targetOffsetDays: 6,
+        status: 'DONE',
+        completionRemarks: 'Bench-test checklist added to biomedical engineering SOP.',
+        completedDaysAgo: 1,
+      },
+    ],
+    closureSubmission: {
+      summary: 'Investigation and corrective action complete; submitted for Quality review.',
+      daysAgo: 4,
+    },
+    rcaRequest: {
+      remarks:
+        'Two prior fault reports on the same unit were closed without a bench test, and that pattern isn’t addressed anywhere in the findings. Please RCA why repeat equipment faults are being closed without verification, hospital-wide, not just for this one unit.',
+      daysAgo: 3,
+      qualityMember: 'quality.ananya',
+    },
+  },
+  {
+    seq: 29,
+    daysAgo: 11,
+    department: 'EMERGENCY',
+    location: 'ER-BAY-2',
+    category: 'PATIENT_FALL',
+    subcategory: 'FALL_WITHOUT_INJURY',
+    patientInvolved: true,
+    patient: {
+      uhid: 'UHID-2401977',
+      ipNumber: 'IP-26-10275',
+      name: 'Mr. Ibrahim K',
+      age: 68,
+      gender: 'Male',
+      ward: 'ER Observation',
+      bed: 'Bay 2',
+      consultant: 'Dr. Ramesh Emergency HOD',
+      admissionDaysAgo: 11,
+    },
+    title: 'Patient fell while reaching for call bell left out of reach',
+    description:
+      'Patient attempted to retrieve a dropped call bell and slid off the observation trolley. No visible injury; X-ray later confirmed no fracture. Call bell had been placed on the overbed table, outside easy reach for a patient on the fall-risk list.',
+    immediateAction: 'Patient assessed, X-ray done (normal), call bell repositioned, fall-risk signage added.',
+    witness: 'Attendant at bedside (saw the fall and raised the alarm)',
+    priority: 'MEDIUM',
+    notifiedDepartments: ['WARD'],
+    severity: 2,
+    status: 'PENDING_QUALITY_REVIEW',
+    requiresRca: false,
+    requiresCapa: true,
+    investigation: {
+      status: 'COMPLETED',
+      dueOffsetDays: -6,
+      facts: 'Fall-risk patients are flagged on the chart but there is no checklist step confirming the call bell is within reach at handover.',
+      chronology: '14:10 handover completed → 14:35 patient reaches for dropped bell → 14:36 fall.',
+      peopleInterviewed: [
+        { name: 'Nurse Mary Staff', designation: 'Senior Staff Nurse', statement: 'Fall-risk assessment was done, but reach-check for the call bell isn’t part of our checklist.' },
+      ],
+      contributingFactors: ['PROCESS', 'ENVIRONMENT'],
+      findings: 'Fall-risk handover checklist does not include a call-bell-within-reach check.',
+      recommendation: 'Add a call-bell-reach check to the fall-risk handover checklist.',
+    },
+    capas: [
+      {
+        seq: 13,
+        type: 'PREVENTIVE',
+        action: 'Add a call-bell-within-reach check to the fall-risk nursing handover checklist.',
+        priority: 'MEDIUM',
+        assignedDaysAgo: 5,
+        targetOffsetDays: 2,
+        status: 'DONE',
+        completionRemarks: 'Checklist updated and briefed at ER nursing huddle.',
+        completedDaysAgo: 1,
+      },
+    ],
+    closureSubmission: {
+      summary: 'Investigation and preventive CAPA completed; submitted for Quality review.',
+      daysAgo: 1,
+    },
+  },
+  {
+    seq: 30,
+    daysAgo: 1,
+    department: 'LAB',
+    location: 'LAB-PHLEBO-1',
+    category: 'LABORATORY',
+    subcategory: 'MISLABELING',
+    patientInvolved: true,
+    patient: {
+      uhid: 'UHID-2402137',
+      ipNumber: 'OP-26-33402',
+      name: 'Mrs. Fathima J',
+      age: 45,
+      gender: 'Female',
+      ward: 'Phlebotomy',
+      consultant: 'General Medicine OPD',
+      admissionDaysAgo: 1,
+    },
+    affectedPersonType: 'OUTPATIENT',
+    title: 'Sample tube labelled with adjacent patient’s sticker at phlebotomy',
+    description:
+      'Two OPD patients were drawn back-to-back. One tube was labelled with the previous patient’s pre-printed sticker. Caught at the lab reception barcode scan before processing; sample was discarded and redrawn with the correct patient present.',
+    immediateAction: 'Mislabelled sample discarded, patient recalled, correct sample redrawn and verified.',
+    witness: 'Tech Anitha Lab (performed the barcode scan that caught the mismatch)',
+    severity: 2,
+    status: 'INFO_REQUESTED',
+    infoRequests: [
+      {
+        question: 'Was the redraw done with a fresh two-identifier check, and was the patient informed why a second draw was needed?',
+        askedDaysAgo: 1,
+      },
+    ],
+  },
+  {
+    seq: 31,
+    daysAgo: 6,
+    department: 'WARD',
+    location: 'WARD-302',
+    category: 'OTHER',
+    subcategory: 'OTHER_REPORTABLE_INCIDENT',
+    patientInvolved: false,
+    title: 'Report of missing personal item later found with the patient',
+    description:
+      'Staff nurse reported a patient’s hearing aid as missing after a ward transfer. Housekeeping and security searched the previous bed area. The hearing aid was later found in the patient’s own belongings bag, which had already been moved with them.',
+    immediateAction: 'Search called off once the item was located; patient and family informed.',
+    severity: 1,
+    status: 'REJECTED',
+    rejection: {
+      reason: 'Not an incident. The item was never actually lost — it had moved with the patient’s belongings. No process failure to investigate.',
+      daysAgo: 5,
+    },
+  },
+  {
+    seq: 32,
+    daysAgo: 0,
+    department: 'OT',
+    location: 'OT-SUITE-2',
+    category: 'OTHER',
+    subcategory: 'OTHER_REPORTABLE_INCIDENT',
+    patientInvolved: false,
+    affectedPersonType: 'OTHER',
+    affectedOtherDetail: 'AC maintenance contractor (external vendor, not a hospital employee)',
+    title: 'External AC maintenance contractor slipped on a wet OT corridor floor',
+    description:
+      'Vendor technician servicing the OT air-handling unit slipped on a freshly mopped corridor with no wet-floor signage displayed. Minor bruising to the elbow; declined further treatment after first aid.',
+    immediateAction: 'First aid given on site, wet-floor signage placed immediately, housekeeping supervisor informed.',
+    witness: 'Housekeeping staff on duty (was mopping the corridor at the time)',
+    severity: 2,
+    status: 'SUBMITTED',
   },
 ];
 
@@ -1460,6 +1777,38 @@ export async function seedDummyOperationalData(params: {
         }
       : undefined;
 
+    const affectedPersonType = def.affectedPersonType || (def.patientInvolved ? 'INPATIENT' : 'EMPLOYEE');
+    const affectedPersonDetail = def.affectedPersonDetail
+      ? {
+          name: def.affectedPersonDetail.name,
+          contactNumber: def.affectedPersonDetail.contactNumber,
+          employeeId: def.affectedPersonDetail.employeeId,
+          departmentId: def.affectedPersonDetail.department
+            ? requireId(deptMap, def.affectedPersonDetail.department, 'department')
+            : undefined,
+        }
+      : undefined;
+    const notifiedDepartmentIds = (def.notifiedDepartments || []).map((d) => requireId(deptMap, d, 'department'));
+    const intimatedUserIds = (def.intimatedUsers || []).map((u) => requireId(userMap, u, 'user'));
+
+    const rcaMemberId = def.rcaRequest?.qualityMember ? requireId(userMap, def.rcaRequest.qualityMember, 'user') : undefined;
+    const rcaRequestFields =
+      def.status === 'RCA_REQUESTED' || def.rcaRequest
+        ? {
+            rcaRequestedAt: daysAgo(def.rcaRequest?.daysAgo ?? def.daysAgo, 13),
+            rcaRequestedBy: qualityId,
+            rcaRequestRemarks: def.rcaRequest?.remarks || 'Please run a 5-why RCA before this comes back for review.',
+            ...(rcaMemberId ? { assignedQualityMemberId: rcaMemberId } : {}),
+          }
+        : {};
+    const rcaSubmissionFields = def.rcaSubmission
+      ? {
+          rcaSubmittedAt: daysAgo(def.rcaSubmission.daysAgo, 15),
+          rcaSubmittedBy: rcaMemberId,
+          rcaSubmissionRemarks: def.rcaSubmission.remarks,
+        }
+      : {};
+
     const incident = await Incident.findOneAndUpdate(
       { incidentNumber },
       {
@@ -1483,21 +1832,29 @@ export async function seedDummyOperationalData(params: {
           locationId,
           categoryId,
           subcategoryCode: def.subcategory,
-          // Demo data predates the affectedPersonType field; derive a reasonable value from patientInvolved
-          affectedPersonType: def.patientInvolved ? 'INPATIENT' : 'EMPLOYEE',
+          affectedPersonType,
+          affectedOtherDetail: def.affectedOtherDetail,
+          affectedPersonDetail,
           patientInvolved: def.patientInvolved,
           patient,
+          witness: def.witness,
+          remarks: def.remarks,
+          priority: def.priority,
+          notifiedDepartmentIds,
+          intimatedUserIds,
           title: def.title,
           description: def.description,
           immediateAction: def.immediateAction,
           severity: def.severity,
           severityLabel: SEVERITY_LABELS[def.severity] || 'Near Miss',
           status: def.status,
-          requiresRca: Boolean(def.requiresRca),
+          requiresRca: Boolean(def.requiresRca) || def.status === 'RCA_REQUESTED' || Boolean(def.rcaRequest),
           // CAPA is required at every severity, regardless of def.requiresCapa (kept only for requiresRca)
           requiresCapa: true,
           escalationLevel: def.severity >= 4 ? 1 : 0,
           escalatedAt: def.severity >= 4 ? reportedAt : undefined,
+          ...rcaRequestFields,
+          ...rcaSubmissionFields,
           ...(def.status === 'CLOSED' ? { closureRemarks: def.closureRemarks, closedAt, closedBy: qualityId } : {}),
         },
         $unset: {

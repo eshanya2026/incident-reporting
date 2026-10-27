@@ -19,7 +19,6 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../lib/api';
 import { hasAnyPermission, hasAnyRole, hasPermission } from '../../lib/rbac';
-import { useSlidingIndicator } from '../../lib/useSlidingIndicator';
 import StatlogLogo from '../ui/StatlogLogo';
 
 dayjs.extend(relativeTime);
@@ -153,7 +152,6 @@ export default function AppLayout() {
   });
   // The active pill glides to the current tab instead of snapping (no match on a sub-route, e.g.
   // /incidents/:id, just collapses the indicator to width 0 — nothing to glide to).
-  const { indicatorStyle, registerTab } = useSlidingIndicator(location.pathname);
 
   return (
     <div className="min-h-screen bg-[#F8FAFC] flex flex-col font-sans text-[#172033]">
@@ -277,45 +275,39 @@ export default function AppLayout() {
 
         {/* Navigation Bar - soft tinted tray with pill items */}
         <div className="bg-gradient-to-b from-[#FAF4E9] to-[#FAF4E9] border-t border-[#E9DDC9]">
-          <div className="relative w-full px-4 sm:px-6 lg:px-8 flex justify-start md:justify-center gap-1.5 py-2 overflow-x-auto scrollbar-none">
+          <div className="w-full px-4 sm:px-6 lg:px-8 flex justify-start md:justify-center gap-1.5 py-2 overflow-x-auto scrollbar-none">
             {/*
-              Active pill — glides to the current tab instead of snapping. Position animates via
-              `transform: translateX`, not `left`: a `left` transition forces the browser to
-              recompute layout on every frame (main-thread work, easily janked by other JS running
-              at the same time, e.g. the queue-count badges loading in); `transform` is handled
-              entirely by the compositor, so it stays smooth regardless of what else is going on.
-              Width still snaps directly to the new tab's size (unanimated) rather than stretching,
-              which avoids the same per-frame layout cost for comparatively little visual loss.
+              The active pill's background lives directly on the Link, not as a separate element
+              tracking its position via JS measurement — that approach could drift out of sync
+              with the text (e.g. right after the visible items change, as they do per role),
+              leaving white active-state text rendered outside the pill and unreadable.
             */}
-            <span
-              aria-hidden="true"
-              className="absolute top-2 left-0 h-9 rounded-full bg-gradient-to-r from-[#5C1A22] via-[#7A2430] to-[#9C3A42] shadow-[0_6px_14px_-4px_rgba(92,26,34,0.55)] overflow-hidden transition-transform duration-300 ease-out pointer-events-none will-change-transform"
-              style={{ width: indicatorStyle.width, transform: `translateX(${indicatorStyle.left}px)` }}
-            >
-              <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent"></span>
-            </span>
-
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
               return (
                 <Link
                   key={item.path}
-                  ref={registerTab(item.path)}
                   to={item.path}
                   className={`group/nav relative flex items-center gap-2 h-9 px-4 text-[14px] whitespace-nowrap rounded-full transition-colors duration-180 ${
                     isActive
-                      ? 'text-white font-semibold'
+                      ? 'text-white font-semibold bg-gradient-to-r from-[#5C1A22] via-[#7A2430] to-[#9C3A42] shadow-[0_6px_14px_-4px_rgba(92,26,34,0.55)]'
                       : 'text-[#475569] font-medium hover:text-[#3D0F16] hover:bg-white hover:shadow-[0_2px_8px_-2px_rgba(61,15,22,0.18)]'
                   }`}
                 >
+                  {isActive && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-0 rounded-full bg-gradient-to-tr from-transparent via-white/20 to-transparent pointer-events-none"
+                    ></span>
+                  )}
                   <Icon
-                    className={`w-4 h-4 transition-colors ${isActive ? 'text-white' : 'text-[#94A3B8] group-hover/nav:text-[#7A2430]'}`}
+                    className={`relative w-4 h-4 transition-colors ${isActive ? 'text-white' : 'text-[#94A3B8] group-hover/nav:text-[#7A2430]'}`}
                   />
-                  <span>{item.label}</span>
+                  <span className="relative">{item.label}</span>
                   {Boolean(item.count) && (
                     <span
-                      className={`min-w-[18px] px-1.5 py-0.5 rounded-full text-[11.5px] font-bold text-center ${
+                      className={`relative min-w-[18px] px-1.5 py-0.5 rounded-full text-[11.5px] font-bold text-center ${
                         isActive ? 'bg-white text-[#5C1A22]' : 'bg-[#5C1A22] text-white'
                       }`}
                     >
