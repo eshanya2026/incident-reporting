@@ -9,13 +9,10 @@ import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { PageHeader } from '../components/ui/primitives';
 import { EmptyState, FilterBar, SearchInput, TabBar, filterControlClass } from '../components/ui/listKit';
 
-const LOCATION_TYPES = ['WARD', 'ROOM', 'OT', 'ICU', 'LAB', 'OPD', 'OTHER'];
-const FLOORS = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
-const ZONES = ['Zone-A', 'Zone-B', 'Zone-C'] as const;
 
 export default function AdminMasterPage() {
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'locations' | 'categories'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'wards' | 'categories'>('users');
 
   // User form state (shared by create and edit; editingUser is null when creating)
   const [showUserModal, setShowUserModal] = useState(false);
@@ -133,17 +130,11 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
     }
   };
 
-  // Location form state
-  const [showLocationModal, setShowLocationModal] = useState(false);
-  const [locCode, setLocCode] = useState('');
-  const [locName, setLocName] = useState('');
-  const [locFloor, setLocFloor] = useState('Floor 1');
-  const [locZone, setLocZone] = useState('Zone-A');
-  const [locType, setLocType] = useState('ROOM');
-  const [locDeptId, setLocDeptId] = useState('');
-  const [locFloorFilter, setLocFloorFilter] = useState('');
-  const [locZoneFilter, setLocZoneFilter] = useState('');
-  const [locSearch, setLocSearch] = useState('');
+  // Ward form state
+  const [showWardModal, setShowWardModal] = useState(false);
+  const [wardCode, setWardCode] = useState('');
+  const [wardName, setWardName] = useState('');
+  const [wardSearch, setWardSearch] = useState('');
 
   // Department form state
   const [showDeptModal, setShowDeptModal] = useState(false);
@@ -161,6 +152,14 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
   const [categorySubcategories, setCategorySubcategories] = useState('');
   const [categorySearch, setCategorySearch] = useState('');
   const [categoryDomainFilter, setCategoryDomainFilter] = useState('');
+  const [expandedCategoryIds, setExpandedCategoryIds] = useState<Set<string>>(new Set());
+  const toggleCategoryExpanded = (id: string) =>
+    setExpandedCategoryIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   // Subcategory form state
   const [showSubModal, setShowSubModal] = useState(false);
@@ -190,8 +189,8 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
   });
 
   const { data: categoriesData } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => api.get('/categories'),
+    queryKey: ['categories', 'admin'],
+    queryFn: () => api.get('/categories?includeInactive=true'),
   });
 
   const departments = (departmentsData as any)?.data || [];
@@ -204,18 +203,13 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
   });
   const locations = (locationsData as any)?.data || [];
 
-  const filteredLocations = locations.filter((l: any) => {
-    if (locFloorFilter && l.floor !== locFloorFilter) return false;
-    if (locZoneFilter && l.zone !== locZoneFilter) return false;
-    if (!locSearch) return true;
-    const q = locSearch.toLowerCase();
-    return (
-      l.name?.toLowerCase().includes(q) ||
-      l.code?.toLowerCase().includes(q) ||
-      l.floor?.toLowerCase().includes(q) ||
-      l.zone?.toLowerCase().includes(q) ||
-      l.departmentId?.name?.toLowerCase().includes(q)
-    );
+  // The hospital's official ward master list: WARD-type locations with no floor/zone (those
+  // belong to the handful of demo floor/zone room locations, not the real ward list).
+  const wards = locations.filter((l: any) => l.type === 'WARD' && !l.floor);
+  const filteredWards = wards.filter((w: any) => {
+    if (!wardSearch) return true;
+    const q = wardSearch.toLowerCase();
+    return w.name?.toLowerCase().includes(q) || w.code?.toLowerCase().includes(q);
   });
   const categories = (categoriesData as any)?.data || [];
   const categoryDomains: string[] = Array.from(
@@ -361,28 +355,21 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
     }
   };
 
-  const handleCreateLocation = async (e: React.FormEvent) => {
+  const handleCreateWard = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
       await api.post('/locations', {
-        code: locCode.toUpperCase(),
-        name: locName,
-        floor: locFloor,
-        zone: locZone,
-        type: locType,
-        departmentId: locDeptId || undefined,
+        code: wardCode.toUpperCase(),
+        name: wardName,
+        type: 'WARD',
       });
       queryClient.invalidateQueries({ queryKey: ['locations'] });
-      setShowLocationModal(false);
-      setLocCode('');
-      setLocName('');
-      setLocFloor('Floor 1');
-      setLocZone('Zone-A');
-      setLocType('ROOM');
-      setLocDeptId('');
-      toast.success('Location created successfully');
+      setShowWardModal(false);
+      setWardCode('');
+      setWardName('');
+      toast.success('Ward created successfully');
     } catch (err: any) {
-      toast.error(errorMessage(err, 'Location creation failed'));
+      toast.error(errorMessage(err, 'Ward creation failed'));
     }
   };
 
@@ -456,13 +443,50 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
     }
   };
 
+  // Categories and subcategories can only be created or disabled, never deleted — one may already
+  // be referenced by a past incident, so it must stay resolvable. Disabling removes it from the
+  // report form immediately, so confirm first either way.
+  const handleToggleCategoryActive = async (cat: any) => {
+    const willDisable = cat.active !== false;
+    const ok = window.confirm(
+      willDisable
+        ? `Disable category "${cat.name}"? It will no longer be selectable on new incident reports.`
+        : `Re-enable category "${cat.name}"? It will become selectable on new incident reports again.`
+    );
+    if (!ok) return;
+    try {
+      await api.patch(`/categories/${cat._id}/active`, { active: !willDisable });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success(`Category ${willDisable ? 'disabled' : 'enabled'}`);
+    } catch (err: any) {
+      toast.error(errorMessage(err, 'Could not update category status'));
+    }
+  };
+
+  const handleToggleSubcategoryActive = async (cat: any, sc: any) => {
+    const willDisable = sc.active !== false;
+    const ok = window.confirm(
+      willDisable
+        ? `Disable subcategory "${sc.name}"? It will no longer be selectable on new incident reports.`
+        : `Re-enable subcategory "${sc.name}"? It will become selectable on new incident reports again.`
+    );
+    if (!ok) return;
+    try {
+      await api.patch(`/categories/${cat._id}/subcategories/${sc.code}/active`, { active: !willDisable });
+      queryClient.invalidateQueries({ queryKey: ['categories'] });
+      toast.success(`Subcategory ${willDisable ? 'disabled' : 'enabled'}`);
+    } catch (err: any) {
+      toast.error(errorMessage(err, 'Could not update subcategory status'));
+    }
+  };
+
   return (
     <div className="space-y-6 text-clinicalText-primary">
       {/* Title Card - dark theme */}
       <PageHeader
         icon={Settings}
         title="Master Administration & Configurations"
-        description="Manage users and their roles, departments and their HODs, locations, and incident categories."
+        description="Manage users and their roles, departments and their HODs, wards, and incident categories."
       />
 
       {/* Tabs */}
@@ -472,7 +496,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
         tabs={[
           { key: 'users', label: 'User Directory', count: users.length },
           { key: 'departments', label: 'Departments', count: departments.length },
-          { key: 'locations', label: 'Locations', count: locations.length },
+          { key: 'wards', label: 'Wards', count: wards.length },
           { key: 'categories', label: 'Categories', count: categories.length },
         ] as const}
       />
@@ -686,77 +710,49 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
         </div>
       )}
 
-      {/* Tab 3: Locations */}
-      {activeTab === 'locations' && (
-        <div key="locations" className="space-y-4 animate-tab-panel-in">
+      {/* Tab 3: Wards */}
+      {activeTab === 'wards' && (
+        <div key="wards" className="space-y-4 animate-tab-panel-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-gradient-to-r from-[#FBF6EE] to-white p-5 rounded-2xl border border-[#E6D7C3]">
             <div>
               <div className="font-bold text-xs text-clinicalText-primary flex items-center space-x-2">
                 <MapPin className="w-4 h-4 text-maroon-700" />
-                <span>Hospital Locations ({locations.length} Total across 5 Floors & 3 Zones)</span>
+                <span>Hospital Wards ({wards.length} Total)</span>
               </div>
               <p className="text-[12.5px] text-clinicalText-muted mt-0.5">
-                Organized hierarchy: 5 Floors &bull; 3 Zones (Zone-A, Zone-B, Zone-C) &bull; Clinical departments.
+                The hospital's official ward master list, used wherever a report needs to record which ward an incident occurred in.
               </p>
             </div>
             <button
-              onClick={() => setShowLocationModal(true)}
+              onClick={() => setShowWardModal(true)}
               className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer self-start sm:self-auto"
             >
               <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
               <span className="relative z-10 flex items-center space-x-2">
                 <PlusCircle className="w-4 h-4 text-white" />
-                <span>Add Location</span>
+                <span>Add Ward</span>
               </span>
             </button>
           </div>
 
-          {/* Search & Floor/Zone Filter Bar */}
+          {/* Search Bar */}
           <div className="flex flex-col sm:flex-row gap-3 items-center justify-between bg-white p-4 rounded-2xl border border-slate-200 shadow-card">
             <div className="flex-1 w-full sm:max-w-xs">
               <SearchInput
-                value={locSearch}
-                onChange={setLocSearch}
-                placeholder="Search location code, name, department..." className="w-full"
+                value={wardSearch}
+                onChange={setWardSearch}
+                placeholder="Search ward code or name..." className="w-full"
               />
             </div>
-            <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto">
-              <SearchableSelect
-                value={locFloorFilter}
-                onChange={setLocFloorFilter}
-                options={[
-                  { value: '', label: `All Floors (${locations.length})` },
-                  ...FLOORS.map((f) => ({ value: f, label: `${f} (${locations.filter((l: any) => l.floor === f).length})` })),
-                ]}
-                searchPlaceholder="Search floors..."
-                className={`${filterControlClass} min-w-[11rem]`}
-              />
-
-              <SearchableSelect
-                value={locZoneFilter}
-                onChange={setLocZoneFilter}
-                options={[
-                  { value: '', label: 'All Zones' },
-                  ...ZONES.map((z) => ({ value: z, label: `${z} (${locations.filter((l: any) => l.zone === z).length})` })),
-                ]}
-                searchPlaceholder="Search zones..."
-                className={`${filterControlClass} min-w-[11rem]`}
-              />
-
-              {(locSearch || locFloorFilter || locZoneFilter) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setLocSearch('');
-                    setLocFloorFilter('');
-                    setLocZoneFilter('');
-                  }}
-                  className="px-2 py-1 text-xs text-clinicalText-muted hover:text-maroon-700 underline"
-                >
-                  Clear
-                </button>
-              )}
-            </div>
+            {wardSearch && (
+              <button
+                type="button"
+                onClick={() => setWardSearch('')}
+                className="px-2 py-1 text-xs text-clinicalText-muted hover:text-maroon-700 underline"
+              >
+                Clear
+              </button>
+            )}
           </div>
 
           <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden">
@@ -764,47 +760,19 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
               <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[12.5px] tracking-wider text-clinicalText-secondary">
                 <tr>
                   <th className="py-3 px-4 w-36">Code</th>
-                  <th className="py-3 px-4 w-32">Floor</th>
-                  <th className="py-3 px-4 w-28">Zone</th>
-                  <th className="py-3 px-4">Location Name</th>
-                  <th className="py-3 px-4 w-24">Type</th>
-                  <th className="py-3 px-4">Department</th>
+                  <th className="py-3 px-4">Ward Name</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredLocations.map((l: any) => (
-                  <tr key={l._id} className="hover:bg-slate-50/80 transition">
-                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{l.code}</span></td>
-                    <td className="py-3 px-4">
-                      {l.floor ? (
-                        <span className="px-2.5 py-1 rounded-full font-semibold bg-red-50 text-maroon-700 border border-red-100 text-[12.5px]">
-                          {l.floor}
-                        </span>
-                      ) : (
-                        <span className="text-clinicalText-muted">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      {l.zone ? (
-                        <span className="px-2.5 py-1 rounded-full font-semibold bg-slate-100 text-slate-700 border border-slate-200 text-[12.5px]">
-                          {l.zone}
-                        </span>
-                      ) : (
-                        <span className="text-clinicalText-muted">—</span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4 font-semibold text-clinicalText-primary">{l.name}</td>
-                    <td className="py-3 px-4">
-                      <span className="px-2.5 py-1 rounded-full bg-slate-100 text-clinicalText-primary font-bold text-[11.5px]">
-                        {l.type}
-                      </span>
-                    </td>
-                    <td className="py-3 px-4 text-clinicalText-secondary">{l.departmentId?.name || 'Hospital Wide'}</td>
+                {filteredWards.map((w: any) => (
+                  <tr key={w._id} className="hover:bg-slate-50/80 transition">
+                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{w.code}</span></td>
+                    <td className="py-3 px-4 font-semibold text-clinicalText-primary">{w.name}</td>
                   </tr>
                 ))}
-                {filteredLocations.length === 0 && (
+                {filteredWards.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="!p-0"><EmptyState message="No locations found matching your filter criteria." /></td>
+                    <td colSpan={2} className="!p-0"><EmptyState message="No wards found matching your search." /></td>
                   </tr>
                 )}
               </tbody>
@@ -878,63 +846,109 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
             </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden">
+          <div className="bg-white rounded-2xl border border-clinicalBorder shadow-card overflow-hidden overflow-x-auto">
             <table className="data-table">
               <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[12.5px] tracking-wider text-clinicalText-secondary">
                 <tr>
                   <th className="py-3 px-4 w-12 text-center">#</th>
-                  <th className="py-3 px-4 w-44">Code</th>
                   <th className="py-3 px-4 w-72">Category & Domain</th>
-                  <th className="py-3 px-4">Subcategories ({filteredCategories.reduce((acc: number, c: any) => acc + (c.subcategories?.length || 0), 0)})</th>
+                  <th className="py-3 px-4 w-[28rem]">Subcategories ({filteredCategories.reduce((acc: number, c: any) => acc + (c.subcategories?.length || 0), 0)})</th>
                   <th className="py-3 px-4 w-28 text-right">Action</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredCategories.map((c: any, index: number) => (
-                  <tr key={c._id} className="hover:bg-slate-50/80 transition">
-                    <td className="py-3 px-4 text-center font-bold text-clinicalText-muted">
-                      {c.order || index + 1}
-                    </td>
-                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{c.code}</span></td>
-                    <td className="py-3 px-4">
-                      <div className="font-semibold text-clinicalText-primary">{c.name}</div>
-                      {c.domain && (
-                        <span className="inline-block mt-1 px-2.5 py-1 rounded-full text-[11.5px] font-semibold bg-red-50 text-maroon-700 border border-red-100">
-                          {c.domain}
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-3 px-4">
-                      <div className="flex flex-wrap gap-1.5 items-center">
-                        {c.subcategories?.map((sc: any) => (
-                          <span
-                            key={sc.code}
-                            className="px-2.5 py-1 rounded-full bg-slate-100 border border-slate-200 text-clinicalText-secondary text-[12.5px]"
+                {filteredCategories.map((c: any, index: number) => {
+                  const subs = c.subcategories || [];
+                  const expanded = expandedCategoryIds.has(c._id);
+                  const visibleSubs = expanded ? subs : subs.slice(0, 5);
+                  const hiddenCount = subs.length - visibleSubs.length;
+                  const categoryActive = c.active !== false;
+                  return (
+                    <tr key={c._id} className={`hover:bg-slate-50/80 transition align-top ${categoryActive ? '' : 'opacity-60'}`}>
+                      <td className="py-3 px-4 text-center font-bold text-clinicalText-muted">
+                        {c.order || index + 1}
+                      </td>
+                      <td className="py-3 px-4">
+                        <div className="font-semibold text-clinicalText-primary">{c.name}</div>
+                        <div className="flex flex-wrap items-center gap-1 mt-1">
+                          {c.domain && (
+                            <span className="inline-block px-2.5 py-1 rounded-full text-[11.5px] font-semibold bg-red-50 text-maroon-700 border border-red-100">
+                              {c.domain}
+                            </span>
+                          )}
+                          {!categoryActive && (
+                            <span className="inline-block px-2.5 py-1 rounded-full text-[11.5px] font-semibold bg-slate-200 text-slate-600 border border-slate-300">
+                              Disabled
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 w-[28rem] max-w-[28rem]">
+                        <div className="flex flex-wrap gap-1.5 items-center">
+                          {visibleSubs.map((sc: any) => {
+                            const subActive = sc.active !== false;
+                            return (
+                              <button
+                                key={sc.code}
+                                type="button"
+                                onClick={() => handleToggleSubcategoryActive(c, sc)}
+                                title={subActive ? 'Click to disable' : 'Click to enable'}
+                                className={`px-2.5 py-1 rounded-full border text-[12.5px] transition cursor-pointer ${
+                                  subActive
+                                    ? 'bg-slate-100 border-slate-200 text-clinicalText-secondary hover:bg-slate-200'
+                                    : 'bg-slate-50 border-dashed border-slate-300 text-slate-400 line-through hover:bg-slate-100'
+                                }`}
+                              >
+                                {sc.name}
+                              </button>
+                            );
+                          })}
+                          {subs.length === 0 && <span className="text-clinicalText-muted text-[12.5px]">No subcategories yet</span>}
+                          {(hiddenCount > 0 || expanded) && subs.length > 5 && (
+                            <button
+                              type="button"
+                              onClick={() => toggleCategoryExpanded(c._id)}
+                              className="px-2.5 py-1 rounded-full bg-[#FAF3EC] border border-[#E9D3BC] text-[#5C1A22] font-semibold text-[12.5px] hover:bg-[#F4E6D7] transition cursor-pointer"
+                            >
+                              {expanded ? 'Show less' : `+${hiddenCount} more`}
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="flex flex-col items-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTargetCategory(c);
+                              setShowSubModal(true);
+                            }}
+                            className="inline-flex items-center space-x-1 h-8 px-3 text-[13px] font-semibold text-[#5C1A22] bg-[#FAF3EC] hover:bg-[#F4E6D7] border border-[#E9D3BC] rounded-lg transition cursor-pointer"
+                            title="Add subcategory to this category"
                           >
-                            {sc.name}
-                          </span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="py-3 px-4 text-right">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setTargetCategory(c);
-                          setShowSubModal(true);
-                        }}
-                        className="inline-flex items-center space-x-1 h-8 px-3 text-[13px] font-semibold text-[#5C1A22] bg-[#FAF3EC] hover:bg-[#F4E6D7] border border-[#E9D3BC] rounded-lg transition cursor-pointer"
-                        title="Add subcategory to this category"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>Add Sub</span>
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                            <Plus className="w-3 h-3" />
+                            <span>Add Sub</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleCategoryActive(c)}
+                            className={`inline-flex items-center space-x-1 h-8 px-3 text-[13px] font-semibold rounded-lg border transition cursor-pointer ${
+                              categoryActive
+                                ? 'text-slate-600 bg-white hover:bg-slate-50 border-clinicalBorder'
+                                : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border-emerald-200'
+                            }`}
+                            title={categoryActive ? 'Disable this category' : 'Re-enable this category'}
+                          >
+                            <span>{categoryActive ? 'Disable' : 'Enable'}</span>
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
                 {filteredCategories.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="!p-0"><EmptyState message="No categories found matching your filter criteria." /></td>
+                    <td colSpan={4} className="!p-0"><EmptyState message="No categories found matching your filter criteria." /></td>
                   </tr>
                 )}
               </tbody>
@@ -1070,78 +1084,22 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
         </div>
       )}
 
-      {/* Location Create Modal */}
-      {showLocationModal && (
+      {/* Ward Create Modal */}
+      {showWardModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-          <form onSubmit={handleCreateLocation} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-3 shadow-2xl border border-clinicalBorder">
-            <h3 className="font-bold text-clinicalText-primary">Add New Location</h3>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Hospital Floor *</label>
-                <SearchableSelect
-                  value={locFloor}
-                  onChange={(f) => {
-                    setLocFloor(f);
-                    const fNum = f.replace(/[^0-9]/g, '');
-                    const zCode = locZone === 'Zone-A' ? 'Z1' : locZone === 'Zone-B' ? 'ZB' : 'ZC';
-                    if (!locCode || locCode.startsWith('FL')) {
-                      setLocCode(`FL${fNum}-${zCode}`);
-                    }
-                  }}
-                  options={FLOORS.map((f) => ({ value: f, label: f }))}
-                  searchPlaceholder="Search floors..."
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Zone *</label>
-                <SearchableSelect
-                  value={locZone}
-                  onChange={(z) => {
-                    setLocZone(z);
-                    const fNum = locFloor.replace(/[^0-9]/g, '');
-                    const zCode = z === 'Zone-A' ? 'Z1' : z === 'Zone-B' ? 'ZB' : 'ZC';
-                    if (!locCode || locCode.startsWith('FL')) {
-                      setLocCode(`FL${fNum}-${zCode}`);
-                    }
-                  }}
-                  options={ZONES.map((z) => ({ value: z, label: z }))}
-                  searchPlaceholder="Search zones..."
-                  className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-                />
-              </div>
+          <form onSubmit={handleCreateWard} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-3 shadow-2xl border border-clinicalBorder">
+            <h3 className="font-bold text-clinicalText-primary">Add New Ward</h3>
+            <div>
+              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Ward Code *</label>
+              <input type="text" required placeholder="e.g. MMW" value={wardCode} onChange={(e) => setWardCode(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
             </div>
             <div>
-              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Location Code *</label>
-              <input type="text" required placeholder="e.g. FL1-Z1 or ICU-BED-03" value={locCode} onChange={(e) => setLocCode(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Location / Room Name *</label>
-              <input type="text" required placeholder="e.g. Floor 1 - Zone-A or ICU Bed 03" value={locName} onChange={(e) => setLocName(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Type *</label>
-              <SearchableSelect
-                value={locType}
-                onChange={setLocType}
-                options={LOCATION_TYPES.map((t) => ({ value: t, label: t }))}
-                searchPlaceholder="Search types..."
-                className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Department</label>
-              <SearchableSelect
-                value={locDeptId}
-                onChange={setLocDeptId}
-                options={[{ value: '', label: 'Hospital-wide' }, ...departmentOptions(departments)]}
-                searchPlaceholder="Search departments..."
-                className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
-              />
+              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Ward Name *</label>
+              <input type="text" required placeholder="e.g. MALE MEDICAL WARD" value={wardName} onChange={(e) => setWardName(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
             </div>
             <div className="flex justify-end space-x-2 pt-2">
-              <button type="button" onClick={() => setShowLocationModal(false)} className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer">Cancel</button>
-              <button type="submit" className="px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] text-white font-semibold text-xs rounded-xl shadow-button-red transition cursor-pointer">Create Location</button>
+              <button type="button" onClick={() => setShowWardModal(false)} className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer">Cancel</button>
+              <button type="submit" className="px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] text-white font-semibold text-xs rounded-xl shadow-button-red transition cursor-pointer">Create Ward</button>
             </div>
           </form>
         </div>

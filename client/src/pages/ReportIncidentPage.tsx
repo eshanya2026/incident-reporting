@@ -18,7 +18,6 @@ import type { LucideIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import dayjs from 'dayjs';
 import { departmentOptions } from '../components/ui/DepartmentOptions';
-import { wardOptions } from '../components/ui/WardOptions';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { PageHeader } from '../components/ui/primitives';
 import { toast } from '../store/useToastStore';
@@ -242,6 +241,13 @@ export default function ReportIncidentPage() {
   const categories = (categoriesData as any)?.data || [];
 
   const selectedLocation = locations.find((l: any) => l._id === locationId);
+  // The hospital's official ward master list: WARD-type locations with no floor/zone (those
+  // belong to the handful of demo floor/zone room locations, not the real ward list). Sourced
+  // from the Location collection, not a static list, so wards Admin adds show up immediately.
+  const wardLocationOptions = locations
+    .filter((l: any) => l.type === 'WARD' && !l.floor)
+    .sort((a: any, b: any) => a.name.localeCompare(b.name))
+    .map((l: any) => ({ value: l.name, label: l.name }));
   const wardLocationMode = affectedPersonType === 'INPATIENT' && Boolean(inpatient.ward) && incidentInWard === 'Yes';
   const wardLocation = wardLocationMode
     ? locations.find((l: any) => l.type === 'WARD' && l.name === inpatient.ward)
@@ -687,7 +693,7 @@ export default function ReportIncidentPage() {
                           containerClassName="block w-full"
                           value={inpatient.ward}
                           onChange={handleWardChange}
-                          options={[{ value: '', label: 'Select ward' }, ...wardOptions()]}
+                          options={[{ value: '', label: 'Select ward' }, ...wardLocationOptions]}
                           searchPlaceholder="Search wards..."
                           className={inputClass}
                         />

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Search, Check } from 'lucide-react';
 
 export interface SearchableSelectOption {
@@ -37,7 +37,12 @@ export function SearchableSelect({
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlight, setHighlight] = useState(0);
+  // Panels normally hang left-aligned to the trigger; when the trigger sits near the right edge
+  // of the viewport (e.g. a filter near the end of a toolbar), that would push the panel past the
+  // edge and widen the whole page. Flip to right-aligned instead whenever that would happen.
+  const [alignRight, setAlignRight] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const itemRefs = useRef<Map<number, HTMLButtonElement>>(new Map());
 
@@ -80,7 +85,15 @@ export function SearchableSelect({
       setQuery('');
       setHighlight(0);
       requestAnimationFrame(() => inputRef.current?.focus());
+    } else {
+      setAlignRight(false);
     }
+  }, [open]);
+
+  useLayoutEffect(() => {
+    if (!open || !panelRef.current) return;
+    const rect = panelRef.current.getBoundingClientRect();
+    if (rect.right > window.innerWidth - 8) setAlignRight(true);
   }, [open]);
 
   useEffect(() => {
@@ -123,7 +136,10 @@ export function SearchableSelect({
       </button>
 
       {open && (
-        <div className="absolute z-50 mt-1 left-0 w-max min-w-full max-w-xs sm:max-w-sm bg-white border border-clinicalBorder rounded-xl shadow-xl overflow-hidden">
+        <div
+          ref={panelRef}
+          className={`absolute z-50 mt-1 ${alignRight ? 'right-0' : 'left-0'} w-max min-w-full max-w-xs sm:max-w-sm bg-white border border-clinicalBorder rounded-xl shadow-xl overflow-hidden`}
+        >
           <div className="p-2 border-b border-slate-100">
             <div className="relative">
               <Search className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
