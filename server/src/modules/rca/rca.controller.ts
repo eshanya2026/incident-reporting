@@ -6,8 +6,10 @@ import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { loadIncidentForView, loadIncidentForWork } from '../../common/helpers/incidentAccess.js';
 
-// The HOD writes the RCA while working on the incident; Quality Members write/edit RCA when RCA is requested
-const EDITABLE_STATUSES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS', 'RCA_REQUESTED'];
+// The HOD writes this 5-Why RCA while working the investigation (required for severity 4–5). When
+// Quality requests a review-stage RCA instead, that's a scheduled meeting + uploaded report, not
+// this form — see rcaMeeting.model.ts / rcaMeeting.controller.ts.
+const EDITABLE_STATUSES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'];
 
 const saveRcaSchema = z.object({
   method: z.enum(['FIVE_WHY', 'FISHBONE', 'BOTH']).default('FIVE_WHY'),

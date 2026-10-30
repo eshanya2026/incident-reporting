@@ -1,8 +1,9 @@
 import mongoose from 'mongoose';
 import { logger } from '../config/logger.js';
-import { Incident, IncidentStatus } from '../modules/incidents/incident.model.js';
+import { Incident, IncidentStatus, riskBandFor } from '../modules/incidents/incident.model.js';
 import { Investigation } from '../modules/investigations/investigation.model.js';
 import { RootCauseAnalysis } from '../modules/rca/rca.model.js';
+import { RcaMeeting } from '../modules/rca/rcaMeeting.model.js';
 import { Capa, CapaStatus, CapaType, CapaPriority } from '../modules/capa/capa.model.js';
 import { Notification } from '../modules/notifications/notification.model.js';
 import { AuditLog } from '../modules/audit/audit.model.js';
@@ -143,9 +144,19 @@ interface DummyIncidentDef {
   requiresCapa?: boolean;
   closureRemarks?: string;
   closedDaysAgo?: number;
+  // Likelihood x severity risk rating Quality recorded when closing (CLOSED incidents only) —
+  // see docs/NABH_Incident_Risk_Scoring_Logic.md.
+  riskAssessment?: { likelihood: number; severity: number; rationale?: string; assessor?: string };
   investigation?: DummyInvestigation;
   rca?: DummyRca;
   capas?: DummyCapa[];
+  // Investigation + CAPA written by an involved (not lead) department — each notified department
+  // works its own record, compared side by side on Quality's Department comparison screen.
+  involvedWork?: Array<{
+    department: string;
+    investigation: DummyInvestigation;
+    capas: DummyCapa[];
+  }>;
   assignments?: Array<{
     department: string;
     hodUser?: string;
@@ -178,13 +189,21 @@ interface DummyIncidentDef {
     summary: string;
     daysAgo?: number;
   };
-  // PENDING_QUALITY_REVIEW -> RCA_REQUESTED: Quality wasn't satisfied and asked a Quality Member
+  // PENDING_QUALITY_REVIEW -> RCA_REQUESTED: Quality wasn't satisfied and asked an RCA Head
   rcaRequest?: {
     remarks: string;
     daysAgo: number;
-    qualityMember?: string;
+    rcaHead?: string;
   };
-  // RCA_REQUESTED -> PENDING_QUALITY_REVIEW: the Quality Member's findings
+  // The RCA Head schedules a meeting with the involved HODs and Quality (date/time/location);
+  // seeded as a future meeting (no report uploaded yet) to show the "scheduled" state.
+  rcaMeeting?: {
+    inDays: number;
+    location: string;
+    notes?: string;
+    scheduledDaysAgo: number;
+  };
+  // RCA_REQUESTED -> PENDING_QUALITY_REVIEW: the RCA Head's findings
   rcaSubmission?: {
     remarks: string;
     daysAgo: number;
@@ -369,7 +388,7 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'Left inguinal hernia listed. Site marked on right groin in holding area. Time-out in OT Suite 1 identified mismatch before incision. Procedure stopped and remarking completed.',
     immediateAction: 'Time-out halted case, site re-verified with consent and imaging, WHO checklist repeated.',
-    severity: 4,
+    severity: 5,
     status: 'UNDER_INVESTIGATION',
     requiresRca: true,
     requiresCapa: true,
@@ -624,6 +643,36 @@ const INCIDENTS: DummyIncidentDef[] = [
         },
       },
     ],
+    involvedWork: [
+      {
+        department: 'WARD',
+        investigation: {
+          status: 'COMPLETED',
+          dueOffsetDays: -8,
+          facts: 'Ward double-check caught the strength mismatch before the first dose; the paediatric flag on the HIS order was visible to nursing but not cross-checked against the pack received from pharmacy.',
+          chronology: '14:40 pack received at ward → 14:41 independent double-check → 14:42 discrepancy flagged, pack returned to pharmacy.',
+          peopleInterviewed: [
+            { name: 'Nurse Selvi Ward', designation: 'Ward Staff Nurse', statement: 'Double-check against the prescribed strength is routine for paediatric patients; that is what caught it.' },
+          ],
+          contributingFactors: ['PROCESS'],
+          findings: 'Ward-side double-check worked as intended, but there is no requirement to confirm pack strength against the HIS order before it reaches the bedside.',
+          recommendation: 'Add a mandatory strength-confirmation step at ward receipt for paediatric medication packs.',
+        },
+        capas: [
+          {
+            seq: 14,
+            type: 'PREVENTIVE',
+            action: 'Add a paediatric pack strength-confirmation step to ward medication receipt, independent of the bedside double-check.',
+            priority: 'MEDIUM',
+            assignedDaysAgo: 12,
+            targetOffsetDays: -4,
+            status: 'DONE',
+            completionRemarks: 'Receipt checklist updated; briefed at ward nursing huddle.',
+            completedDaysAgo: 4,
+          },
+        ],
+      },
+    ],
   },
   {
     seq: 9,
@@ -654,6 +703,7 @@ const INCIDENTS: DummyIncidentDef[] = [
     requiresCapa: true,
     closedDaysAgo: 3,
     closureRemarks: 'Workup complete. Pre-medication protocol updated for previously transfused patients. CAPA verified.',
+    riskAssessment: { likelihood: 3, severity: 3, rationale: 'Repeat-transfusion reactions recur occasionally; harm so far has stayed moderate and self-limiting.' },
     investigation: {
       status: 'COMPLETED',
       dueOffsetDays: -4,
@@ -964,6 +1014,11 @@ const INCIDENTS: DummyIncidentDef[] = [
     requiresCapa: true,
     closedDaysAgo: 8,
     closureRemarks: 'Look-alike audit completed across OT and ICU emergency boxes. No further mismatches found.',
+    riskAssessment: {
+      likelihood: 3,
+      severity: 4,
+      rationale: 'No harm this time, but look-alike vial mix-ups recur across emergency boxes; an actual wrong-drug administration here would be a major credible harm.',
+    },
     investigation: {
       status: 'COMPLETED',
       dueOffsetDays: -12,
@@ -1050,6 +1105,7 @@ const INCIDENTS: DummyIncidentDef[] = [
     status: 'CLOSED',
     closedDaysAgo: 11,
     closureRemarks: 'Filter inventory increased. No patient or staff harm. Preventive maintenance brought forward.',
+    riskAssessment: { likelihood: 2, severity: 2 },
   },
   {
     seq: 21,
@@ -1210,14 +1266,19 @@ const INCIDENTS: DummyIncidentDef[] = [
     description:
       'PRBC unit labelled for ICU Bed 02 was carried to Bed 01. Bedside two-person check identified mismatch before spike. No transfusion started. Treated as sentinel near-event.',
     immediateAction: 'Unit returned to blood bank, both patients re-identified, transfusion SOP huddle held.',
-    initialSeverity: 4,
-    severity: 4,
+    initialSeverity: 5,
+    severity: 5,
     status: 'CLOSED',
     requiresRca: true,
     requiresCapa: true,
     closedDaysAgo: 2,
     closureRemarks:
       'Independent double-check reinforced. Porter pickup now uses bed-level barcode. Quality committee closed after CAPA verification.',
+    riskAssessment: {
+      likelihood: 2,
+      severity: 5,
+      rationale: 'Wrong-unit delivery to the bedside is rare given the two-person check, but an undetected recurrence would be a potentially fatal transfusion event.',
+    },
     investigation: {
       status: 'COMPLETED',
       dueOffsetDays: -3,
@@ -1433,9 +1494,15 @@ const INCIDENTS: DummyIncidentDef[] = [
     },
     rcaRequest: {
       remarks:
-        'The investigation stops at "nurse forgot" — that’s not a root cause. Please run a full 5-why / fishbone on why the transfusion-reaction workflow has no system safeguard at all, and whether this has happened before without being reported.',
+        'The investigation stops at "nurse forgot" — that’s not a root cause. Please schedule an RCA meeting with ICU and Quality to dig into why the transfusion-reaction workflow has no system safeguard at all, and whether this has happened before without being reported.',
       daysAgo: 5,
-      qualityMember: 'quality.member',
+      rcaHead: 'rca.head',
+    },
+    rcaMeeting: {
+      inDays: 2,
+      location: 'Quality Office, Admin Block — 2nd Floor',
+      notes: 'Bring the biomedical maintenance log and transfusion monitoring chart for the last 90 days.',
+      scheduledDaysAgo: 1,
     },
   },
   {
@@ -1501,9 +1568,15 @@ const INCIDENTS: DummyIncidentDef[] = [
     },
     rcaRequest: {
       remarks:
-        'Two prior fault reports on the same unit were closed without a bench test, and that pattern isn’t addressed anywhere in the findings. Please RCA why repeat equipment faults are being closed without verification, hospital-wide, not just for this one unit.',
+        'Two prior fault reports on the same unit were closed without a bench test, and that pattern isn’t addressed anywhere in the findings. Please schedule an RCA meeting to look at why repeat equipment faults are being closed without verification, hospital-wide, not just for this one unit.',
       daysAgo: 3,
-      qualityMember: 'quality.ananya',
+      rcaHead: 'rca.ananya',
+    },
+    rcaMeeting: {
+      inDays: 4,
+      location: 'Biomedical Engineering Office',
+      notes: 'Bring the fault log for this unit and the last 6 months of repeat-fault tickets hospital-wide.',
+      scheduledDaysAgo: 3,
     },
   },
   {
@@ -1565,6 +1638,36 @@ const INCIDENTS: DummyIncidentDef[] = [
       summary: 'Investigation and preventive CAPA completed; submitted for Quality review.',
       daysAgo: 1,
     },
+    involvedWork: [
+      {
+        department: 'WARD',
+        investigation: {
+          status: 'COMPLETED',
+          dueOffsetDays: -5,
+          facts: 'Patient was transferred from General Inpatient Ward to ER Observation on the same fall-risk precautions; the ward handover note did not travel with the fall-risk flag in a form ER nursing could act on immediately.',
+          chronology: '13:50 ward transfer note handed over → 14:10 ER handover completed without explicit call-bell-reach confirmation.',
+          peopleInterviewed: [
+            { name: 'Nurse Mary Staff', designation: 'Senior Staff Nurse', statement: 'The fall-risk flag came across, but the specific call-bell-reach check isn’t part of the inter-unit transfer note.' },
+          ],
+          contributingFactors: ['PROCESS', 'COMMUNICATION'],
+          findings: 'Inter-unit transfer notes carry the fall-risk flag but not the specific precautions already in place at the sending ward.',
+          recommendation: 'Carry specific fall-risk precautions (not just the flag) on the inter-unit transfer note.',
+        },
+        capas: [
+          {
+            seq: 15,
+            type: 'CORRECTIVE',
+            action: 'Add a precautions-detail field (not just a flag) to the inter-unit fall-risk transfer note.',
+            priority: 'MEDIUM',
+            assignedDaysAgo: 5,
+            targetOffsetDays: 3,
+            status: 'DONE',
+            completionRemarks: 'Transfer note template updated; briefed at ward nursing huddle.',
+            completedDaysAgo: 1,
+          },
+        ],
+      },
+    ],
   },
   {
     seq: 30,
@@ -1651,6 +1754,7 @@ export async function seedDummyOperationalData(params: {
   let capaCount = 0;
   let investigationCount = 0;
   let rcaCount = 0;
+  let rcaMeetingCount = 0;
   let notificationCount = 0;
 
   const requireId = (map: IdMap, key: string, kind: string): mongoose.Types.ObjectId => {
@@ -1660,6 +1764,10 @@ export async function seedDummyOperationalData(params: {
     }
     return id;
   };
+
+  // Migration cleanup: Investigation became per-department (departmentId added), so any record
+  // from before that change is missing it and would no longer match the seeder's upsert filter.
+  await Investigation.deleteMany({ departmentId: { $exists: false } });
 
   for (const def of INCIDENTS) {
     const incidentNumber = `INC-${year}-${def.seq.toString().padStart(6, '0')}`;
@@ -1791,21 +1899,35 @@ export async function seedDummyOperationalData(params: {
     const notifiedDepartmentIds = (def.notifiedDepartments || []).map((d) => requireId(deptMap, d, 'department'));
     const intimatedUserIds = (def.intimatedUsers || []).map((u) => requireId(userMap, u, 'user'));
 
-    const rcaMemberId = def.rcaRequest?.qualityMember ? requireId(userMap, def.rcaRequest.qualityMember, 'user') : undefined;
+    const rcaHeadId = def.rcaRequest?.rcaHead ? requireId(userMap, def.rcaRequest.rcaHead, 'user') : undefined;
     const rcaRequestFields =
       def.status === 'RCA_REQUESTED' || def.rcaRequest
         ? {
             rcaRequestedAt: daysAgo(def.rcaRequest?.daysAgo ?? def.daysAgo, 13),
             rcaRequestedBy: qualityId,
-            rcaRequestRemarks: def.rcaRequest?.remarks || 'Please run a 5-why RCA before this comes back for review.',
-            ...(rcaMemberId ? { assignedQualityMemberId: rcaMemberId } : {}),
+            rcaRequestRemarks: def.rcaRequest?.remarks || 'Please schedule an RCA meeting before this comes back for review.',
+            ...(rcaHeadId ? { rcaHeadId } : {}),
           }
         : {};
     const rcaSubmissionFields = def.rcaSubmission
       ? {
           rcaSubmittedAt: daysAgo(def.rcaSubmission.daysAgo, 15),
-          rcaSubmittedBy: rcaMemberId,
+          rcaSubmittedBy: rcaHeadId,
           rcaSubmissionRemarks: def.rcaSubmission.remarks,
+        }
+      : {};
+    const riskScore = def.riskAssessment ? def.riskAssessment.likelihood * def.riskAssessment.severity : 0;
+    const riskAssessmentField = def.riskAssessment
+      ? {
+          riskAssessment: {
+            likelihood: def.riskAssessment.likelihood,
+            severity: def.riskAssessment.severity,
+            score: riskScore,
+            band: riskBandFor(riskScore),
+            rationale: def.riskAssessment.rationale,
+            assessedBy: def.riskAssessment.assessor ? requireId(userMap, def.riskAssessment.assessor, 'user') : qualityId,
+            assessedAt: closedAt ?? daysAgo(0, 10),
+          },
         }
       : {};
 
@@ -1856,13 +1978,14 @@ export async function seedDummyOperationalData(params: {
           ...rcaRequestFields,
           ...rcaSubmissionFields,
           ...(def.status === 'CLOSED' ? { closureRemarks: def.closureRemarks, closedAt, closedBy: qualityId } : {}),
+          ...riskAssessmentField,
         },
         $unset: {
           investigatorId: '',
           ...(assigned ? {} : { departmentId: '', assignedHod: '', assignedBy: '', assignedAt: '' }),
           ...(def.status === 'REJECTED' ? {} : { rejection: '' }),
           ...(closureSubmission ? {} : { closureSubmission: '' }),
-          ...(def.status === 'CLOSED' ? {} : { closureRemarks: '', closedAt: '', closedBy: '' }),
+          ...(def.status === 'CLOSED' ? {} : { closureRemarks: '', closedAt: '', closedBy: '', qualityScore: '', riskAssessment: '' }),
         },
       },
       { upsert: true, new: true, setDefaultsOnInsert: true }
@@ -1871,9 +1994,10 @@ export async function seedDummyOperationalData(params: {
     if (def.investigation) {
       const inv = def.investigation;
       await Investigation.findOneAndUpdate(
-        { incidentId: incident._id },
+        { incidentId: incident._id, departmentId },
         {
           incidentId: incident._id,
+          departmentId,
           investigatorId: departmentHodId,
           startedAt: daysAgo(Math.max(def.daysAgo - 1, 0), 12),
           dueDate: daysFromNow(inv.dueOffsetDays),
@@ -1912,6 +2036,29 @@ export async function seedDummyOperationalData(params: {
       rcaCount += 1;
     }
 
+    // Review-stage RCA: Quality schedules the meeting with the involved HODs and the RCA Head.
+    if (def.rcaMeeting && rcaHeadId) {
+      const involvedHodIds = (def.notifiedDepartments || []).map((code) => requireId(userMap, DEPARTMENT_HOD[code], 'user'));
+      const attendeeIds = [...new Set([departmentHodId, ...involvedHodIds, qualityId, rcaHeadId].map((id) => id.toString()))].map(
+        (id) => new mongoose.Types.ObjectId(id)
+      );
+      await RcaMeeting.findOneAndUpdate(
+        { incidentId: incident._id },
+        {
+          incidentId: incident._id,
+          scheduledBy: qualityId,
+          scheduledAt: daysAgo(def.rcaMeeting.scheduledDaysAgo, 14),
+          meetingAt: daysFromNow(def.rcaMeeting.inDays),
+          location: def.rcaMeeting.location,
+          notes: def.rcaMeeting.notes,
+          attendeeIds,
+          status: 'SCHEDULED',
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      rcaMeetingCount += 1;
+    }
+
     if (def.capas?.length) {
       for (const capa of def.capas) {
         const capaNumber = `CAPA-${year}-${capa.seq.toString().padStart(6, '0')}`;
@@ -1946,6 +2093,67 @@ export async function seedDummyOperationalData(params: {
       }
     }
 
+    // Involved (non-lead) departments write their own investigation + CAPA, shown alongside the
+    // lead department's on Quality's Department comparison screen (DepartmentComparisonSection.tsx).
+    for (const iw of def.involvedWork || []) {
+      const involvedDeptId = requireId(deptMap, iw.department, 'department');
+      const involvedHodId = requireId(userMap, DEPARTMENT_HOD[iw.department], 'user');
+      const inv = iw.investigation;
+      await Investigation.findOneAndUpdate(
+        { incidentId: incident._id, departmentId: involvedDeptId },
+        {
+          incidentId: incident._id,
+          departmentId: involvedDeptId,
+          investigatorId: involvedHodId,
+          startedAt: daysAgo(Math.max(def.daysAgo - 1, 0), 12),
+          dueDate: daysFromNow(inv.dueOffsetDays),
+          completedAt: inv.status === 'COMPLETED' ? daysAgo(Math.max(def.daysAgo - 3, 0), 15) : undefined,
+          facts: inv.facts,
+          chronology: inv.chronology,
+          peopleInterviewed: inv.peopleInterviewed,
+          contributingFactors: inv.contributingFactors,
+          immediateCorrections: inv.immediateCorrections,
+          findings: inv.findings,
+          recommendation: inv.recommendation,
+          status: inv.status,
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      investigationCount += 1;
+
+      for (const capa of iw.capas) {
+        const capaNumber = `CAPA-${year}-${capa.seq.toString().padStart(6, '0')}`;
+        await Capa.findOneAndUpdate(
+          { capaNumber },
+          {
+            capaNumber,
+            incidentId: incident._id,
+            rcaId,
+            type: capa.type,
+            action: capa.action,
+            ownerUserId: involvedHodId,
+            ownerDepartmentId: involvedDeptId,
+            priority: capa.priority,
+            assignedDate: daysAgo(capa.assignedDaysAgo, 11),
+            targetDate: daysFromNow(capa.targetOffsetDays),
+            status: capa.status,
+            completionRemarks: capa.completionRemarks,
+            completedAt: capa.completedDaysAgo != null ? daysAgo(capa.completedDaysAgo, 16) : undefined,
+            verification: capa.verification
+              ? {
+                  verifiedBy: requireId(userMap, capa.verification.verifiedBy, 'user'),
+                  verifiedAt: daysAgo(capa.verification.verifiedDaysAgo, 17),
+                  effective: capa.verification.effective,
+                  remarks: capa.verification.remarks,
+                }
+              : undefined,
+          },
+          { upsert: true, new: true, setDefaultsOnInsert: true }
+        );
+        capaCount += 1;
+      }
+    }
+
     const existingAudit = await AuditLog.findOne({ entityId: incident._id, action: 'SEED_INCIDENT_CREATED' });
     if (!existingAudit) {
       await AuditLog.create({
@@ -1957,6 +2165,96 @@ export async function seedDummyOperationalData(params: {
         timestamp: reportedAt,
       });
     }
+
+    // Synthetic workflow trail so the "View details" timeline shows real per-step timestamps for
+    // seeded incidents, matching what IncidentWorkflowService.perform()/recordSubmission() write
+    // for incidents created through the live workflow (see incidentWorkflow.service.ts).
+    await AuditLog.deleteMany({ entityId: incident._id, action: /^INCIDENT_/ });
+
+    const trail: Array<{ action: string; toStatus: string; at: Date; userId: mongoose.Types.ObjectId; text?: string }> = [
+      { action: 'INCIDENT_SUBMITTED', toStatus: 'SUBMITTED', at: reportedAt, userId: reportedBy },
+    ];
+
+    for (const ir of infoRequests as any[]) {
+      trail.push({ action: 'INCIDENT_REQUEST_INFO', toStatus: 'INFO_REQUESTED', at: ir.askedAt, userId: ir.askedBy, text: ir.question });
+      if (ir.response && ir.respondedAt) {
+        trail.push({ action: 'INCIDENT_RESPOND_INFO', toStatus: 'SUBMITTED', at: ir.respondedAt, userId: ir.respondedBy, text: ir.response });
+      }
+    }
+
+    if (rejection) {
+      trail.push({ action: 'INCIDENT_REJECT', toStatus: 'REJECTED', at: rejection.at, userId: rejection.by, text: rejection.reason });
+    }
+
+    for (const hr of hodReturns) {
+      trail.push({ action: 'INCIDENT_RETURN_TO_QUALITY', toStatus: 'SUBMITTED', at: hr.at, userId: hr.by, text: hr.reason });
+    }
+
+    for (const a of assignments) {
+      trail.push({ action: 'INCIDENT_ASSIGN', toStatus: 'ASSIGNED', at: a.at, userId: a.by });
+    }
+
+    if (def.investigation) {
+      const investigationStartedAt = daysAgo(Math.max(def.daysAgo - 1, 0), 12);
+      trail.push({ action: 'INCIDENT_START_INVESTIGATION', toStatus: 'UNDER_INVESTIGATION', at: investigationStartedAt, userId: departmentHodId });
+      if (def.investigation.status === 'COMPLETED') {
+        const investigationCompletedAt = daysAgo(Math.max(def.daysAgo - 3, 0), 15);
+        trail.push({ action: 'INCIDENT_COMPLETE_INVESTIGATION', toStatus: 'CAPA_IN_PROGRESS', at: investigationCompletedAt, userId: departmentHodId });
+      }
+    }
+
+    if (closureSubmission) {
+      trail.push({
+        action: 'INCIDENT_SUBMIT_CLOSURE',
+        toStatus: 'PENDING_QUALITY_REVIEW',
+        at: closureSubmission.at,
+        userId: closureSubmission.by,
+        text: closureSubmission.summary,
+      });
+    }
+
+    if (def.status === 'RCA_REQUESTED' || def.rcaRequest) {
+      trail.push({
+        action: 'INCIDENT_REQUEST_RCA',
+        toStatus: 'RCA_REQUESTED',
+        at: daysAgo(def.rcaRequest?.daysAgo ?? def.daysAgo, 13),
+        userId: qualityId,
+        text: def.rcaRequest?.remarks,
+      });
+    }
+
+    if (def.rcaSubmission) {
+      trail.push({
+        action: 'INCIDENT_SUBMIT_RCA',
+        toStatus: 'PENDING_QUALITY_REVIEW',
+        at: daysAgo(def.rcaSubmission.daysAgo, 15),
+        userId: rcaHeadId ?? qualityId,
+        text: def.rcaSubmission.remarks,
+      });
+    }
+
+    for (const qr of qualityReviews) {
+      trail.push({
+        action: qr.decision === 'ACCEPTED' ? 'INCIDENT_REVIEW_ACCEPT' : 'INCIDENT_REVIEW_RETURN',
+        toStatus: qr.decision === 'ACCEPTED' ? 'CLOSED' : 'CAPA_IN_PROGRESS',
+        at: qr.at,
+        userId: qr.by,
+        text: qr.remarks,
+      });
+    }
+
+    await AuditLog.insertMany(
+      trail
+        .sort((a, b) => a.at.getTime() - b.at.getTime())
+        .map((t) => ({
+          userId: t.userId,
+          action: t.action,
+          entityType: 'INCIDENT',
+          entityId: incident._id,
+          newValue: { status: t.toStatus, text: t.text },
+          timestamp: t.at,
+        }))
+    );
   }
 
   await Counter.findOneAndUpdate(
@@ -2103,6 +2401,6 @@ export async function seedDummyOperationalData(params: {
   }
 
   logger.info(
-    `✅ Dummy operational data seeded (${INCIDENTS.length} incidents, ${investigationCount} investigations, ${rcaCount} RCAs, ${capaCount} CAPAs, ${notificationCount} notifications)`
+    `✅ Dummy operational data seeded (${INCIDENTS.length} incidents, ${investigationCount} investigations, ${rcaCount} RCAs, ${rcaMeetingCount} RCA meetings, ${capaCount} CAPAs, ${notificationCount} notifications)`
   );
 }

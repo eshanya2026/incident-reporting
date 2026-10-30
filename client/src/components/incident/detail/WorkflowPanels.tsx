@@ -1,9 +1,24 @@
 import { useState } from 'react';
-import { CheckCircle2, Circle, Clock, MessageSquare, Play, Send, Undo2, GitBranch, BarChart3 } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { CheckCircle2, Circle, Clock, MessageSquare, Paperclip, Play, Send, Undo2, GitBranch, Calendar, BarChart3, Gauge, Upload } from 'lucide-react';
 import { api } from '../../../lib/api';
-import { useAction } from '../../../lib/useAction';
-import { statusMeta, scoreBand } from '../../../lib/incidentMeta';
+import { useAction, errorMessage } from '../../../lib/useAction';
+import { statusMeta, scoreBand, LIKELIHOOD_LABELS, RISK_SEVERITY_LABELS, RISK_BAND_META } from '../../../lib/incidentMeta';
 import { Button, Card, Notice, inputClass, labelClass } from '../../ui/primitives';
+import { openAttachment, uploadFile } from '../../../lib/files';
+import { toast } from '../../../store/useToastStore';
+import { useAuthStore } from '../../../store/useAuthStore';
+
+/** GET that returns null on 404 (record not created yet). */
+const getOrNull = async (url: string) => {
+  try {
+    const res: any = await api.get(url);
+    return res.data;
+  } catch (err: any) {
+    if (err?.code === 'NOT_FOUND' || err?.response?.status === 404) return null;
+    throw err;
+  }
+};
 
 /** The final analytics score Quality's review produced, shown once the incident is closed. */
 function QualityScoreSummary({ score }: { score: { timeliness: number; capaQuality: number; rework: number; overall: number } }) {
@@ -29,6 +44,43 @@ function QualityScoreSummary({ score }: { score: { timeliness: number; capaQuali
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+/** The likelihood × severity risk rating Quality recorded before closing (see QualityReviewPanel.tsx). */
+function RiskAssessmentSummary({
+  risk,
+}: {
+  risk: { likelihood: number; severity: number; score: number; band: 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME'; rationale?: string; assessedBy?: any; assessedAt?: string };
+}) {
+  return (
+    <div className="p-3.5 rounded-xl border border-clinicalBorder bg-white shadow-card space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-xs font-bold text-clinicalText-primary flex items-center gap-1.5">
+          <Gauge className="w-4 h-4 text-maroon-700" /> Risk rating
+        </span>
+        <span className={`px-2 py-0.5 rounded-full text-[11.5px] border ${RISK_BAND_META[risk.band].classes}`}>
+          {risk.score}/25 · {RISK_BAND_META[risk.band].label}
+        </span>
+      </div>
+      <div className="grid grid-cols-2 gap-2 text-center">
+        <div className="p-2 rounded-lg bg-slate-50 border border-clinicalBorder">
+          <div className="text-sm font-bold text-clinicalText-primary">{risk.likelihood} — {LIKELIHOOD_LABELS[risk.likelihood]}</div>
+          <div className="text-[10.5px] uppercase tracking-wide text-clinicalText-muted">Likelihood</div>
+        </div>
+        <div className="p-2 rounded-lg bg-slate-50 border border-clinicalBorder">
+          <div className="text-sm font-bold text-clinicalText-primary">{risk.severity} — {RISK_SEVERITY_LABELS[risk.severity]}</div>
+          <div className="text-[10.5px] uppercase tracking-wide text-clinicalText-muted">Severity</div>
+        </div>
+      </div>
+      {risk.rationale && <p className="text-[12px] text-clinicalText-secondary whitespace-pre-wrap">{risk.rationale}</p>}
+      {(risk.assessedBy?.name || risk.assessedAt) && (
+        <p className="text-[11px] text-clinicalText-muted">
+          Assessed{risk.assessedBy?.name ? ` by ${risk.assessedBy.name}` : ''}
+          {risk.assessedAt ? ` on ${new Date(risk.assessedAt).toLocaleDateString()}` : ''}
+        </p>
+      )}
     </div>
   );
 }
@@ -173,18 +225,59 @@ export function SubmitClosurePanel({
   );
 }
 
-/** Quality Member: conduct RCA and report back to Quality */
-export function QualityMemberRcaPanel({ incident, rca }: { incident: any; rca: any }) {
+/**
+ * Once Quality requests an RCA, they've already scheduled the meeting and assigned an RCA Head.
+ * Everyone sees the meeting details here. The RCA Head investigates and hands their findings to
+ * Quality outside the system — only Quality uploads the report (below) and then closes the
+ * incident the normal way, via QualityReviewPanel's Satisfied/Return decision.
+ */
+export function RcaMeetingPanel({ incident }: { incident: any }) {
+  const user = useAuthStore((s) => s.user);
+  const isQuality = (user?.roles || []).includes('QUALITY');
   const { run, busy, error } = useAction(incident._id);
-  const [remarks, setRemarks] = useState('');
-  const rcaReady = rca?.status === 'COMPLETED' && Boolean(rca?.rootCauseSummary?.trim());
+  const meetingQuery = useQuery({
+    queryKey: ['rca-meeting', incident._id],
+    queryFn: () => getOrNull(`/incidents/${incident._id}/rca-meeting`),
+  });
+  const meeting = meetingQuery.data;
+
+  const [summary, setSummary] = useState('');
+  const [evidenceFiles, setEvidenceFiles] = useState<any[]>([]);
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const uploaded = await uploadFile(file, 'RCA');
+        setEvidenceFiles((prev) => [...prev, uploaded]);
+      }
+    } catch (err: any) {
+      toast.error(errorMessage(err, 'File upload failed'));
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
+  };
+
+  const submitReport = () =>
+    run(() =>
+      api.post(`/incidents/${incident._id}/rca-meeting/report`, {
+        summary: summary.trim() || undefined,
+        evidence: evidenceFiles.map((f) => f._id),
+      })
+    );
+
+  const isCompleted = meeting?.status === 'COMPLETED';
 
   return (
-    <Card title="RCA Requested by Quality" icon={GitBranch} tone="action">
+    <Card title={isCompleted ? 'RCA Meeting' : 'RCA Requested by Quality'} icon={GitBranch} tone={isCompleted ? 'default' : 'action'}>
       <div className="p-3.5 rounded-xl bg-purple-50/80 border border-purple-200 text-xs text-purple-950 space-y-2">
         <div className="flex items-center gap-2 font-bold text-purple-900">
           <GitBranch className="w-4 h-4 text-purple-600 shrink-0" />
-          <span>Quality requested a Root Cause Analysis (RCA)</span>
+          <span>Quality requested a Root Cause Analysis (RCA) meeting</span>
         </div>
         {incident.rcaRequestRemarks && (
           <p className="text-[12.5px] text-purple-900/90 whitespace-pre-wrap">
@@ -197,9 +290,9 @@ export function QualityMemberRcaPanel({ incident, rca }: { incident: any; rca: a
               <strong>Requested by:</strong> {incident.rcaRequestedBy.name}
             </span>
           )}
-          {incident.assignedQualityMemberId?.name && (
+          {incident.rcaHeadId?.name && (
             <span>
-              <strong>Assigned to:</strong> {incident.assignedQualityMemberId.name}
+              <strong>Assigned to:</strong> {incident.rcaHeadId.name}
             </span>
           )}
           {incident.rcaRequestedAt && (
@@ -210,51 +303,105 @@ export function QualityMemberRcaPanel({ incident, rca }: { incident: any; rca: a
         </div>
       </div>
 
-      <div className="space-y-2 text-xs">
-        <p className="text-clinicalText-secondary font-medium">
-          Investigate the root causes, complete the 5-Why analysis in the RCA section below, and report your findings back to Quality.
-        </p>
-        <div className="flex items-center gap-2 p-2.5 rounded-lg border border-clinicalBorder bg-white">
-          {rcaReady ? (
-            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+      {!meeting ? (
+        <Notice tone="warning">Meeting details aren't available yet.</Notice>
+      ) : (
+        <div className="space-y-3">
+          <div className="p-3 rounded-xl border border-clinicalBorder bg-white space-y-1.5 text-xs">
+            <div className="flex items-center gap-2 font-semibold text-clinicalText-primary">
+              <Calendar className="w-4 h-4 text-purple-700 shrink-0" />
+              {new Date(meeting.meetingAt).toLocaleString()} — {meeting.location}
+            </div>
+            {meeting.notes && <p className="text-clinicalText-secondary whitespace-pre-wrap">{meeting.notes}</p>}
+            {meeting.attendeeIds?.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 pt-1">
+                {meeting.attendeeIds.map((a: any) => (
+                  <span key={a._id} className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-clinicalText-primary text-[11.5px] font-medium">
+                    {a.name}
+                    {a.designation ? ` — ${a.designation}` : ''}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {meeting.status === 'COMPLETED' ? (
+            <div className="space-y-2">
+              <Notice tone="success">
+                Report uploaded{meeting.reportUploadedBy?.name ? ` by ${meeting.reportUploadedBy.name}` : ''}
+                {meeting.reportUploadedAt ? ` on ${new Date(meeting.reportUploadedAt).toLocaleString()}` : ''}.
+              </Notice>
+              {meeting.reportSummary && (
+                <div className="p-3 rounded-xl border border-clinicalBorder bg-white text-xs">
+                  <div className="text-[10.5px] font-bold uppercase tracking-wider text-clinicalText-muted mb-0.5">Summary</div>
+                  <p className="text-clinicalText-primary whitespace-pre-wrap">{meeting.reportSummary}</p>
+                </div>
+              )}
+              {meeting.evidence?.length > 0 && (
+                <div className="flex flex-wrap gap-2">
+                  {meeting.evidence.map((f: any) => (
+                    <button
+                      key={f._id}
+                      type="button"
+                      onClick={() => openAttachment(f).catch(() => toast.error('Could not open the file'))}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-clinicalBorder rounded-lg text-xs text-[#5C1A22] hover:bg-[#FAF3EC] cursor-pointer"
+                    >
+                      <Paperclip className="w-3.5 h-3.5" /> {f.originalName}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          ) : !isQuality ? (
+            <Notice tone="info">Investigate during the meeting, then hand your findings to Quality — they'll upload the report and close the incident.</Notice>
           ) : (
-            <Circle className="w-4 h-4 text-slate-400 shrink-0" />
+            <div className="space-y-3">
+              <p className="text-xs text-clinicalText-secondary font-medium">Once the RCA Head hands you their findings, upload the report here.</p>
+              <div>
+                <label className={labelClass}>Summary (optional)</label>
+                <textarea
+                  rows={3}
+                  value={summary}
+                  onChange={(e) => setSummary(e.target.value)}
+                  placeholder="Root cause findings and recommendations from the meeting..."
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className={labelClass}>Meeting report *</label>
+                <label className="flex items-center gap-2 px-3 py-2 bg-slate-50 border border-dashed border-clinicalBorder rounded-lg text-xs text-clinicalText-secondary hover:bg-slate-100 cursor-pointer transition w-fit">
+                  <Upload className="w-3.5 h-3.5" />
+                  {uploading ? 'Uploading...' : 'Upload report (PDF, DOCX, PNG, JPG up to 10MB)'}
+                  <input type="file" multiple onChange={handleFileUpload} disabled={uploading} className="hidden" />
+                </label>
+                {evidenceFiles.length > 0 && (
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    {evidenceFiles.map((f) => (
+                      <button
+                        key={f._id}
+                        type="button"
+                        onClick={() => openAttachment(f).catch(() => toast.error('Could not open the file'))}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-white border border-clinicalBorder rounded-lg text-xs text-[#5C1A22] hover:bg-[#FAF3EC] cursor-pointer"
+                      >
+                        <Paperclip className="w-3.5 h-3.5" /> {f.originalName}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="primary"
+                busy={busy}
+                disabled={evidenceFiles.length === 0}
+                onClick={submitReport}
+                className="bg-purple-700 hover:bg-purple-800 text-white"
+              >
+                <Send className="w-4 h-4" /> Submit
+              </Button>
+            </div>
           )}
-          <span className={`text-[12.5px] ${rcaReady ? 'text-emerald-800 font-semibold' : 'text-slate-600'}`}>
-            {rcaReady
-              ? 'Root Cause Analysis completed with summary'
-              : 'Complete and save the 5-Why RCA below as "Completed"'}
-          </span>
         </div>
-      </div>
-
-      <div>
-        <label className={labelClass}>Reporting remarks for Quality (optional)</label>
-        <textarea
-          rows={3}
-          value={remarks}
-          onChange={(e) => setRemarks(e.target.value)}
-          placeholder="Summarize your RCA findings, identified system vulnerabilities, or recommendations for Quality..."
-          className={inputClass}
-        />
-      </div>
-
-      <div className="flex flex-wrap items-center gap-3">
-        <Button
-          variant="primary"
-          busy={busy}
-          disabled={!rcaReady}
-          onClick={() => run(() => api.post(`/incidents/${incident._id}/submit-rca`, { remarks }))}
-          className="bg-purple-700 hover:bg-purple-800 text-white"
-        >
-          <Send className="w-4 h-4" /> Report RCA to Quality
-        </Button>
-        {!rcaReady && (
-          <span className="text-[11.5px] text-amber-700 font-medium">
-            Save the 5-Why RCA section below first to enable reporting.
-          </span>
-        )}
-      </div>
+      )}
 
       {error && <Notice tone="error">{error}</Notice>}
     </Card>
@@ -280,6 +427,7 @@ export function WaitingNotice({ incident, isStaff }: { incident: any; isStaff: b
           {incident.closureRemarks}
         </Notice>
         {incident.qualityScore && <QualityScoreSummary score={incident.qualityScore} />}
+        {incident.riskAssessment && <RiskAssessmentSummary risk={incident.riskAssessment} />}
       </div>
     );
   }

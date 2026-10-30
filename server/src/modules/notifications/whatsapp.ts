@@ -44,17 +44,19 @@ export const sendWhatsapp = async (rawNumber: string, message: string): Promise<
 };
 
 /**
- * Sends a pre-approved WhatsApp template via WATI — the only way to reach someone outside the 24h
- * session window. `bodyParams` fill the template's {{1}}, {{2}}, ... placeholders in order.
+ * Sends a pre-approved WhatsApp template via WATI — the only way to reliably reach someone
+ * outside the 24h session window (the normal case for a first-time transactional notification).
+ * `templateName` is one of the per-notification WATI_TEMPLATE_* env vars (see
+ * docs/whatsapp-template.md); `bodyParams` fill that template's {{1}}, {{2}}, ... in order.
  */
-export const sendWhatsappTemplate = async (rawNumber: string, bodyParams: string[]): Promise<void> => {
-  if (!whatsappEnabled() || !env.WATI_TEMPLATE_NAME) return;
+export const sendWhatsappTemplate = async (rawNumber: string, templateName: string, bodyParams: string[]): Promise<void> => {
+  if (!whatsappEnabled() || !templateName) return;
   const to = toWhatsappId(rawNumber);
   if (!to) return;
 
   await post(`/api/v1/sendTemplateMessage?whatsappNumber=${to}`, {
-    template_name: env.WATI_TEMPLATE_NAME,
-    broadcast_name: env.WATI_TEMPLATE_NAME,
+    template_name: templateName,
+    broadcast_name: templateName,
     parameters: bodyParams.map((value, i) => ({ name: String(i + 1), value })),
   });
 };

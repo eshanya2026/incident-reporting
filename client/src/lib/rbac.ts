@@ -17,7 +17,7 @@ export const hasAnyPermission = (user: UserProfile | null | undefined, permissio
 
 /**
  * Checks role codes directly, for the few cases a permission string can't tell two roles apart
- * (e.g. RCA_WRITE is held by both HOD, for their own incidents, and Quality Member, for RCAs
+ * (e.g. RCA_WRITE is held by both HOD, for their own incidents, and the RCA Head, for RCA meetings
  * Quality hands them — see server's getReviewQueue).
  */
 export const hasAnyRole = (user: UserProfile | null | undefined, roles: string[]): boolean =>
@@ -25,6 +25,15 @@ export const hasAnyRole = (user: UserProfile | null | undefined, roles: string[]
 
 export const isReceivingDepartment = (user: UserProfile | null | undefined, incident: any): boolean =>
   Boolean(user?.departmentId) && idOf(incident?.departmentId) === idOf(user?.departmentId);
+
+/** The incident lists the user's department as an involved department (co-works investigation and CAPA). */
+export const isInvolvedDepartment = (user: UserProfile | null | undefined, incident: any): boolean =>
+  Boolean(user?.departmentId) &&
+  (incident?.notifiedDepartmentIds || []).some((d: any) => idOf(d) === idOf(user?.departmentId));
+
+/** The responsible department, or a department marked as involved — both work the incident together. */
+export const isWorkingDepartment = (user: UserProfile | null | undefined, incident: any): boolean =>
+  isReceivingDepartment(user, incident) || isInvolvedDepartment(user, incident);
 
 /** Quality/Admin, or the HOD of the department the incident is assigned to, may work on an incident.
  *  Each action additionally needs its own permission (Admin holds none). */

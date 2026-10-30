@@ -6,7 +6,7 @@ import { JwtPayload } from '../../modules/auth/auth.utils.js';
 
 // Access rules for incidents:
 // - Quality and Admin (incident.read_all) see every incident.
-// - Quality Members see all incidents and conduct RCA when requested.
+// - RCA Heads see all incidents and investigate the RCA meeting Quality schedules for them.
 // - HODs (incident.read_assigned) see incidents currently or previously assigned to their department,
 //   and act only on incidents currently assigned to it.
 // - Staff (incident.read_own) see the incidents they reported.
@@ -24,6 +24,11 @@ export const hasPermission = (user: JwtPayload | undefined, permission: string):
 /** The incident is currently assigned to the user's department. */
 export const isResponsibleDepartment = (user: JwtPayload | undefined, incident: IIncident): boolean =>
   Boolean(user?.departmentId) && idOf(incident.departmentId) === user?.departmentId;
+
+/** The incident currently lists the user's department as an involved department. */
+export const isInvolvedDepartment = (user: JwtPayload | undefined, incident: IIncident): boolean =>
+  Boolean(user?.departmentId) &&
+  (incident.notifiedDepartmentIds || []).some((d: any) => idOf(d) === user?.departmentId);
 
 /** The incident is, or was at some point, assigned to the user's department. */
 const wasAssignedToDepartment = (user: JwtPayload | undefined, incident: IIncident): boolean =>
@@ -44,26 +49,28 @@ const isIntimatedUser = (user: JwtPayload | undefined, incident: IIncident): boo
 export const canViewIncident = (user: JwtPayload | undefined, incident: IIncident): boolean => {
   if (!user) return false;
   if (hasPermission(user, PERMISSIONS.INCIDENT_READ_ALL)) return true;
-  if (incident.assignedQualityMemberId && idOf(incident.assignedQualityMemberId) === user.userId) return true;
+  if (incident.rcaHeadId && idOf(incident.rcaHeadId) === user.userId) return true;
   if (hasPermission(user, PERMISSIONS.INCIDENT_READ_ASSIGNED) && wasAssignedToDepartment(user, incident)) return true;
   if (isIntimatedUser(user, incident)) return true;
   return hasPermission(user, PERMISSIONS.INCIDENT_READ_OWN) && idOf(incident.reportedBy) === user.userId;
 };
 
 /** Work on an incident:
- * - When RCA is requested by Quality: Quality Members and Quality officers can conduct/edit the RCA.
- * - Otherwise (investigation, CAPA): limited to the responsible department's HOD.
+ * - When RCA is requested: Quality scheduled the meeting at request time, and is the one who
+ *   uploads its report afterwards — the RCA Head only investigates and hands their findings to
+ *   Quality outside the system, so has no write actions here.
+ * - Otherwise (investigation, CAPA): the responsible department's HOD, or the HOD of a department
+ *   marked as involved on the incident — both work the investigation and write CAPA together.
  */
 export const canWorkOnIncident = (user: JwtPayload | undefined, incident: IIncident): boolean => {
   if (!user) return false;
   if (incident.status === 'RCA_REQUESTED') {
-    return Boolean(
-      user.roles?.includes(ROLE_CODES.QUALITY_MEMBER) ||
-      user.roles?.includes(ROLE_CODES.QUALITY) ||
-      hasPermission(user, PERMISSIONS.RCA_WRITE)
-    );
+    return Boolean(user.roles?.includes(ROLE_CODES.QUALITY));
   }
-  return hasPermission(user, PERMISSIONS.INCIDENT_READ_ASSIGNED) && isResponsibleDepartment(user, incident);
+  return (
+    hasPermission(user, PERMISSIONS.INCIDENT_READ_ASSIGNED) &&
+    (isResponsibleDepartment(user, incident) || isInvolvedDepartment(user, incident))
+  );
 };
 
 /** Mongo filter limiting incident lists/aggregations to what the user may see. */
@@ -108,7 +115,7 @@ export const loadIncidentForWork = async (req: Request, incidentId: string | und
   const incident = await loadIncident(incidentId);
   if (!canWorkOnIncident(req.user, incident)) {
     if (incident.status === 'RCA_REQUESTED') {
-      throw AppError.forbidden('Only Quality Members or Quality officers can work on the RCA for this incident');
+      throw AppError.forbidden('Only Quality can work on the RCA for this incident');
     }
     throw AppError.forbidden('Only the HOD of the department this incident is assigned to can do this');
   }

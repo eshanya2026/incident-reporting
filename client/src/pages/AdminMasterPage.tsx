@@ -11,7 +11,7 @@ import { EmptyState, FilterBar, SearchInput, TabBar, filterControlClass } from '
 
 const LOCATION_TYPES = ['WARD', 'ROOM', 'OT', 'ICU', 'LAB', 'OPD', 'OTHER'];
 const FLOORS = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
-const ZONES = ['Zone-1', 'Zone-B', 'Zone-C'] as const;
+const ZONES = ['Zone-A', 'Zone-B', 'Zone-C'] as const;
 
 export default function AdminMasterPage() {
   const queryClient = useQueryClient();
@@ -138,7 +138,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
   const [locCode, setLocCode] = useState('');
   const [locName, setLocName] = useState('');
   const [locFloor, setLocFloor] = useState('Floor 1');
-  const [locZone, setLocZone] = useState('Zone-1');
+  const [locZone, setLocZone] = useState('Zone-A');
   const [locType, setLocType] = useState('ROOM');
   const [locDeptId, setLocDeptId] = useState('');
   const [locFloorFilter, setLocFloorFilter] = useState('');
@@ -242,8 +242,13 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
   const needsDepartment = selectedRoleCode === 'STAFF' || selectedRoleCode === 'HOD';
   const isHodRole = selectedRoleCode === 'HOD';
   const isIntimationRole = selectedRoleCode === 'INTIMATION_MEMBER';
-  // WhatsApped when an incident is assigned (HOD) or when Quality intimates them (Intimation Member)
-  const needsWhatsapp = isHodRole || isIntimationRole;
+  // HOD and Intimation Member are WhatsApped automatically by the workflow; everyone else can still
+  // opt in so reporters, Quality, etc. get a WhatsApp alongside in-app notifications where applicable.
+  const whatsappHint = isHodRole
+    ? 'Sent a WhatsApp message whenever an incident is assigned to their department.'
+    : isIntimationRole
+    ? 'Sent a WhatsApp message whenever Quality intimates them on an incident.'
+    : 'Used to WhatsApp them alongside in-app notifications, where applicable.';
   const selectedDept = departments.find((d: any) => d._id === deptId);
   const currentDeptHod = selectedDept?.hodUserId;
   const hodConflict =
@@ -314,7 +319,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
         name,
         email,
         designation,
-        whatsappNumber: needsWhatsapp ? whatsappNumber : '',
+        whatsappNumber,
         departmentId: deptId || null,
         roles: [roleId],
         replaceDepartmentHod: replaceHod,
@@ -372,7 +377,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
       setLocCode('');
       setLocName('');
       setLocFloor('Floor 1');
-      setLocZone('Zone-1');
+      setLocZone('Zone-A');
       setLocType('ROOM');
       setLocDeptId('');
       toast.success('Location created successfully');
@@ -691,7 +696,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 <span>Hospital Locations ({locations.length} Total across 5 Floors & 3 Zones)</span>
               </div>
               <p className="text-[12.5px] text-clinicalText-muted mt-0.5">
-                Organized hierarchy: 5 Floors &bull; 3 Zones (Zone-1, Zone-B, Zone-C) &bull; Clinical departments.
+                Organized hierarchy: 5 Floors &bull; 3 Zones (Zone-A, Zone-B, Zone-C) &bull; Clinical departments.
               </p>
             </div>
             <button
@@ -1001,15 +1006,11 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   <input type="text" required={isHodRole} value={designation} onChange={(e) => setDesignation(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
                 </div>
               )}
-              {needsWhatsapp && (
+              {roleId && (
                 <div>
-                  <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">WhatsApp Number *</label>
-                  <input type="tel" required value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="e.g. +91 98765 43210" className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
-                  <p className="mt-1 text-[11.5px] text-clinicalText-muted">
-                    {isIntimationRole
-                      ? 'Sent a WhatsApp message whenever Quality intimates them on an incident.'
-                      : 'Sent a WhatsApp message whenever an incident is assigned to their department.'}
-                  </p>
+                  <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">WhatsApp Number (optional)</label>
+                  <input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="e.g. +91 98765 43210" className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
+                  <p className="mt-1 text-[11.5px] text-clinicalText-muted">{whatsappHint}</p>
                 </div>
               )}
               {editingUser && (
@@ -1082,7 +1083,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   onChange={(f) => {
                     setLocFloor(f);
                     const fNum = f.replace(/[^0-9]/g, '');
-                    const zCode = locZone === 'Zone-1' ? 'Z1' : locZone === 'Zone-B' ? 'ZB' : 'ZC';
+                    const zCode = locZone === 'Zone-A' ? 'Z1' : locZone === 'Zone-B' ? 'ZB' : 'ZC';
                     if (!locCode || locCode.startsWith('FL')) {
                       setLocCode(`FL${fNum}-${zCode}`);
                     }
@@ -1099,7 +1100,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                   onChange={(z) => {
                     setLocZone(z);
                     const fNum = locFloor.replace(/[^0-9]/g, '');
-                    const zCode = z === 'Zone-1' ? 'Z1' : z === 'Zone-B' ? 'ZB' : 'ZC';
+                    const zCode = z === 'Zone-A' ? 'Z1' : z === 'Zone-B' ? 'ZB' : 'ZC';
                     if (!locCode || locCode.startsWith('FL')) {
                       setLocCode(`FL${fNum}-${zCode}`);
                     }
@@ -1116,7 +1117,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
             </div>
             <div>
               <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Location / Room Name *</label>
-              <input type="text" required placeholder="e.g. Floor 1 - Zone-1 or ICU Bed 03" value={locName} onChange={(e) => setLocName(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
+              <input type="text" required placeholder="e.g. Floor 1 - Zone-A or ICU Bed 03" value={locName} onChange={(e) => setLocName(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
             </div>
             <div>
               <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Type *</label>

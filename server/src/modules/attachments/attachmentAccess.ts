@@ -2,7 +2,7 @@ import mongoose from 'mongoose';
 import { Attachment, EntityType, IAttachment } from './attachment.model.js';
 import { Incident } from '../incidents/incident.model.js';
 import { Investigation } from '../investigations/investigation.model.js';
-import { RootCauseAnalysis } from '../rca/rca.model.js';
+import { RcaMeeting } from '../rca/rcaMeeting.model.js';
 import { Capa } from '../capa/capa.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { canViewIncident, hasPermission } from '../../common/helpers/incidentAccess.js';
@@ -28,7 +28,7 @@ const incidentIdFor = async (entityType: EntityType, entityId: mongoose.Types.Ob
     case 'INVESTIGATION':
       return (await Investigation.findById(entityId).select('incidentId'))?.incidentId;
     case 'RCA':
-      return (await RootCauseAnalysis.findById(entityId).select('incidentId'))?.incidentId;
+      return (await RcaMeeting.findById(entityId).select('incidentId'))?.incidentId;
     case 'CAPA':
       return (await Capa.findById(entityId).select('incidentId'))?.incidentId;
   }

@@ -5,7 +5,7 @@ import { api } from '../lib/api';
 import { PageHeader } from '../components/ui/primitives';
 import IncidentTable from '../components/incident/IncidentTable';
 
-/** Quality & Quality Members: incidents submitted for closure or assigned for RCA. */
+/** Quality & RCA Heads: incidents submitted for closure or assigned for an RCA meeting. */
 export default function ReviewQueuePage() {
   const [tab, setTab] = useState<'PENDING' | 'RCA'>('PENDING');
 
@@ -30,7 +30,7 @@ export default function ReviewQueuePage() {
       <PageHeader
         icon={ClipboardCheck}
         title="Review Queue"
-        description="Review incidents submitted by HODs, or monitor and perform 5-Why Root Cause Analyses requested for Quality Members."
+        description="Review incidents submitted by HODs, or monitor RCA meetings requested from RCA Heads."
       >
         <div className="flex items-center gap-3">
           <div className="self-start md:self-auto shrink-0 px-4 py-2.5 rounded-2xl bg-black/20 border border-white/15 text-center shadow-[inset_0_1px_0_rgba(255,255,255,0.1)]">
@@ -72,7 +72,7 @@ export default function ReviewQueuePage() {
           }`}
         >
           <GitBranch className="w-4 h-4" />
-          <span>RCA Requested (Quality Members)</span>
+          <span>RCA Requested (RCA Head)</span>
           <span className="px-2 py-0.5 rounded-full text-[11px] bg-purple-100 text-purple-800">
             {rcaIncidents.length}
           </span>

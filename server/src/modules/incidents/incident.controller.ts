@@ -16,6 +16,9 @@ import { User } from '../users/user.model.js';
 import { Role } from '../roles/role.model.js';
 import { IncidentWorkflowService, WorkflowInput } from './incidentWorkflow.service.js';
 import { WorkflowAction } from './incidentWorkflow.rules.js';
+import { RcaMeeting } from '../rca/rcaMeeting.model.js';
+import { computeDefaultAttendees } from '../rca/rcaMeeting.controller.js';
+import { notifyRcaMeetingScheduled } from '../notifications/workflowNotifications.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { getNextSequence } from '../../common/models/counter.model.js';
@@ -40,6 +43,7 @@ const createIncidentSchema = z.object({
   locationId: objectId('Location'),
   floor: z.string().optional(),
   zone: z.string().optional(),
+  specificLocation: z.string().trim().max(200).optional(),
   categoryId: objectId('Incident category'),
   subcategoryCode: z.string().optional(),
   // Who the incident affected; patientInvolved/patient are derived from this (see below)
@@ -74,7 +78,7 @@ const createIncidentSchema = z.object({
   witness: z.string().trim().max(500).optional(),
   immediateAction: z.string().optional(),
   remarks: z.string().trim().max(2000).optional(),
-  severity: z.number().int().min(1).max(4).default(1),
+  severity: z.number().int().min(1).max(5).default(1),
   attachments: z.array(z.string()).optional(),
 });
 
@@ -102,9 +106,11 @@ const populateDetail = (query: any) =>
     .populate('hodReturns.by', 'name')
     .populate('closureSubmission.by', 'name')
     .populate('qualityReviews.by', 'name')
+    .populate('qualityReviews.departmentIds', 'name')
     .populate('rejection.by', 'name')
     .populate('closedBy', 'name email designation')
-    .populate('assignedQualityMemberId', 'name email designation employeeId')
+    .populate('riskAssessment.assessedBy', 'name designation')
+    .populate('rcaHeadId', 'name email designation employeeId')
     .populate('rcaRequestedBy', 'name designation')
     .populate('rcaSubmittedBy', 'name designation')
     .populate('attachments', 'originalName mimeType size createdAt');
@@ -119,7 +125,7 @@ const populateList = (query: any) =>
     .populate('locationId', 'name code floor zone')
     .populate('categoryId', 'name code')
     .populate('assignedHod', 'name email')
-    .populate('assignedQualityMemberId', 'name email designation');
+    .populate('rcaHeadId', 'name email designation');
 
 /** Staff only see the parts of an incident listed here (decision D6). */
 const isStaffView = (user: JwtPayload | undefined) =>
@@ -139,6 +145,7 @@ const toStaffView = (incident: any) => ({
     'locationId',
     'floor',
     'zone',
+    'specificLocation',
     'categoryId',
     'subcategoryCode',
     'affectedPersonType',
@@ -220,6 +227,7 @@ export const createIncident = async (req: Request, res: Response, next: NextFunc
       locationId: data.locationId,
       floor,
       zone,
+      specificLocation: data.specificLocation || undefined,
       categoryId: data.categoryId,
       subcategoryCode: data.subcategoryCode,
       affectedPersonType: data.affectedPersonType,
@@ -347,11 +355,11 @@ export const getTriageQueue = async (req: Request, res: Response, next: NextFunc
 /** Quality's review queue: incidents the HOD submitted for closure or awaiting RCA. */
 export const getReviewQueue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    // No single permission means "Quality or Quality Member" (RCA_WRITE is shared with HOD, for
-    // their own incidents) — check role membership directly, as getQualityMembers below does.
+    // No single permission means "Quality or RCA Head" (RCA_WRITE is shared with HOD, for
+    // their own incidents) — check role membership directly, as getRcaHeads below does.
     const roles = req.user?.roles || [];
-    if (!roles.includes(ROLE_CODES.QUALITY) && !roles.includes(ROLE_CODES.QUALITY_MEMBER)) {
-      throw AppError.forbidden('Only Quality and Quality Members can see the review queue');
+    if (!roles.includes(ROLE_CODES.QUALITY) && !roles.includes(ROLE_CODES.RCA_HEAD)) {
+      throw AppError.forbidden('Only Quality and RCA Heads can see the review queue');
     }
     const status = req.query.status === 'RCA_REQUESTED' ? 'RCA_REQUESTED' : 'PENDING_QUALITY_REVIEW';
     const sortField = status === 'RCA_REQUESTED' ? { rcaRequestedAt: 1, updatedAt: 1 } : { 'closureSubmission.at': 1 };
@@ -364,15 +372,14 @@ export const getReviewQueue = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-/** Active Quality Committee members eligible to be assigned for RCA. */
-export const getQualityMembers = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+/** Active RCA Heads eligible to be assigned to schedule and run an RCA meeting. */
+export const getRcaHeads = async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const roles = await Role.find({ code: { $in: [ROLE_CODES.QUALITY_MEMBER, ROLE_CODES.QUALITY] } }).select('_id');
-    const roleIds = roles.map((r) => r._id);
-    const members = await User.find({ roles: { $in: roleIds }, status: 'ACTIVE' })
+    const role = await Role.findOne({ code: ROLE_CODES.RCA_HEAD }).select('_id');
+    const members = await User.find({ roles: role?._id, status: 'ACTIVE' })
       .select('name email designation employeeId')
       .sort({ name: 1 });
-    sendSuccess(res, members, 'Quality members retrieved');
+    sendSuccess(res, members, 'RCA Heads retrieved');
   } catch (error) {
     next(error);
   }
@@ -454,7 +461,7 @@ export const assignIncident = workflowEndpoint(
     departmentId: objectId('Responsible department'),
     notifiedDepartmentIds: z.array(objectId('Involved department')).optional().default([]),
     intimatedUserIds: z.array(objectId('Intimated user')).optional().default([]),
-    severity: z.number().int().min(1).max(4),
+    severity: z.number().int().min(1).max(5),
     priority: z.enum(INCIDENT_PRIORITIES).optional(),
     remarks: z.string().trim().max(5000).optional(),
   }),
@@ -491,7 +498,13 @@ export const reviewIncident = workflowEndpoint(
   z.object({
     decision: z.enum(['ACCEPT', 'RETURN', 'REQUEST_RCA']),
     remarks: requiredText('Review remarks'),
-    qualityMemberId: z.string().optional(),
+    rcaHeadId: z.string().optional(),
+    // RETURN: which department(s) need rework; omitted/empty returns every department.
+    departmentIds: z.array(objectId('Department')).optional(),
+    // ACCEPT: likelihood × severity risk rating, required before closing (see incident.model.ts).
+    riskLikelihood: z.number().int().min(1).max(5).optional(),
+    riskSeverity: z.number().int().min(1).max(5).optional(),
+    riskRationale: z.string().trim().max(2000).optional(),
   }),
   (b) => ({
     action:
@@ -500,32 +513,76 @@ export const reviewIncident = workflowEndpoint(
         : b.decision === 'REQUEST_RCA'
         ? 'REQUEST_RCA'
         : 'REVIEW_RETURN',
-    input: { text: b.remarks, qualityMemberId: b.qualityMemberId },
+    input: {
+      text: b.remarks,
+      rcaHeadId: b.rcaHeadId,
+      departmentIds: b.departmentIds,
+      riskLikelihood: b.riskLikelihood,
+      riskSeverity: b.riskSeverity,
+      riskRationale: b.riskRationale,
+    },
   }),
   'Review recorded'
 );
 
-/** Quality asks for RCA and assigns to Quality member: PENDING_QUALITY_REVIEW → RCA_REQUESTED */
-export const requestRca = workflowEndpoint(
-  z.object({
-    remarks: requiredText('Reason for requesting RCA'),
-    qualityMemberId: z.string().optional(),
-  }),
-  (b) => ({
-    action: 'REQUEST_RCA',
-    input: { text: b.remarks, qualityMemberId: b.qualityMemberId },
-  }),
-  'RCA requested from Quality member'
-);
+const requestRcaSchema = z.object({
+  remarks: requiredText('Reason for requesting RCA'),
+  rcaHeadId: z.string().optional(),
+  // The meeting Quality is scheduling right now — date/time, location and extra HODs/Intimation
+  // Members to invite, alongside the auto-computed lead/involved HODs and the RCA Head.
+  proposedMeetingAt: z.coerce.date({ errorMap: () => ({ message: 'Meeting date and time are required' }) }),
+  proposedLocation: z.string().trim().min(2, 'Meeting location is required').max(500),
+  additionalAttendeeIds: z.array(objectId('Attendee')).optional(),
+});
 
-/** Quality member completes RCA and reports back: RCA_REQUESTED → PENDING_QUALITY_REVIEW */
-export const submitRca = workflowEndpoint(
-  z.object({
-    remarks: z.string().trim().max(5000).optional(),
-  }),
-  (b) => ({
-    action: 'SUBMIT_RCA',
-    input: { text: b.remarks },
-  }),
-  'RCA findings reported to Quality'
-);
+/**
+ * Quality asks for RCA, assigns an RCA Head and schedules the meeting in one step (the RCA Head
+ * only investigates and hands their findings back to Quality — see uploadRcaReport in
+ * rcaMeeting.controller.ts): PENDING_QUALITY_REVIEW → RCA_REQUESTED.
+ */
+export const requestRca = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const body = requestRcaSchema.parse(req.body ?? {});
+    const incidentId = req.params.id as string;
+    await loadIncidentForView(req, incidentId);
+
+    const incident = await IncidentWorkflowService.perform({
+      incidentId,
+      action: 'REQUEST_RCA',
+      user: req.user!,
+      input: {
+        text: body.remarks,
+        rcaHeadId: body.rcaHeadId,
+        rcaProposedMeetingAt: body.proposedMeetingAt,
+        rcaProposedLocation: body.proposedLocation,
+        rcaAdditionalAttendeeIds: body.additionalAttendeeIds,
+      },
+      req,
+    });
+
+    const attendeeIds = await computeDefaultAttendees(incident);
+    const actorId = new mongoose.Types.ObjectId(req.user!.userId);
+    const meeting = await RcaMeeting.findOneAndUpdate(
+      { incidentId: incident._id },
+      {
+        incidentId: incident._id,
+        scheduledBy: actorId,
+        scheduledAt: new Date(),
+        meetingAt: body.proposedMeetingAt,
+        location: body.proposedLocation,
+        attendeeIds,
+        status: 'SCHEDULED',
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+    await notifyRcaMeetingScheduled(
+      incident,
+      { meetingAt: meeting.meetingAt, location: meeting.location, attendeeIds },
+      req.user!.userId
+    );
+
+    sendSuccess(res, await incidentDetail(incidentId, req.user!), 'RCA requested, meeting scheduled and attendees notified');
+  } catch (error) {
+    next(error);
+  }
+};

@@ -89,12 +89,43 @@ export const statusMeta = (status: string): StatusMeta =>
 export const SEVERITY_META: Record<number, { label: string; short: string; classes: string }> = {
   1: { label: 'Level 1 – Near Miss', short: 'Near Miss', classes: 'bg-[#ECFDF5] text-[#065F46] border-[#A7F3D0] font-semibold' },
   2: { label: 'Level 2 – No Harm', short: 'No Harm', classes: 'bg-[#F0F9FF] text-[#0369A1] border-[#BAE6FD] font-semibold' },
-  3: { label: 'Level 3 – Harm', short: 'Harm', classes: 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA] font-bold' },
-  4: { label: 'Level 4 – Sentinel Event', short: 'Sentinel', classes: 'bg-[#6B1418] text-white border-[#4A0D10] font-black' },
+  3: { label: 'Level 3 – Adverse Event', short: 'Adverse Event', classes: 'bg-[#FFFBEB] text-[#B45309] border-[#FDE68A] font-semibold' },
+  4: { label: 'Level 4 – Permanent Harm', short: 'Permanent Harm', classes: 'bg-[#FEF2F2] text-[#B91C1C] border-[#FECACA] font-bold' },
+  5: { label: 'Level 5 – Sentinel Event', short: 'Sentinel', classes: 'bg-[#6B1418] text-white border-[#4A0D10] font-black' },
 };
 
-/** RCA is required for Sentinel Event (4) only; CAPA is required at every severity (same rule as the server). */
+/** RCA is required for Permanent Harm and Sentinel Event (4–5); CAPA is required at every severity (same rule as the server). */
 export const severityNeeds = (severity: number) => ({ rca: severity >= 4, capa: true });
+
+// Likelihood × severity risk score Quality records before closing — see docs/NABH_Incident_Risk_Scoring_Logic.md.
+// Mirrors server/src/modules/incidents/incident.model.ts (LIKELIHOOD_LABELS / RISK_SEVERITY_LABELS / RISK_BAND_META).
+export const LIKELIHOOD_LABELS: Record<number, string> = {
+  1: 'Rare',
+  2: 'Unlikely',
+  3: 'Possible',
+  4: 'Likely',
+  5: 'Almost certain',
+};
+
+export const RISK_SEVERITY_LABELS: Record<number, string> = {
+  1: 'Insignificant',
+  2: 'Minor',
+  3: 'Moderate',
+  4: 'Major',
+  5: 'Catastrophic',
+};
+
+export type RiskBand = 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME';
+
+export const RISK_BAND_META: Record<RiskBand, { label: string; classes: string }> = {
+  LOW: { label: 'Low', classes: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  MODERATE: { label: 'Moderate', classes: 'bg-amber-50 text-amber-800 border-amber-300' },
+  HIGH: { label: 'High', classes: 'bg-red-50 text-red-700 border-red-200 font-bold' },
+  EXTREME: { label: 'Extreme', classes: 'bg-[#6B1418] text-white border-[#4A0D10] font-black' },
+};
+
+export const riskBandFor = (score: number): RiskBand =>
+  score <= 4 ? 'LOW' : score <= 9 ? 'MODERATE' : score <= 16 ? 'HIGH' : 'EXTREME';
 
 /** Main path of the workflow, used by the progress indicator. */
 export const WORKFLOW_STEPS: Array<{ key: string; label: string; statuses: IncidentStatus[] }> = [
@@ -131,6 +162,14 @@ export const PRIORITY_COLOR: Record<IncidentPriority, string> = {
   HIGH: '#DC2626',
 };
 
+/** How long the HOD has to act once assigned, by priority. */
+export const PRIORITY_DEADLINE_LABEL: Record<IncidentPriority, string> = {
+  HIGH: '24–48 hrs',
+  MEDIUM: '48–72 hrs',
+  LOW: '5 days',
+  EXTREMELY_LOW: '7 days',
+};
+
 export const idOf = (value: any): string | undefined => {
   if (!value) return undefined;
   if (typeof value === 'object') return value._id ? String(value._id) : undefined;
@@ -141,8 +180,9 @@ export const idOf = (value: any): string | undefined => {
 export const SEVERITY_COLOR: Record<number, string> = {
   1: '#10B981',
   2: '#0284C7',
-  3: '#DC2626',
-  4: '#6B1418',
+  3: '#F59E0B',
+  4: '#DC2626',
+  5: '#6B1418',
 };
 
 export interface QualityScore {
@@ -153,7 +193,7 @@ export interface QualityScore {
 }
 
 /** Days Quality targets for closing an incident, by severity (mirrors CLOSURE_TARGET_DAYS on the server). */
-const CLOSURE_TARGET_DAYS: Record<number, number> = { 1: 30, 2: 21, 3: 14, 4: 7 };
+const CLOSURE_TARGET_DAYS: Record<number, number> = { 1: 30, 2: 21, 3: 14, 4: 10, 5: 7 };
 
 /**
  * Mirrors computeQualityScore in server/src/modules/incidents/incident.model.ts, so the review

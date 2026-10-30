@@ -67,16 +67,6 @@ const assertDepartmentForRoles = async (roleCodes: string[], departmentId?: stri
   }
 };
 
-// HOD: WhatsApped when an incident is assigned to their department. Intimation Member: WhatsApped
-// whenever Quality intimates them on an incident. Both roles need a number on file to be useful.
-const WHATSAPP_REQUIRED_ROLES: string[] = [ROLE_CODES.HOD, ROLE_CODES.INTIMATION_MEMBER];
-
-const assertWhatsappRequired = (roleCodes: string[], whatsappNumber?: string | null): void => {
-  if (roleCodes.some((c) => WHATSAPP_REQUIRED_ROLES.includes(c)) && !whatsappNumber?.trim()) {
-    throw AppError.badRequest('HOD and Intimation Member users must have a WhatsApp number');
-  }
-};
-
 const assertDesignationForHod = (roleCodes: string[], designation?: string | null): void => {
   if (roleCodes.includes(ROLE_CODES.HOD) && !designation?.trim()) {
     throw AppError.badRequest('HOD users must have a designation');
@@ -204,7 +194,6 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
 
     const roleCodes = await resolveRoleCodes(data.roles);
     await assertDepartmentForRoles(roleCodes, data.departmentId);
-    assertWhatsappRequired(roleCodes, data.whatsappNumber);
     assertDesignationForHod(roleCodes, data.designation);
 
     await assertHodSlotAvailable({
@@ -249,8 +238,6 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     const roleCodes = await resolveRoleCodes(roleIds);
     const departmentId = data.departmentId !== undefined ? data.departmentId : user.departmentId?.toString();
     await assertDepartmentForRoles(roleCodes, departmentId);
-    const whatsappNumber = data.whatsappNumber !== undefined ? data.whatsappNumber : user.whatsappNumber;
-    assertWhatsappRequired(roleCodes, whatsappNumber);
     const designation = data.designation !== undefined ? data.designation : user.designation;
     assertDesignationForHod(roleCodes, designation);
 

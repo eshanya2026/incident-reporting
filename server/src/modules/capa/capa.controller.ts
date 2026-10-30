@@ -79,9 +79,17 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
       const year = new Date().getFullYear();
       const defaultTargetDate = new Date(Date.now() + 30 * 24 * 3600 * 1000);
 
-      const existing = await Capa.find({ incidentId });
+      // Scoped to the actor's own department — each involved department keeps its own CA/PA pair.
+      const myDepartmentId = req.user!.departmentId || incident.departmentId;
+      const existing = await Capa.find({ incidentId, ownerDepartmentId: myDepartmentId });
       const existingCA = existing.find((c) => c.type === 'CORRECTIVE');
       const existingPA = existing.find((c) => c.type === 'PREVENTIVE');
+
+      // Evidence attached once, on the Corrective Action (always present); read access only
+      // depends on the incident, so Preventive Action shares the same files for display.
+      const evidenceIds = Array.isArray(body.evidence)
+        ? await assertAttachmentsUsable(body.evidence, req.user!.userId, 'CAPA', existingCA?._id)
+        : undefined;
 
       const updatedOrCreated = [];
 
@@ -92,7 +100,9 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
           existingCA.status = 'DONE';
           existingCA.completedAt = existingCA.completedAt || new Date();
           existingCA.completionRemarks = existingCA.completionRemarks || 'Completed by HOD';
+          if (evidenceIds) existingCA.evidence = evidenceIds as any;
           await existingCA.save();
+          if (evidenceIds) await linkAttachments(evidenceIds, 'CAPA', existingCA._id);
           updatedOrCreated.push(existingCA);
         } else {
           const seq = await getNextSequence(`capa_${year}`);
@@ -104,14 +114,16 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
             type: 'CORRECTIVE',
             action: body.correctiveAction.trim(),
             ownerUserId: req.user!.userId,
-            ownerDepartmentId: incident.departmentId,
+            ownerDepartmentId: req.user!.departmentId || incident.departmentId,
             priority: body.priority || 'MEDIUM',
             assignedDate: new Date(),
             targetDate: body.targetDate ? new Date(body.targetDate) : defaultTargetDate,
             status: 'DONE',
             completedAt: new Date(),
             completionRemarks: 'Completed by HOD',
+            evidence: evidenceIds || [],
           });
+          if (evidenceIds) await linkAttachments(evidenceIds, 'CAPA', newCA._id);
           updatedOrCreated.push(newCA);
         }
       }
@@ -123,6 +135,7 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
           existingPA.status = 'DONE';
           existingPA.completedAt = existingPA.completedAt || new Date();
           existingPA.completionRemarks = existingPA.completionRemarks || 'Completed by HOD';
+          if (evidenceIds) existingPA.evidence = evidenceIds as any;
           await existingPA.save();
           updatedOrCreated.push(existingPA);
         } else {
@@ -135,13 +148,14 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
             type: 'PREVENTIVE',
             action: body.preventiveAction.trim(),
             ownerUserId: req.user!.userId,
-            ownerDepartmentId: incident.departmentId,
+            ownerDepartmentId: req.user!.departmentId || incident.departmentId,
             priority: body.priority || 'MEDIUM',
             assignedDate: new Date(),
             targetDate: body.targetDate ? new Date(body.targetDate) : defaultTargetDate,
             status: 'DONE',
             completedAt: new Date(),
             completionRemarks: 'Completed by HOD',
+            evidence: evidenceIds || [],
           });
           updatedOrCreated.push(newPA);
         }
@@ -151,7 +165,7 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
         throw AppError.badRequest('Please provide at least a Corrective Action (CA)');
       }
 
-      const allCapas = await Capa.find({ incidentId });
+      const allCapas = await Capa.find({ incidentId }).populate('evidence');
       sendSuccess(res, allCapas, 'CAPA saved successfully', 200);
       return;
     }
@@ -179,7 +193,7 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
         type: data.type,
         action: data.action,
         ownerUserId: req.user!.userId,
-        ownerDepartmentId: incident.departmentId,
+        ownerDepartmentId: req.user!.departmentId || incident.departmentId,
         priority: data.priority,
         assignedDate: new Date(),
         targetDate: data.targetDate,

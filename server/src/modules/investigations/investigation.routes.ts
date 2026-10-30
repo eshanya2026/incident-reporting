@@ -2,6 +2,7 @@ import { Router } from 'express';
 import {
   startInvestigation,
   getInvestigationByIncident,
+  getInvestigationsByIncident,
   updateInvestigation,
   completeInvestigation,
 } from './investigation.controller.js';
@@ -15,6 +16,7 @@ router.use(authenticate);
 
 router.post('/incidents/:incidentId/investigation', requirePermission(PERMISSIONS.INVESTIGATION_WRITE), startInvestigation);
 router.get('/incidents/:incidentId/investigation', requirePermission(PERMISSIONS.INVESTIGATION_READ), getInvestigationByIncident);
+router.get('/incidents/:incidentId/investigations', requirePermission(PERMISSIONS.INVESTIGATION_READ), getInvestigationsByIncident);
 router.patch('/investigations/:id', requirePermission(PERMISSIONS.INVESTIGATION_WRITE), updateInvestigation);
 router.post('/investigations/:id/complete', requirePermission(PERMISSIONS.INVESTIGATION_WRITE), completeInvestigation);
 

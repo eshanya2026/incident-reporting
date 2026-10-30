@@ -26,6 +26,7 @@ export function useAction(incidentId?: string) {
         ['timeline', incidentId],
         ['investigation', incidentId],
         ['rca', incidentId],
+        ['rca-meeting', incidentId],
         ['capas', incidentId],
         ['triage-queue'],
         ['review-queue'],

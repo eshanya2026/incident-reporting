@@ -16,47 +16,47 @@ const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/incident_d
 
 export const CORE_FLOOR_ZONE_LOCATIONS = [
   // Ground Floor
-  { code: 'GF-Z1', name: 'Ground Floor - Zone-1', floor: 'Ground Floor', zone: 'Zone-1', type: 'OPD' },
+  { code: 'GF-Z1', name: 'Ground Floor - Zone-A', floor: 'Ground Floor', zone: 'Zone-A', type: 'OPD' },
   { code: 'GF-ZB', name: 'Ground Floor - Zone-B', floor: 'Ground Floor', zone: 'Zone-B', type: 'OPD' },
   { code: 'GF-ZC', name: 'Ground Floor - Zone-C', floor: 'Ground Floor', zone: 'Zone-C', type: 'OTHER' },
 
   // Floor 1
-  { code: 'FL1-Z1', name: 'Floor 1 - Zone-1', floor: 'Floor 1', zone: 'Zone-1', type: 'ROOM' },
+  { code: 'FL1-Z1', name: 'Floor 1 - Zone-A', floor: 'Floor 1', zone: 'Zone-A', type: 'ROOM' },
   { code: 'FL1-ZB', name: 'Floor 1 - Zone-B', floor: 'Floor 1', zone: 'Zone-B', type: 'ROOM' },
   { code: 'FL1-ZC', name: 'Floor 1 - Zone-C', floor: 'Floor 1', zone: 'Zone-C', type: 'ROOM' },
 
   // Floor 2
-  { code: 'FL2-Z1', name: 'Floor 2 - Zone-1', floor: 'Floor 2', zone: 'Zone-1', type: 'ICU' },
+  { code: 'FL2-Z1', name: 'Floor 2 - Zone-A', floor: 'Floor 2', zone: 'Zone-A', type: 'ICU' },
   { code: 'FL2-ZB', name: 'Floor 2 - Zone-B', floor: 'Floor 2', zone: 'Zone-B', type: 'ICU' },
   { code: 'FL2-ZC', name: 'Floor 2 - Zone-C', floor: 'Floor 2', zone: 'Zone-C', type: 'ROOM' },
 
   // Floor 3
-  { code: 'FL3-Z1', name: 'Floor 3 - Zone-1', floor: 'Floor 3', zone: 'Zone-1', type: 'OT' },
+  { code: 'FL3-Z1', name: 'Floor 3 - Zone-A', floor: 'Floor 3', zone: 'Zone-A', type: 'OT' },
   { code: 'FL3-ZB', name: 'Floor 3 - Zone-B', floor: 'Floor 3', zone: 'Zone-B', type: 'OT' },
   { code: 'FL3-ZC', name: 'Floor 3 - Zone-C', floor: 'Floor 3', zone: 'Zone-C', type: 'WARD' },
 
   // Floor 4
-  { code: 'FL4-Z1', name: 'Floor 4 - Zone-1', floor: 'Floor 4', zone: 'Zone-1', type: 'WARD' },
+  { code: 'FL4-Z1', name: 'Floor 4 - Zone-A', floor: 'Floor 4', zone: 'Zone-A', type: 'WARD' },
   { code: 'FL4-ZB', name: 'Floor 4 - Zone-B', floor: 'Floor 4', zone: 'Zone-B', type: 'LAB' },
   { code: 'FL4-ZC', name: 'Floor 4 - Zone-C', floor: 'Floor 4', zone: 'Zone-C', type: 'WARD' },
 
   // Floor 5
-  { code: 'FL5-Z1', name: 'Floor 5 - Zone-1', floor: 'Floor 5', zone: 'Zone-1', type: 'ROOM' },
+  { code: 'FL5-Z1', name: 'Floor 5 - Zone-A', floor: 'Floor 5', zone: 'Zone-A', type: 'ROOM' },
   { code: 'FL5-ZB', name: 'Floor 5 - Zone-B', floor: 'Floor 5', zone: 'Zone-B', type: 'OTHER' },
   { code: 'FL5-ZC', name: 'Floor 5 - Zone-C', floor: 'Floor 5', zone: 'Zone-C', type: 'OTHER' },
 ];
 
 export const EXISTING_LOCATION_MAPPINGS: Record<string, { floor: string; zone: string; deptCode?: string }> = {
-  'ER-BAY-1': { floor: 'Floor 1', zone: 'Zone-1', deptCode: 'EMERGENCY' },
-  'ER-BAY-2': { floor: 'Floor 1', zone: 'Zone-1', deptCode: 'EMERGENCY' },
+  'ER-BAY-1': { floor: 'Floor 1', zone: 'Zone-A', deptCode: 'EMERGENCY' },
+  'ER-BAY-2': { floor: 'Floor 1', zone: 'Zone-A', deptCode: 'EMERGENCY' },
   'PHARM-CTR-1': { floor: 'Floor 1', zone: 'Zone-B', deptCode: 'PHARMACY' },
   'RAD-CT-1': { floor: 'Floor 1', zone: 'Zone-C', deptCode: 'RADIOLOGY' },
-  'ICU-BED-01': { floor: 'Floor 2', zone: 'Zone-1', deptCode: 'ICU' },
+  'ICU-BED-01': { floor: 'Floor 2', zone: 'Zone-A', deptCode: 'ICU' },
   'ICU-BED-02': { floor: 'Floor 2', zone: 'Zone-B', deptCode: 'ICU' },
-  'OT-SUITE-1': { floor: 'Floor 3', zone: 'Zone-1', deptCode: 'OT' },
+  'OT-SUITE-1': { floor: 'Floor 3', zone: 'Zone-A', deptCode: 'OT' },
   'OT-SUITE-2': { floor: 'Floor 3', zone: 'Zone-B', deptCode: 'OT' },
   'WARD-302': { floor: 'Floor 3', zone: 'Zone-C', deptCode: 'WARD' },
-  'WARD-401': { floor: 'Floor 4', zone: 'Zone-1', deptCode: 'WARD' },
+  'WARD-401': { floor: 'Floor 4', zone: 'Zone-A', deptCode: 'WARD' },
   'LAB-PHLEBO-1': { floor: 'Floor 4', zone: 'Zone-B', deptCode: 'LAB' },
   'QUALITY-OFFICE': { floor: 'Floor 5', zone: 'Zone-C', deptCode: 'QUALITY' },
 };

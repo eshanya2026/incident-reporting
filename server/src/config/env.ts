@@ -38,9 +38,11 @@ const envSchema = z.object({
   WATI_API_ENDPOINT: z.string().optional().default(''),
   // Bearer token from the same WATI dashboard page.
   WATI_ACCESS_TOKEN: z.string().optional().default(''),
-  // Name of the approved template to send (see docs/whatsapp-template.md). Required for the first
-  // message to a HOD outside the 24h session window; leave blank to send free-form text instead
-  // (only deliverable while the HOD has an open WhatsApp session with the business number).
+  // One generic approved WATI template, reused for every notification type by passing different
+  // text into its parameters (see docs/whatsapp-template.md). Required to reliably reach anyone
+  // outside the 24h session window; blank falls back to free-form text everywhere (only
+  // deliverable while the recipient has an open WhatsApp session with the business number —
+  // testing only).
   WATI_TEMPLATE_NAME: z.string().optional().default(''),
   APP_URL: z.string().default('http://localhost:5173'),
   API_URL: z.string().default('http://localhost:5000'),

@@ -3,7 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { Send, UserCheck, HelpCircle, XCircle, X } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { useAction } from '../../../lib/useAction';
-import { INCIDENT_PRIORITIES, PRIORITY_COLOR, PRIORITY_META, SEVERITY_META, idOf, severityNeeds } from '../../../lib/incidentMeta';
+import {
+  INCIDENT_PRIORITIES,
+  PRIORITY_COLOR,
+  PRIORITY_DEADLINE_LABEL,
+  PRIORITY_META,
+  SEVERITY_META,
+  idOf,
+  severityNeeds,
+} from '../../../lib/incidentMeta';
 import { Button, Card, Notice, inputClass, labelClass } from '../../ui/primitives';
 import { departmentOptions } from '../../ui/DepartmentOptions';
 import { SearchableSelect } from '../../ui/SearchableSelect';
@@ -135,7 +143,7 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
                 containerClassName="block w-full"
                 value={String(severity)}
                 onChange={(v) => setSeverity(Number(v))}
-                options={[1, 2, 3, 4].map((s) => ({
+                options={[1, 2, 3, 4, 5].map((s) => ({
                   value: String(s),
                   label: `${SEVERITY_META[s].label}${s === incident.initialSeverity ? ' (as reported)' : ''}`,
                 }))}
@@ -178,6 +186,9 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
                   );
                 })}
               </div>
+              <p className="mt-1 text-[12.5px] text-clinicalText-secondary">
+                HOD must act within <span className="font-semibold">{PRIORITY_DEADLINE_LABEL[priority as keyof typeof PRIORITY_DEADLINE_LABEL]}</span> of assignment.
+              </p>
             </div>
 
             <div>

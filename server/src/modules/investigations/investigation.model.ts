@@ -4,6 +4,9 @@ export type InvestigationStatus = 'DRAFT' | 'IN_PROGRESS' | 'COMPLETED';
 
 export interface IInvestigation extends Document {
   incidentId: mongoose.Types.ObjectId;
+  /** Department this investigation belongs to — one per incident per involved department, so
+   * Quality can compare each department's investigation side by side once CAPA is submitted. */
+  departmentId: mongoose.Types.ObjectId;
   investigatorId: mongoose.Types.ObjectId;
   startedAt: Date;
   dueDate: Date;
@@ -29,7 +32,8 @@ const PeopleInterviewedSchema: Schema = new Schema({
 
 const InvestigationSchema: Schema = new Schema(
   {
-    incidentId: { type: Schema.Types.ObjectId, ref: 'Incident', required: true, unique: true, index: true },
+    incidentId: { type: Schema.Types.ObjectId, ref: 'Incident', required: true, index: true },
+    departmentId: { type: Schema.Types.ObjectId, ref: 'Department', required: true, index: true },
     investigatorId: { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     startedAt: { type: Date, default: Date.now },
     dueDate: { type: Date, required: true },
@@ -53,5 +57,7 @@ const InvestigationSchema: Schema = new Schema(
     timestamps: true,
   }
 );
+
+InvestigationSchema.index({ incidentId: 1, departmentId: 1 }, { unique: true });
 
 export const Investigation = mongoose.model<IInvestigation>('Investigation', InvestigationSchema);

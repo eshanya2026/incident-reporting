@@ -27,6 +27,8 @@ export const SYSTEM_ROLES = [
       PERMISSIONS.INCIDENT_REVIEW,
       PERMISSIONS.INVESTIGATION_READ,
       PERMISSIONS.RCA_READ,
+      // Quality schedules the RCA meeting and uploads its report (see rcaMeeting.controller.ts)
+      PERMISSIONS.RCA_WRITE,
       PERMISSIONS.CAPA_READ,
       PERMISSIONS.DASHBOARD_VIEW,
       PERMISSIONS.REPORT_VIEW_ALL,
@@ -78,10 +80,11 @@ export const SYSTEM_ROLES = [
     isSystemRole: true,
   },
   {
-    // Quality Members: when Quality is not satisfied with HOD's report, Quality requests RCA and assigns it
-    // to Quality Members. They perform 5-Why root cause analysis and submit their findings back to Quality.
-    name: 'Quality Member',
-    code: ROLE_CODES.QUALITY_MEMBER,
+    // RCA Head: when Quality is not satisfied with HOD's report, Quality requests an RCA and assigns
+    // it to an RCA Head, who schedules a meeting with the involved HODs and Quality, then uploads the
+    // meeting's report back to Quality.
+    name: 'RCA Head',
+    code: ROLE_CODES.RCA_HEAD,
     permissions: [
       PERMISSIONS.INCIDENT_READ_ALL,
       PERMISSIONS.INVESTIGATION_READ,
@@ -110,6 +113,7 @@ export const SYSTEM_ROLES = [
 const LEGACY_ROLE_RENAMES: Record<string, string> = {
   QUALITY_ADMIN: ROLE_CODES.QUALITY,
   MD: ROLE_CODES.ADMIN,
+  QUALITY_MEMBER: ROLE_CODES.RCA_HEAD,
 };
 
 /**

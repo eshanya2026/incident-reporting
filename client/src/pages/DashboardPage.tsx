@@ -25,6 +25,7 @@ import {
   Repeat,
   ArrowUp,
   ArrowDown,
+  Gauge,
 } from 'lucide-react';
 import {
   BarChart,
@@ -274,8 +275,9 @@ function KpiCard({
 const SEVERITY_CONFIG: Record<number, { color: string; label: string; short: string }> = {
   1: { color: '#10B981', label: 'Severity 1 – Near Miss', short: 'Near Miss' },
   2: { color: '#0284C7', label: 'Severity 2 – No Harm', short: 'No Harm' },
-  3: { color: '#DC2626', label: 'Severity 3 – Harm', short: 'Harm' },
-  4: { color: '#6B1418', label: 'Severity 4 – Sentinel Event', short: 'Sentinel' },
+  3: { color: '#F59E0B', label: 'Severity 3 – Adverse Event', short: 'Adverse Event' },
+  4: { color: '#DC2626', label: 'Severity 4 – Permanent Harm', short: 'Permanent Harm' },
+  5: { color: '#6B1418', label: 'Severity 5 – Sentinel Event', short: 'Sentinel' },
 };
 
 const PERIOD_OPTIONS: Array<{ key: '3m' | '6m' | '12m' | 'all'; label: string }> = [
@@ -321,7 +323,7 @@ export default function DashboardPage() {
   };
 
   // Severity Chart Data
-  const severityChartData = [1, 2, 3, 4].map((lvl) => {
+  const severityChartData = [1, 2, 3, 4, 5].map((lvl) => {
     const found = inPeriod.severity?.find((s: any) => s.severity === lvl);
     const conf = SEVERITY_CONFIG[lvl];
     return {
@@ -401,6 +403,14 @@ export default function DashboardPage() {
 
   // Recurring Incident Hotspots — same location + category repeating 2+ times in the period
   const recurringHotspots = inPeriod.recurringHotspots || [];
+
+  // Risk rating Quality recorded when closing (docs/NABH_Incident_Risk_Scoring_Logic.md)
+  const risk = inPeriod.risk || { assessed: 0, avgScore: null, bands: [], byDepartment: [], highRiskIncidents: [] };
+  const riskBandColor: Record<string, string> = { LOW: '#15803D', MODERATE: '#D97706', HIGH: '#DC2626', EXTREME: '#6B1418' };
+  const riskByDeptChartData = (risk.byDepartment || [])
+    .filter((d: any) => d.high > 0)
+    .slice(0, 10)
+    .map((d: any) => ({ name: d.name, count: d.high }));
 
   // Month-over-month change on reports — compares the last two months actually in the series,
   // not a value judgement (more reports can mean a healthier reporting culture, not a worse one)
@@ -1159,6 +1169,118 @@ export default function DashboardPage() {
                 </div>
               )}
             </div>
+
+            {/* Risk Rating Distribution */}
+            <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-center">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                  <Gauge className="w-4.5 h-4.5 text-[#5C1A22]" />
+                  <span>Risk Rating Distribution</span>
+                </h3>
+                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                  Closed This Period
+                </span>
+              </div>
+
+              {risk.assessed === 0 ? (
+                <div className="h-48 flex items-center justify-center text-xs text-[#94A3B8] text-center px-4">
+                  No risk-rated incidents closed in this period yet
+                </div>
+              ) : (
+                <div className="py-4">
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-5xl font-extrabold text-[#5C1A22] leading-none">{risk.avgScore}</span>
+                    <span className="text-xs text-[#64748B] font-medium">avg risk score, out of 25 ({risk.assessed} rated)</span>
+                  </div>
+
+                  <div className="mt-5 h-2.5 rounded-full bg-[#F3E6D7] overflow-hidden flex">
+                    {risk.bands.map((b: any) => (
+                      <div
+                        key={b.band}
+                        className="h-full"
+                        style={{ width: `${(b.count / risk.assessed) * 100}%`, backgroundColor: riskBandColor[b.band] }}
+                      ></div>
+                    ))}
+                  </div>
+
+                  <div className="mt-4 grid grid-cols-2 gap-x-3 gap-y-2 text-xs">
+                    {risk.bands.map((b: any) => (
+                      <div key={b.band} className="flex items-center gap-1.5">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: riskBandColor[b.band] }}></span>
+                        <span className="text-[#475569] capitalize">{b.band.toLowerCase()}</span>
+                        <span className="font-bold text-[#172033]">{b.count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Highest-Risk Incidents */}
+            <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between lg:col-span-2">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                  <ShieldAlert className="w-4.5 h-4.5 text-[#5C1A22]" />
+                  <span>Highest-Risk Incidents</span>
+                </h3>
+                <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                  High &amp; Extreme Band
+                </span>
+              </div>
+
+              {risk.highRiskIncidents.length === 0 ? (
+                <div className="h-24 flex items-center justify-center text-xs text-[#94A3B8]">
+                  No High or Extreme risk-rated incidents closed in this period
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="text-[11px] uppercase tracking-wide text-[#94A3B8] border-b border-[#F1F5F9]">
+                        <th className="py-2 pr-2 font-semibold">Incident</th>
+                        <th className="py-2 pr-2 font-semibold">Title</th>
+                        <th className="py-2 pr-2 font-semibold text-right">Score</th>
+                        <th className="py-2 pl-2 font-semibold text-right">Band</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {risk.highRiskIncidents.map((r: any) => (
+                        <tr key={r.incidentNumber} className="border-b border-[#F8FAFC] last:border-0">
+                          <td className="py-2 pr-2 font-mono text-[#5C1A22] whitespace-nowrap">{r.incidentNumber}</td>
+                          <td className="py-2 pr-2 text-[#475569] max-w-[320px] truncate">{r.title}</td>
+                          <td className="py-2 pr-2 text-right font-bold text-[#172033]">{r.score}/25</td>
+                          <td className="py-2 pl-2 text-right">
+                            <span
+                              className="px-2 py-0.5 rounded-full text-[11px] font-bold text-white whitespace-nowrap"
+                              style={{ backgroundColor: riskBandColor[r.band] }}
+                            >
+                              {r.band}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+
+            {/* Risk by Department — hospital-wide view only */}
+            {riskByDeptChartData.length > 0 && (
+              <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between lg:col-span-2">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
+                    <Building2 className="w-4.5 h-4.5 text-[#5C1A22]" />
+                    <span>High/Extreme Risk Incidents by Department</span>
+                  </h3>
+                  <span className="text-xs font-medium text-[#64748B] bg-[#F8FAFC] px-2.5 py-1 rounded-lg border border-[#E2E8F0]">
+                    Closed This Period
+                  </span>
+                </div>
+
+                <HorizontalBarChart data={riskByDeptChartData} color="#DC2626" />
+              </div>
+            )}
 
             {/* All Incidents by Affected Victims */}
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">

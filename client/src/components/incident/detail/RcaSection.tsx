@@ -20,15 +20,16 @@ const toRows = (rca: any) =>
 
 
 /**
- * 5-Why root cause analysis, written by the responsible HOD (required for severity 4 and 5).
- * Once completed and past the investigation stage it is shown read-only with an Edit button.
+ * 5-Why root cause analysis, written by the responsible HOD (required for severity 4 and 5) while
+ * working the investigation. Once completed and past the investigation stage it is shown read-only
+ * with an Edit button. (When Quality requests a review-stage RCA, that's a scheduled meeting and
+ * uploaded report instead — see RcaMeetingPanel in WorkflowPanels.tsx — not this form.)
  */
 export default function RcaSection({ incident, rca, editable }: { incident: any; rca: any; editable: boolean }) {
   const { run, busy, error } = useAction(incident._id);
   const [rows, setRows] = useState(toRows(rca));
   const [summary, setSummary] = useState(rca?.rootCauseSummary || '');
-  const startEditing = () =>
-    !rca || rca.status !== 'COMPLETED' || incident.status === 'UNDER_INVESTIGATION' || incident.status === 'RCA_REQUESTED';
+  const startEditing = () => !rca || rca.status !== 'COMPLETED' || incident.status === 'UNDER_INVESTIGATION';
   const [editing, setEditing] = useState(startEditing());
   useEffect(() => setEditing(startEditing()), [incident.status, rca?.status]);
   useEffect(() => {
@@ -37,8 +38,6 @@ export default function RcaSection({ incident, rca, editable }: { incident: any;
   }, [rca?._id, rca?.updatedAt]);
 
   if (!rca && !editable) return null;
-
-  const isRcaRequested = incident.status === 'RCA_REQUESTED';
 
   const save = (status: 'DRAFT' | 'COMPLETED') =>
     run(() =>
@@ -54,16 +53,11 @@ export default function RcaSection({ incident, rca, editable }: { incident: any;
 
   return (
     <Card
-      title={`Root Cause Analysis (5-Why)${incident.requiresRca ? ' — required' : isRcaRequested ? ' — requested by Quality' : ''}`}
+      title={`Root Cause Analysis (5-Why)${incident.requiresRca ? ' — required' : ''}`}
       icon={GitBranch}
       actions={
         <div className="flex items-center gap-2">
           {editable && !editing && <EditToggle onClick={() => setEditing(true)} />}
-          {isRcaRequested && (
-            <span className="text-[11.5px] font-bold uppercase px-2 py-0.5 rounded-full border bg-purple-50 text-purple-700 border-purple-200">
-              RCA in progress
-            </span>
-          )}
           {rca && (
             <span className={`text-[11.5px] font-bold uppercase px-2 py-0.5 rounded-full border ${rca.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-600 border-slate-200'}`}>
               {rca.status === 'COMPLETED' ? 'Completed' : 'Draft'}

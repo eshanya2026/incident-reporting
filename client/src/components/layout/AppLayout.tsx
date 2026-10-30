@@ -61,9 +61,9 @@ export default function AppLayout() {
       };
       return {
         triage: hasPermission(user, 'incident.triage') ? await count('/incidents/triage-queue') : 0,
-        // Quality and Quality Members only — RCA_WRITE alone (also held by HOD) isn't enough,
+        // Quality and RCA Heads only — RCA_WRITE alone (also held by HOD) isn't enough,
         // and the server now rejects this call for anyone else (see getReviewQueue)
-        review: hasAnyRole(user, ['QUALITY', 'QUALITY_MEMBER'])
+        review: hasAnyRole(user, ['QUALITY', 'RCA_HEAD'])
           ? (await count('/incidents/review-queue')) + (await count('/incidents/review-queue', { status: 'RCA_REQUESTED' }))
           : 0,
         department: hasPermission(user, 'incident.read_assigned')
@@ -135,8 +135,8 @@ export default function AppLayout() {
     { label: 'My Reports', path: '/my-reports', icon: FileText, permission: 'incident.read_own', count: queueCounts.myReports },
     { label: 'Triage Inbox', path: '/triage', icon: Inbox, permission: 'incident.triage', count: queueCounts.triage },
     // Not a permission check: RCA_WRITE is also held by HOD, for their own incidents, who should
-    // not see this (Quality's and Quality Members' review queue) — see server's getReviewQueue.
-    { label: 'Review & RCA Queue', path: '/review', icon: ClipboardCheck, anyRoles: ['QUALITY', 'QUALITY_MEMBER'], count: queueCounts.review },
+    // not see this (Quality's and RCA Heads' review queue) — see server's getReviewQueue.
+    { label: 'Review & RCA Queue', path: '/review', icon: ClipboardCheck, anyRoles: ['QUALITY', 'RCA_HEAD'], count: queueCounts.review },
     { label: "My Department's Incidents", path: '/my-department', icon: Building2, permission: 'incident.read_assigned', count: queueCounts.department },
     { label: 'All Incidents', path: '/incidents', icon: FileSpreadsheet, permission: 'incident.read_all' },
     { label: 'CAPA', path: '/capas', icon: CheckSquare, permission: 'capa.read' },

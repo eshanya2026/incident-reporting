@@ -11,7 +11,7 @@ export const INCIDENT_STATUSES = [
   'UNDER_INVESTIGATION', // HOD is investigating (and writing the RCA if required)
   'CAPA_IN_PROGRESS', // HOD is writing and carrying out CAPA
   'PENDING_QUALITY_REVIEW', // HOD submitted for closure; Quality reviews
-  'RCA_REQUESTED', // Quality requested RCA and assigned to Quality Members
+  'RCA_REQUESTED', // Quality requested an RCA meeting and assigned an RCA Head
   'CLOSED', // Quality accepted and completed (final; closed incidents are not reopened)
 ] as const;
 
@@ -31,6 +31,14 @@ export const PRIORITY_LABELS: Record<IncidentPriority, string> = {
   LOW: 'Low',
   MEDIUM: 'Medium',
   HIGH: 'High',
+};
+
+/** Hours the HOD has to act once assigned, by priority — worst case of each band. */
+export const PRIORITY_DEADLINE_HOURS: Record<IncidentPriority, number> = {
+  HIGH: 48, // 24–48 hrs
+  MEDIUM: 72, // 48–72 hrs
+  LOW: 120, // 5 days
+  EXTREMELY_LOW: 168, // 7 days
 };
 
 export interface IPatientDetails {
@@ -93,6 +101,8 @@ export interface IClosureSubmission extends IActorNote {
 export interface IQualityReview extends IActorNote {
   decision: 'ACCEPTED' | 'RETURNED';
   remarks: string;
+  /** RETURNED: which department(s) were sent back; omitted means every involved department. */
+  departmentIds?: mongoose.Types.ObjectId[];
 }
 
 export interface IIncident extends Document {
@@ -109,6 +119,8 @@ export interface IIncident extends Document {
   locationId: mongoose.Types.ObjectId;
   floor?: string;
   zone?: string;
+  /** Free-text detail pinpointing the spot within the floor/zone/ward, e.g. "Near nurse station, Bed 12". */
+  specificLocation?: string;
   categoryId: mongoose.Types.ObjectId;
   subcategoryCode?: string;
   /** Who was affected (inpatient, outpatient, visitor/family, employee, other). See AFFECTED_PERSON_TYPES. */
@@ -137,6 +149,8 @@ export interface IIncident extends Document {
   assignedAt?: Date;
   /** How urgently the HOD should act, set by Quality at assignment. */
   priority?: IncidentPriority;
+  /** Deadline for the HOD to act, computed from priority at assignment (cleared if returned to Quality). */
+  actionDueAt?: Date;
   /**
    * Other departments Quality notified at assignment for awareness (e.g. a second department
    * involved in the incident). They do not investigate — only departmentId's HOD does.
@@ -150,10 +164,16 @@ export interface IIncident extends Document {
   assignments: IAssignment[];
   requiresRca: boolean;
   requiresCapa: boolean;
-  assignedQualityMemberId?: mongoose.Types.ObjectId;
+  /** RCA Head assigned to investigate the RCA meeting, once Quality requests one. */
+  rcaHeadId?: mongoose.Types.ObjectId;
   rcaRequestedAt?: Date;
   rcaRequestedBy?: mongoose.Types.ObjectId;
   rcaRequestRemarks?: string;
+  /** The meeting's date/time and location, set by Quality when requesting the RCA (see rcaMeeting.model.ts for the full record). */
+  rcaProposedMeetingAt?: Date;
+  rcaProposedLocation?: string;
+  /** Extra HODs/Intimation Members Quality wants invited, alongside the auto-computed attendees. */
+  rcaAdditionalAttendeeIds?: mongoose.Types.ObjectId[];
   rcaSubmittedAt?: Date;
   rcaSubmittedBy?: mongoose.Types.ObjectId;
   rcaSubmissionRemarks?: string;
@@ -170,6 +190,8 @@ export interface IIncident extends Document {
   closedBy?: mongoose.Types.ObjectId;
   /** Computed automatically when Quality closes the incident (see computeQualityScore below). */
   qualityScore?: IQualityScore;
+  /** Likelihood × severity risk rating Quality records before closing (see riskBandFor below). */
+  riskAssessment?: IRiskAssessment;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -188,11 +210,12 @@ export interface IQualityScore {
 export const SEVERITY_LABELS: Record<number, string> = {
   1: 'Near Miss',
   2: 'No Harm',
-  3: 'Harm',
-  4: 'Sentinel Event',
+  3: 'Adverse Event',
+  4: 'Permanent Harm',
+  5: 'Sentinel Event',
 };
 
-/** RCA is required for Sentinel Event (4) only. CAPA is required at every severity. */
+/** RCA is required for Permanent Harm and Sentinel Event (severity 4–5). CAPA is required at every severity. */
 export const severityRequirements = (severity: number) => ({
   severityLabel: SEVERITY_LABELS[severity] || SEVERITY_LABELS[1],
   requiresRca: severity >= 4,
@@ -200,7 +223,7 @@ export const severityRequirements = (severity: number) => ({
 });
 
 /** Days Quality targets for closing an incident, by severity — more severe, faster expected turnaround. */
-const CLOSURE_TARGET_DAYS: Record<number, number> = { 1: 30, 2: 21, 3: 14, 4: 7 };
+const CLOSURE_TARGET_DAYS: Record<number, number> = { 1: 30, 2: 21, 3: 14, 4: 10, 5: 7 };
 
 /**
  * Analytics score computed automatically when Quality closes an incident (see REVIEW_ACCEPT in
@@ -231,6 +254,50 @@ export const computeQualityScore = (params: {
 
   return { timeliness, capaQuality, rework, overall };
 };
+
+export type RiskBand = 'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME';
+
+export interface IRiskAssessment {
+  /** How often this event/hazard recurs (1 Rare – 5 Almost certain/Frequent). */
+  likelihood: number;
+  /** Most serious credible consequence if it recurs (1 Insignificant – 5 Catastrophic). */
+  severity: number;
+  /** likelihood × severity, 1–25. */
+  score: number;
+  band: RiskBand;
+  /** Required when severity is 4–5 (see docs/NABH_Incident_Risk_Scoring_Logic.md §3). */
+  rationale?: string;
+  assessedBy: mongoose.Types.ObjectId;
+  assessedAt: Date;
+}
+
+export const LIKELIHOOD_LABELS: Record<number, string> = {
+  1: 'Rare',
+  2: 'Unlikely',
+  3: 'Possible',
+  4: 'Likely',
+  5: 'Almost certain',
+};
+
+export const RISK_SEVERITY_LABELS: Record<number, string> = {
+  1: 'Insignificant',
+  2: 'Minor',
+  3: 'Moderate',
+  4: 'Major',
+  5: 'Catastrophic',
+};
+
+// docs/NABH_Incident_Risk_Scoring_Logic.md §4 — illustrative default bands, fixed for now.
+export const RISK_BAND_META: Record<RiskBand, { label: string; min: number; max: number }> = {
+  LOW: { label: 'Low', min: 1, max: 4 },
+  MODERATE: { label: 'Moderate', min: 5, max: 9 },
+  HIGH: { label: 'High', min: 10, max: 16 },
+  EXTREME: { label: 'Extreme', min: 17, max: 25 },
+};
+
+export const riskBandFor = (score: number): RiskBand =>
+  (Object.keys(RISK_BAND_META) as RiskBand[]).find((b) => score >= RISK_BAND_META[b].min && score <= RISK_BAND_META[b].max) ||
+  'EXTREME';
 
 const PatientSchema: Schema = new Schema({
   uhid: { type: String, trim: true },
@@ -277,7 +344,7 @@ const InfoRequestSchema = new Schema(
 const AssignmentSchema = new Schema({
   departmentId: { type: Schema.Types.ObjectId, ref: 'Department', required: true },
   hodUserId: { type: Schema.Types.ObjectId, ref: 'User', required: true },
-  severity: { type: Number, required: true, min: 1, max: 4 },
+  severity: { type: Number, required: true, min: 1, max: 5 },
   priority: { type: String, enum: INCIDENT_PRIORITIES },
   remarks: { type: String, trim: true },
   notifiedDepartmentIds: [{ type: Schema.Types.ObjectId, ref: 'Department' }],
@@ -292,6 +359,7 @@ const ClosureSubmissionSchema = new Schema({ summary: { type: String, required: 
 const QualityReviewSchema = new Schema({
   decision: { type: String, enum: ['ACCEPTED', 'RETURNED'], required: true },
   remarks: { type: String, required: true, trim: true },
+  departmentIds: [{ type: Schema.Types.ObjectId, ref: 'Department' }],
   ...actor,
 });
 
@@ -307,6 +375,7 @@ const IncidentSchema: Schema = new Schema(
     locationId: { type: Schema.Types.ObjectId, ref: 'Location', required: true },
     floor: { type: String, trim: true, index: true },
     zone: { type: String, trim: true, index: true },
+    specificLocation: { type: String, trim: true, maxlength: 200 },
     categoryId: { type: Schema.Types.ObjectId, ref: 'IncidentCategory', required: true, index: true },
     subcategoryCode: { type: String },
     affectedPersonType: { type: String, enum: AFFECTED_PERSON_TYPES, required: true },
@@ -319,23 +388,27 @@ const IncidentSchema: Schema = new Schema(
     witness: { type: String, trim: true },
     immediateAction: { type: String, trim: true },
     remarks: { type: String, trim: true },
-    initialSeverity: { type: Number, required: true, min: 1, max: 4, default: 1 },
-    severity: { type: Number, required: true, min: 1, max: 4, default: 1, index: true },
+    initialSeverity: { type: Number, required: true, min: 1, max: 5, default: 1 },
+    severity: { type: Number, required: true, min: 1, max: 5, default: 1, index: true },
     severityLabel: { type: String, required: true, default: SEVERITY_LABELS[1] },
     status: { type: String, enum: INCIDENT_STATUSES, default: 'SUBMITTED', index: true },
     assignedHod: { type: Schema.Types.ObjectId, ref: 'User' },
     assignedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     assignedAt: { type: Date },
     priority: { type: String, enum: INCIDENT_PRIORITIES },
+    actionDueAt: { type: Date },
     notifiedDepartmentIds: { type: [Schema.Types.ObjectId], ref: 'Department', default: [] },
     intimatedUserIds: { type: [Schema.Types.ObjectId], ref: 'User', default: [] },
     assignments: [AssignmentSchema],
     requiresRca: { type: Boolean, default: false },
     requiresCapa: { type: Boolean, default: false },
-    assignedQualityMemberId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
+    rcaHeadId: { type: Schema.Types.ObjectId, ref: 'User', index: true },
     rcaRequestedAt: { type: Date },
     rcaRequestedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     rcaRequestRemarks: { type: String, trim: true },
+    rcaProposedMeetingAt: { type: Date },
+    rcaProposedLocation: { type: String, trim: true },
+    rcaAdditionalAttendeeIds: [{ type: Schema.Types.ObjectId, ref: 'User' }],
     rcaSubmittedAt: { type: Date },
     rcaSubmittedBy: { type: Schema.Types.ObjectId, ref: 'User' },
     rcaSubmissionRemarks: { type: String, trim: true },
@@ -357,6 +430,20 @@ const IncidentSchema: Schema = new Schema(
           capaQuality: { type: Number, required: true, min: 0, max: 100 },
           rework: { type: Number, required: true, min: 0, max: 100 },
           overall: { type: Number, required: true, min: 0, max: 100 },
+        },
+        { _id: false }
+      ),
+    },
+    riskAssessment: {
+      type: new Schema(
+        {
+          likelihood: { type: Number, required: true, min: 1, max: 5 },
+          severity: { type: Number, required: true, min: 1, max: 5 },
+          score: { type: Number, required: true, min: 1, max: 25 },
+          band: { type: String, enum: ['LOW', 'MODERATE', 'HIGH', 'EXTREME'], required: true },
+          rationale: { type: String, trim: true },
+          assessedBy: { type: Schema.Types.ObjectId, ref: 'User', required: true },
+          assessedAt: { type: Date, required: true },
         },
         { _id: false }
       ),

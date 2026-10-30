@@ -407,7 +407,7 @@ export default function QualityReportsPage() {
                   : '0%'
               }
             />
-            <StatTile label="Harm & Sentinel" value={incidentSummary.critical} icon={AlertTriangle} tone="red" hint="Severity 3 & 4 events" />
+            <StatTile label="Harm & Sentinel" value={incidentSummary.critical} icon={AlertTriangle} tone="red" hint="Severity 3, 4 & 5 events" />
             <StatTile
               label="Median cycle time"
               value={incidentSummary.medianDays !== null ? `${incidentSummary.medianDays} d` : '—'}
@@ -515,8 +515,9 @@ export default function QualityReportsPage() {
                   { value: '', label: '-- All Severities --' },
                   { value: '1', label: 'Severity 1 – Near Miss' },
                   { value: '2', label: 'Severity 2 – No Harm' },
-                  { value: '3', label: 'Severity 3 – Harm' },
-                  { value: '4', label: 'Severity 4 – Sentinel Event' },
+                  { value: '3', label: 'Severity 3 – Adverse Event' },
+                  { value: '4', label: 'Severity 4 – Permanent Harm' },
+                  { value: '5', label: 'Severity 5 – Sentinel Event' },
                 ]}
                 searchPlaceholder="Search severities..."
                 className={filterControlClass}

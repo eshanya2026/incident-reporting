@@ -4,20 +4,20 @@ import dayjs from 'dayjs';
 import { ArrowLeft, Building, Calendar, MapPin, Tag, UserCheck, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
-import { hasPermission, homePath, isReceivingDepartment } from '../lib/rbac';
-import { PRIORITY_COLOR, PRIORITY_META, SEVERITY_META } from '../lib/incidentMeta';
+import { hasPermission, homePath, isWorkingDepartment } from '../lib/rbac';
+import { PRIORITY_COLOR, PRIORITY_META, SEVERITY_META, WORKFLOW_STEPS } from '../lib/incidentMeta';
 import { errorMessage } from '../lib/useAction';
 import { Card, Field, Notice } from '../components/ui/primitives';
 import { SeverityBadge, StatusBadge } from '../components/incident/Badges';
 import WorkflowStepper from '../components/incident/WorkflowStepper';
-import Timeline from '../components/incident/Timeline';
 import QualityTriagePanel from '../components/incident/detail/QualityTriagePanel';
 import QualityReviewPanel from '../components/incident/detail/QualityReviewPanel';
 import InvestigationSection from '../components/incident/detail/InvestigationSection';
 import RcaSection from '../components/incident/detail/RcaSection';
 import CapaSection from '../components/incident/detail/CapaSection';
+import DepartmentComparisonSection from '../components/incident/detail/DepartmentComparisonSection';
 import { HistorySection, ReportDetails } from '../components/incident/detail/ReportSections';
-import { HodAssignedPanel, StaffResponsePanel, SubmitClosurePanel, WaitingNotice, QualityMemberRcaPanel } from '../components/incident/detail/WorkflowPanels';
+import { HodAssignedPanel, StaffResponsePanel, SubmitClosurePanel, WaitingNotice, RcaMeetingPanel } from '../components/incident/detail/WorkflowPanels';
 
 const INVESTIGATION_STAGES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'RCA_REQUESTED', 'CLOSED'];
 const CAPA_STAGES = ['CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'RCA_REQUESTED', 'CLOSED'];
@@ -79,16 +79,19 @@ export default function IncidentDetailPage() {
   const capas: any[] = (capasQuery.data as any)?.data || [];
 
   const isStaff = hasPermission(user, 'incident.read_own') && !hasPermission(user, 'incident.read_all');
-  const isResponsibleHod = hasPermission(user, 'investigation.write') && isReceivingDepartment(user, incident);
-  const workEditable = isResponsibleHod && ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'].includes(status);
-  const capaEditable = isResponsibleHod && status === 'CAPA_IN_PROGRESS';
+  // Responsible department, or a department Quality marked as involved — both co-work the
+  // investigation and CAPA (see incidentAccess.ts canWorkOnIncident on the server).
+  const canWorkIncident = hasPermission(user, 'investigation.write') && isWorkingDepartment(user, incident);
+  const workEditable = canWorkIncident && ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'].includes(status);
+  const capaEditable = canWorkIncident && status === 'CAPA_IN_PROGRESS';
 
   const isRcaRequested = status === 'RCA_REQUESTED';
-  const canPerformRca =
-    hasPermission(user, 'rca.write') ||
-    (user?.roles || []).includes('QUALITY_MEMBER') ||
-    (user?.roles || []).includes('QUALITY');
-  const rcaEditable = (workEditable && incident.requiresRca) || (isRcaRequested && canPerformRca);
+  // Quality scheduled the meeting and uploads its report; the RCA Head just views the meeting
+  // details and investigates — both see RcaMeetingPanel, no one else needs to.
+  const canPerformRca = (user?.roles || []).includes('RCA_HEAD') || (user?.roles || []).includes('QUALITY');
+  // RcaMeetingPanel replaces this 5-Why form during RCA_REQUESTED; this form stays only for the
+  // HOD's investigation-stage RCA (severity 4–5).
+  const rcaEditable = workEditable && incident.requiresRca;
 
   const showSubmit =
     actions.includes('SUBMIT_CLOSURE') &&
@@ -101,6 +104,10 @@ export default function IncidentDetailPage() {
     actions.includes('REVIEW_ACCEPT') ||
     workEditable ||
     (isRcaRequested && canPerformRca);
+
+  // Quality/Admin/RCA Head: not working the incident directly, so they get the side-by-side
+  // comparison of every department's investigation and CAPA instead of a single department's view.
+  const canReviewComparison = !canWorkIncident && hasPermission(user, 'investigation.read') && hasPermission(user, 'capa.read');
 
   const confirmedSeverity = !isStaff && !NOT_YET_ASSIGNED.includes(status);
   const severityChanged = confirmedSeverity && incident.initialSeverity && incident.initialSeverity !== incident.severity;
@@ -161,117 +168,131 @@ export default function IncidentDetailPage() {
 
       <WorkflowStepper status={status} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-        <div className="lg:col-span-2 space-y-6">
-          {/* What was reported, first */}
-          <ReportDetails incident={incident} />
-
-          {/* What this user can do now */}
-          {actions.includes('ASSIGN') && <QualityTriagePanel incident={incident} />}
-          {actions.includes('RESPOND_INFO') && <StaffResponsePanel incident={incident} />}
-          {actions.includes('START_INVESTIGATION') && <HodAssignedPanel incident={incident} />}
-          {actions.includes('REVIEW_ACCEPT') && <QualityReviewPanel incident={incident} capas={capas} />}
-          {isRcaRequested && canPerformRca && <QualityMemberRcaPanel incident={incident} rca={rca} />}
-          {!hasActionPanel && <WaitingNotice incident={incident} isStaff={isStaff} />}
-
-          {/* Root Cause Analysis section */}
-          {(incident.requiresRca || isRcaRequested || rca) && (
-            <RcaSection incident={incident} rca={rca} editable={rcaEditable} />
+      <Card title="People" icon={Users}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
+          <Field label="Reported by">
+            {isStaff ? 'You' : incident.reportedBy?.name}
+            {incident.reportingDepartmentId?.name ? ` — ${incident.reportingDepartmentId.name}` : ''}
+          </Field>
+          <Field label="Responsible department">
+            {incident.departmentId?.name ? incident.departmentId.name : 'Not assigned yet'}
+          </Field>
+          {!isStaff && incident.assignedHod?.name && <Field label="HOD">{incident.assignedHod.name}</Field>}
+          {!isStaff && incident.rcaHeadId?.name && (
+            <Field label="RCA Head">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200 text-[11.5px] font-semibold">
+                {incident.rcaHeadId.name}
+                {incident.rcaHeadId.designation ? ` (${incident.rcaHeadId.designation})` : ''}
+              </span>
+            </Field>
           )}
-
-          {/* Investigation findings */}
-          <InvestigationSection incident={incident} investigation={investigation} rca={rca} editable={workEditable} />
-
-          {/* CAPA actions */}
-          {CAPA_STAGES.includes(status) && hasPermission(user, 'capa.read') && (
-            <CapaSection incident={incident} capas={capas} editable={capaEditable} />
+          {!isStaff && incident.priority && (
+            <Field label="Priority">
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] border ${PRIORITY_META[incident.priority as keyof typeof PRIORITY_META]?.classes || ''}`}
+              >
+                <span
+                  className="w-1.5 h-1.5 rounded-full shrink-0"
+                  style={{ background: PRIORITY_COLOR[incident.priority as keyof typeof PRIORITY_COLOR] }}
+                />
+                {PRIORITY_META[incident.priority as keyof typeof PRIORITY_META]?.label || incident.priority}
+              </span>
+              {incident.actionDueAt && status !== 'CLOSED' && (
+                <p className={`mt-1 text-[12px] font-medium ${dayjs().isAfter(dayjs(incident.actionDueAt)) ? 'text-red-600' : 'text-clinicalText-secondary'}`}>
+                  {dayjs().isAfter(dayjs(incident.actionDueAt))
+                    ? `Overdue — was due ${dayjs(incident.actionDueAt).format('DD MMM, HH:mm')}`
+                    : `Due by ${dayjs(incident.actionDueAt).format('DD MMM, HH:mm')}`}
+                </p>
+              )}
+            </Field>
           )}
-          {showSubmit && <SubmitClosurePanel incident={incident} investigation={investigation} rca={rca} capas={capas} />}
-
-          <HistorySection incident={incident} />
+          {!isStaff && incident.notifiedDepartmentIds?.length > 0 && (
+            <Field label="Involved departments">
+              <div className="flex flex-wrap gap-1 mt-0.5">
+                {incident.notifiedDepartmentIds.map((d: any) => (
+                  <span key={d._id || d.id || d} className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-clinicalText-primary text-[11.5px] font-medium">
+                    {d.name || d}
+                  </span>
+                ))}
+              </div>
+            </Field>
+          )}
+          {!isStaff && incident.intimatedUserIds?.length > 0 && (
+            <Field label="Intimated to">
+              <div className="flex flex-wrap gap-1 mt-0.5">
+                {incident.intimatedUserIds.map((u: any) => (
+                  <span key={u._id || u.id || u} className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-[11.5px] font-medium">
+                    {u.name || u.email || u}
+                    {u.designation ? ` (${u.designation})` : ''}
+                  </span>
+                ))}
+              </div>
+            </Field>
+          )}
+          {!isStaff && incident.assignedAt && (
+            <Field label="Assigned">
+              {dayjs(incident.assignedAt).format('DD MMM YYYY HH:mm')}
+              {incident.assignedBy?.name ? ` by ${incident.assignedBy.name}` : ''}
+            </Field>
+          )}
+          {confirmedSeverity && (
+            <Field label="Requirements">
+              {incident.requiresRca ? 'RCA and CAPA' : incident.requiresCapa ? 'CAPA' : 'Investigation only'}
+            </Field>
+          )}
         </div>
 
-        <div className="space-y-6">
-          <Card title="People" icon={Users}>
-            <div className="space-y-3">
-              <Field label="Reported by">
-                {isStaff ? 'You' : incident.reportedBy?.name}
-                {incident.reportingDepartmentId?.name ? ` — ${incident.reportingDepartmentId.name}` : ''}
-              </Field>
-              <Field label="Responsible department">
-                {incident.departmentId?.name ? incident.departmentId.name : 'Not assigned yet'}
-              </Field>
-              {incident.notifiedDepartmentIds?.length > 0 && (
-                <Field label="Other involved departments">
-                  <div className="flex flex-wrap gap-1 mt-0.5">
-                    {incident.notifiedDepartmentIds.map((d: any) => (
-                      <span key={d._id || d.id || d} className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-clinicalText-primary text-[11.5px] font-medium border border-slate-200">
-                        {d.name || d}
-                      </span>
-                    ))}
-                  </div>
-                </Field>
-              )}
-              {!isStaff && incident.assignedHod?.name && <Field label="HOD">{incident.assignedHod.name}</Field>}
-              {!isStaff && incident.assignedQualityMemberId?.name && (
-                <Field label="Quality Member (RCA)">
-                  <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-purple-50 text-purple-800 border border-purple-200 text-[11.5px] font-semibold">
-                    {incident.assignedQualityMemberId.name}
-                    {incident.assignedQualityMemberId.designation ? ` (${incident.assignedQualityMemberId.designation})` : ''}
+        {status !== 'REJECTED' && (
+          <div className="mt-4 pt-4 border-t border-clinicalBorder flex flex-wrap gap-x-6 gap-y-2">
+            {WORKFLOW_STEPS.map((step) => {
+              const at = ((timelineQuery.data as any)?.data || []).find((e: any) => step.statuses.includes(e.toStatus))?.at;
+              return (
+                <div key={step.key} className="text-[11.5px]">
+                  <span className="text-clinicalText-muted">{step.label}: </span>
+                  <span className={at ? 'font-semibold text-clinicalText-primary' : 'text-clinicalText-muted'}>
+                    {at ? dayjs(at).format('DD MMM, HH:mm') : '—'}
                   </span>
-                </Field>
-              )}
-              {!isStaff && incident.priority && (
-                <Field label="Priority">
-                  <span
-                    className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11.5px] border ${PRIORITY_META[incident.priority as keyof typeof PRIORITY_META]?.classes || ''}`}
-                  >
-                    <span
-                      className="w-1.5 h-1.5 rounded-full shrink-0"
-                      style={{ background: PRIORITY_COLOR[incident.priority as keyof typeof PRIORITY_COLOR] }}
-                    />
-                    {PRIORITY_META[incident.priority as keyof typeof PRIORITY_META]?.label || incident.priority}
-                  </span>
-                </Field>
-              )}
-              {!isStaff && incident.notifiedDepartmentIds?.length > 0 && (
-                <Field label="Involved departments">
-                  <div className="flex flex-wrap gap-1 mt-0.5">
-                    {incident.notifiedDepartmentIds.map((d: any) => (
-                      <span key={d._id || d.id || d} className="inline-flex items-center px-2 py-0.5 rounded-full bg-slate-100 text-clinicalText-primary text-[11.5px] font-medium">
-                        {d.name || d}
-                      </span>
-                    ))}
-                  </div>
-                </Field>
-              )}
-              {!isStaff && incident.intimatedUserIds?.length > 0 && (
-                <Field label="Intimated to">
-                  <div className="flex flex-wrap gap-1 mt-0.5">
-                    {incident.intimatedUserIds.map((u: any) => (
-                      <span key={u._id || u.id || u} className="inline-flex items-center px-2 py-0.5 rounded-full bg-amber-50 text-amber-900 border border-amber-200 text-[11.5px] font-medium">
-                        {u.name || u.email || u}
-                        {u.designation ? ` (${u.designation})` : ''}
-                      </span>
-                    ))}
-                  </div>
-                </Field>
-              )}
-              {!isStaff && incident.assignedAt && (
-                <Field label="Assigned">
-                  {dayjs(incident.assignedAt).format('DD MMM YYYY HH:mm')}
-                  {incident.assignedBy?.name ? ` by ${incident.assignedBy.name}` : ''}
-                </Field>
-              )}
-              {confirmedSeverity && (
-                <Field label="Requirements">
-                  {incident.requiresRca ? 'RCA and CAPA' : incident.requiresCapa ? 'CAPA' : 'Investigation only'}
-                </Field>
-              )}
-            </div>
-          </Card>
-          <Timeline entries={(timelineQuery.data as any)?.data || []} />
-        </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </Card>
+
+      <div className="space-y-6">
+        {/* What was reported, first */}
+        <ReportDetails incident={incident} />
+
+        {/* What this user can do now */}
+        {actions.includes('ASSIGN') && <QualityTriagePanel incident={incident} />}
+        {actions.includes('RESPOND_INFO') && <StaffResponsePanel incident={incident} />}
+        {actions.includes('START_INVESTIGATION') && <HodAssignedPanel incident={incident} />}
+        {(isRcaRequested || incident.rcaSubmittedAt) && canPerformRca && <RcaMeetingPanel incident={incident} />}
+        {!hasActionPanel && <WaitingNotice incident={incident} isStaff={isStaff} />}
+
+        {/* Root Cause Analysis section */}
+        {(incident.requiresRca || rca) && (
+          <RcaSection incident={incident} rca={rca} editable={rcaEditable} />
+        )}
+
+        {/* Investigation findings */}
+        <InvestigationSection incident={incident} investigation={investigation} rca={rca} editable={workEditable} />
+
+        {/* CAPA actions */}
+        {CAPA_STAGES.includes(status) && hasPermission(user, 'capa.read') && (
+          <CapaSection incident={incident} capas={capas} editable={capaEditable} />
+        )}
+        {showSubmit && <SubmitClosurePanel incident={incident} investigation={investigation} rca={rca} capas={capas} />}
+
+        {/* Quality's comparison of every involved department's investigation and CAPA */}
+        {canReviewComparison && INVESTIGATION_STAGES.includes(status) && (
+          <DepartmentComparisonSection incident={incident} capas={capas} />
+        )}
+
+        {/* Quality's decision, after seeing the investigation, CAPA and comparison above */}
+        {actions.includes('REVIEW_ACCEPT') && <QualityReviewPanel incident={incident} capas={capas} />}
+
+        <HistorySection incident={incident} />
       </div>
     </div>
   );

@@ -12,7 +12,7 @@ import { INCIDENT_STATUSES, IncidentStatus } from './incident.model.js';
 // People used across the tests. The incident was reported by `reporter` and is assigned to department d1.
 const PEOPLE = {
   quality: { userId: 'q1', roles: ['QUALITY'], departmentId: 'dq' },
-  qualityMember: { userId: 'qm1', roles: ['QUALITY_MEMBER'], departmentId: 'dq' },
+  rcaHead: { userId: 'rh1', roles: ['RCA_HEAD'], departmentId: 'dq' },
   reporter: { userId: 's1', roles: ['STAFF'], departmentId: 'd9' },
   otherStaff: { userId: 's2', roles: ['STAFF'], departmentId: 'd1' },
   hod: { userId: 'h1', roles: ['HOD'], departmentId: 'd1' },
@@ -33,7 +33,7 @@ const ACTOR_FOR: Record<WorkflowAction, Person> = {
   REVIEW_RETURN: 'quality',
   REVIEW_ACCEPT: 'quality',
   REQUEST_RCA: 'quality',
-  SUBMIT_RCA: 'qualityMember',
+  SUBMIT_RCA: 'quality',
 };
 
 /** A context in which `action` succeeds; tests then change one thing at a time. */
@@ -48,10 +48,11 @@ const validContext = (action: WorkflowAction): WorkflowContext => {
       requiresCapa: true,
     },
     actor: PEOPLE[ACTOR_FOR[action]],
-    investigation: { status: 'COMPLETED', findings: 'Label missing on IV bag' },
+    investigations: [{ departmentId: 'd1', status: 'COMPLETED', findings: 'Label missing on IV bag' }],
     rca: { status: 'COMPLETED' },
-    capas: [{ id: 'c1', status: 'DONE' }],
-    input: { text: 'Some text' },
+    rcaMeeting: { status: 'COMPLETED' },
+    capas: [{ id: 'c1', status: 'DONE', ownerDepartmentId: 'd1' }],
+    input: { text: 'Some text', riskLikelihood: 3, riskSeverity: 2 },
   };
   if (action === 'ASSIGN') base.input = { severity: 3, departmentHasActiveHod: true };
   return base;
@@ -133,11 +134,11 @@ describe('gates', () => {
   describe('COMPLETE_INVESTIGATION', () => {
     it('needs a completed investigation with findings', () => {
       const ctx = validContext('COMPLETE_INVESTIGATION');
-      ctx.investigation = { status: 'IN_PROGRESS', findings: 'x' };
+      ctx.investigations = [{ departmentId: 'd1', status: 'IN_PROGRESS', findings: 'x' }];
       expectFail('COMPLETE_INVESTIGATION', ctx, 'GATE_FAILED', /investigation/);
-      ctx.investigation = { status: 'COMPLETED', findings: ' ' };
+      ctx.investigations = [{ departmentId: 'd1', status: 'COMPLETED', findings: ' ' }];
       expectFail('COMPLETE_INVESTIGATION', ctx, 'GATE_FAILED', /investigation/);
-      ctx.investigation = null;
+      ctx.investigations = [];
       expectFail('COMPLETE_INVESTIGATION', ctx, 'GATE_FAILED', /investigation/);
     });
 
@@ -165,9 +166,9 @@ describe('gates', () => {
     it('needs every CAPA done', () => {
       const ctx = validContext('SUBMIT_CLOSURE');
       ctx.capas = [
-        { id: 'c1', status: 'DONE' },
-        { id: 'c2', status: 'OPEN' },
-        { id: 'c3', status: 'OPEN' },
+        { id: 'c1', status: 'DONE', ownerDepartmentId: 'd1' },
+        { id: 'c2', status: 'OPEN', ownerDepartmentId: 'd1' },
+        { id: 'c3', status: 'OPEN', ownerDepartmentId: 'd1' },
       ];
       expectFail('SUBMIT_CLOSURE', ctx, 'GATE_FAILED', /2 CAPA action\(s\) are not marked done/);
     });
@@ -175,10 +176,19 @@ describe('gates', () => {
     it('accepts CAPA already found effective in an earlier review', () => {
       const ctx = validContext('SUBMIT_CLOSURE');
       ctx.capas = [
-        { id: 'c1', status: 'EFFECTIVE' },
-        { id: 'c2', status: 'DONE' },
+        { id: 'c1', status: 'EFFECTIVE', ownerDepartmentId: 'd1' },
+        { id: 'c2', status: 'DONE', ownerDepartmentId: 'd1' },
       ];
       expect(checkTransition('SUBMIT_CLOSURE', ctx).ok).toBe(true);
+    });
+
+    it('needs every involved department to have written CAPA', () => {
+      const ctx = withIncident(validContext('SUBMIT_CLOSURE'), { notifiedDepartmentIds: ['d2'] });
+      ctx.investigations = [
+        { departmentId: 'd1', status: 'COMPLETED', findings: 'Label missing on IV bag' },
+        { departmentId: 'd2', status: 'COMPLETED', findings: 'Delay in response' },
+      ];
+      expectFail('SUBMIT_CLOSURE', ctx, 'GATE_FAILED', /Every involved department must write its CAPA/);
     });
 
     it('needs the RCA when required and the investigation completed', () => {
@@ -186,8 +196,18 @@ describe('gates', () => {
       ctx.rca = null;
       expectFail('SUBMIT_CLOSURE', ctx, 'GATE_FAILED', /RCA/);
       const ctx2 = validContext('SUBMIT_CLOSURE');
-      ctx2.investigation = { status: 'IN_PROGRESS' };
+      ctx2.investigations = [{ departmentId: 'd1', status: 'IN_PROGRESS' }];
       expectFail('SUBMIT_CLOSURE', ctx2, 'GATE_FAILED', /investigation/);
+    });
+  });
+
+  describe('SUBMIT_RCA', () => {
+    it('needs the RCA meeting report uploaded', () => {
+      const ctx = validContext('SUBMIT_RCA');
+      ctx.rcaMeeting = { status: 'SCHEDULED' };
+      expectFail('SUBMIT_RCA', ctx, 'GATE_FAILED', /report must be uploaded/);
+      ctx.rcaMeeting = null;
+      expectFail('SUBMIT_RCA', ctx, 'GATE_FAILED', /report must be uploaded/);
     });
   });
 
@@ -204,6 +224,23 @@ describe('gates', () => {
       const ctx = validContext('REVIEW_RETURN');
       ctx.input.text = '';
       expectFail('REVIEW_RETURN', ctx, 'GATE_FAILED', /Review remarks/);
+    });
+
+    it('needs a likelihood and severity risk rating to accept', () => {
+      const ctx = validContext('REVIEW_ACCEPT');
+      ctx.input.riskLikelihood = undefined;
+      expectFail('REVIEW_ACCEPT', ctx, 'GATE_FAILED', /likelihood and severity/);
+      ctx.input.riskLikelihood = 3;
+      ctx.input.riskSeverity = 6;
+      expectFail('REVIEW_ACCEPT', ctx, 'GATE_FAILED', /likelihood and severity/);
+    });
+
+    it('needs a rationale when severity is 4 or 5', () => {
+      const ctx = validContext('REVIEW_ACCEPT');
+      ctx.input.riskSeverity = 4;
+      expectFail('REVIEW_ACCEPT', ctx, 'GATE_FAILED', /rationale is required/);
+      ctx.input.riskRationale = 'Credible major harm if this recurs unmitigated.';
+      expect(checkTransition('REVIEW_ACCEPT', ctx).ok).toBe(true);
     });
 
     it('accepts or sends back regardless of how many CAPAs are done', () => {
@@ -236,6 +273,18 @@ describe('responsible HOD', () => {
   it('staff of the responsible department cannot act as its HOD', () => {
     expectFail('START_INVESTIGATION', { ...validContext('START_INVESTIGATION'), actor: PEOPLE.otherStaff }, 'NOT_ALLOWED');
   });
+
+  it('the HOD of an involved (not responsible) department may also start, complete and submit', () => {
+    const involved = withIncident(validContext('START_INVESTIGATION'), { notifiedDepartmentIds: ['d2'] });
+    expect(checkTransition('START_INVESTIGATION', { ...involved, actor: PEOPLE.otherHod }).ok).toBe(true);
+
+    const completing = withIncident(validContext('COMPLETE_INVESTIGATION'), { notifiedDepartmentIds: ['d2'] });
+    completing.investigations = [
+      { departmentId: 'd1', status: 'COMPLETED', findings: 'Label missing on IV bag' },
+      { departmentId: 'd2', status: 'COMPLETED', findings: 'Delay in response' },
+    ];
+    expect(checkTransition('COMPLETE_INVESTIGATION', { ...completing, actor: PEOPLE.otherHod }).ok).toBe(true);
+  });
 });
 
 describe('availableActions', () => {
@@ -256,8 +305,8 @@ describe('availableActions', () => {
     ['CAPA_IN_PROGRESS', 'hod', ['SUBMIT_CLOSURE']],
     ['PENDING_QUALITY_REVIEW', 'quality', ['REVIEW_RETURN', 'REVIEW_ACCEPT', 'REQUEST_RCA']],
     ['PENDING_QUALITY_REVIEW', 'hod', []],
-    ['RCA_REQUESTED', 'qualityMember', ['SUBMIT_RCA']],
-    ['RCA_REQUESTED', 'quality', []],
+    ['RCA_REQUESTED', 'quality', ['SUBMIT_RCA']],
+    ['RCA_REQUESTED', 'rcaHead', []],
     ['CLOSED', 'quality', []],
     ['CLOSED', 'hod', []],
     ['REJECTED', 'quality', []],

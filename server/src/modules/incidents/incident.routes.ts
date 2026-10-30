@@ -15,8 +15,7 @@ import {
   submitForClosure,
   reviewIncident,
   requestRca,
-  submitRca,
-  getQualityMembers,
+  getRcaHeads,
 } from './incident.controller.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requirePermission } from '../../middleware/authorize.js';
@@ -30,7 +29,7 @@ router.use(authenticate);
 router.get('/triage-queue', requirePermission(PERMISSIONS.INCIDENT_TRIAGE), getTriageQueue);
 router.get('/review-queue', getReviewQueue);
 router.get('/my-department', requirePermission(PERMISSIONS.INCIDENT_READ_ASSIGNED), getMyDepartmentIncidents);
-router.get('/quality-members', getQualityMembers);
+router.get('/rca-heads', getRcaHeads);
 
 // Reporting and reading (lists and details are scoped to what the user may see)
 router.post('/', requirePermission(PERMISSIONS.INCIDENT_CREATE), createIncident);
@@ -39,7 +38,7 @@ router.get('/:id', getIncidentById);
 router.get('/:id/timeline', getIncidentTimeline);
 
 // Workflow actions. The workflow rules additionally check status, the specific person
-// (reporter / responsible HOD / Quality / Quality Member) and each step's conditions.
+// (reporter / responsible HOD / Quality / RCA Head) and each step's conditions.
 router.post('/:id/request-info', requirePermission(PERMISSIONS.INCIDENT_TRIAGE), requestInfo);
 router.post('/:id/respond', requirePermission(PERMISSIONS.INCIDENT_RESUBMIT), respondToInfoRequest);
 router.post('/:id/reject', requirePermission(PERMISSIONS.INCIDENT_TRIAGE), rejectIncident);
@@ -48,6 +47,5 @@ router.post('/:id/return-to-quality', requirePermission(PERMISSIONS.INCIDENT_RET
 router.post('/:id/submit-closure', requirePermission(PERMISSIONS.INCIDENT_SUBMIT_CLOSURE), submitForClosure);
 router.post('/:id/review', requirePermission(PERMISSIONS.INCIDENT_REVIEW), reviewIncident);
 router.post('/:id/request-rca', requirePermission(PERMISSIONS.INCIDENT_REVIEW), requestRca);
-router.post('/:id/submit-rca', requirePermission(PERMISSIONS.RCA_WRITE), submitRca);
 
 export default router;

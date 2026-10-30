@@ -55,6 +55,11 @@ export function ReportDetails({ incident }: { incident: any }) {
                 Specific Area: {incident.locationId.name}
               </span>
             ) : null}
+            {incident.specificLocation ? (
+              <span className="block text-[12.5px] text-clinicalText-muted mt-0.5 font-normal">
+                Location detail: {incident.specificLocation}
+              </span>
+            ) : null}
           </div>
         </Field>
         <Field label="When it occurred">{fmt(incident.incidentDateTime)}</Field>
@@ -73,14 +78,14 @@ export function ReportDetails({ incident }: { incident: any }) {
         {incident.affectedPersonType === 'INPATIENT' && incident.patientInvolved && (
           <div className="md:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-2 md:grid-cols-3 gap-3">
             <Field label="Name">{p?.name}</Field>
-            <Field label="IP number">{p?.ipNumber}</Field>
+            <Field label="UHID">{p?.uhid}</Field>
             <Field label="Ward">{p?.ward}</Field>
           </div>
         )}
         {incident.affectedPersonType === 'OUTPATIENT' && incident.patientInvolved && (
           <div className="md:col-span-2 p-3 rounded-xl bg-slate-50 border border-slate-100 grid grid-cols-2 md:grid-cols-3 gap-3">
             <Field label="Name">{p?.name}</Field>
-            <Field label="Reg No">{p?.uhid}</Field>
+            <Field label="UHID">{p?.uhid}</Field>
             <Field label="Consultant">{p?.consultant}</Field>
           </div>
         )}
@@ -165,10 +170,14 @@ export function HistorySection({ incident }: { incident: any }) {
     entries.push({ at: incident.closureSubmission.at, who: incident.closureSubmission.by?.name, title: 'Submitted for review', text: incident.closureSubmission.summary, tone: 'border-indigo-300' });
   }
   for (const r of incident.qualityReviews || []) {
+    const returnedDepts = (r.departmentIds || []).map((d: any) => d.name || d).join(', ');
     entries.push({
       at: r.at,
       who: r.by?.name,
-      title: r.decision === 'ACCEPTED' ? 'Quality accepted and closed' : 'Quality sent it back',
+      title:
+        r.decision === 'ACCEPTED'
+          ? 'Quality accepted and closed'
+          : `Quality sent it back${returnedDepts ? ` — ${returnedDepts}` : ''}`,
       text: r.remarks,
       tone: r.decision === 'ACCEPTED' ? 'border-emerald-300' : 'border-red-300',
     });

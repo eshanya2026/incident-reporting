@@ -169,7 +169,9 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
     ] = await Promise.all([
       Incident.countDocuments(reportedFilter),
       Incident.countDocuments({ ...reportedFilter, status: 'REJECTED' }),
-      Incident.find(closedFilter).select('reportedAt closedAt assignments assignedAt closureSubmission qualityReviews hodReturns').lean(),
+      Incident.find(closedFilter)
+        .select('reportedAt closedAt assignments assignedAt closureSubmission qualityReviews hodReturns riskAssessment departmentId incidentNumber title')
+        .lean(),
       Incident.aggregate([{ $match: { ...reportedFilter, status: { $ne: 'REJECTED' } } }, { $group: { _id: '$severity', count: { $sum: 1 } } }]),
       Incident.aggregate([{ $match: reportedFilter }, { $group: { _id: '$categoryId', count: { $sum: 1 } } }, { $sort: { count: -1 } }]),
       hospitalWide
@@ -359,6 +361,41 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
       rate: capaReviewed ? Math.round((capaEffective / capaReviewed) * 100) : null,
     };
 
+    // Risk rating Quality recorded when closing (docs/NABH_Incident_Risk_Scoring_Logic.md) —
+    // older incidents closed before this feature existed have no riskAssessment and are excluded.
+    const riskAssessed = (closedIncidents as any[]).filter((i) => i.riskAssessment);
+    const RISK_BANDS: Array<'LOW' | 'MODERATE' | 'HIGH' | 'EXTREME'> = ['LOW', 'MODERATE', 'HIGH', 'EXTREME'];
+    const riskBands = RISK_BANDS.map((band) => ({
+      band,
+      count: riskAssessed.filter((i) => i.riskAssessment.band === band).length,
+    }));
+    const avgRiskScore = riskAssessed.length
+      ? Math.round((riskAssessed.reduce((sum, i) => sum + i.riskAssessment.score, 0) / riskAssessed.length) * 10) / 10
+      : null;
+    const riskByDepartment = hospitalWide
+      ? [...new Set(riskAssessed.map((i) => String(i.departmentId)))]
+          .map((id) => {
+            const forDept = riskAssessed.filter((i) => String(i.departmentId) === id);
+            return {
+              name: id !== 'undefined' ? nameOf(departments, id) : 'Not assigned',
+              high: forDept.filter((i) => i.riskAssessment.band === 'HIGH' || i.riskAssessment.band === 'EXTREME').length,
+              count: forDept.length,
+            };
+          })
+          .sort((a, b) => b.high - a.high || b.count - a.count)
+      : [];
+    const highRiskIncidents = riskAssessed
+      .filter((i) => i.riskAssessment.band === 'HIGH' || i.riskAssessment.band === 'EXTREME')
+      .sort((a, b) => b.riskAssessment.score - a.riskAssessment.score)
+      .slice(0, 10)
+      .map((i) => ({
+        incidentNumber: i.incidentNumber,
+        title: i.title,
+        score: i.riskAssessment.score,
+        band: i.riskAssessment.band,
+        closedAt: i.closedAt,
+      }));
+
     // Recurring hotspots: the same location + category repeating within the period (2+ times) —
     // reuses the pair counts already computed for the location x type chart above
     const recurringHotspots = (locationCategoryAgg as any[])
@@ -404,7 +441,7 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
             rate: closedIncidents.length ? Math.round((sentBack / closedIncidents.length) * 100) : null,
             activeRework,
           },
-          severity: [1, 2, 3, 4].map((s) => ({ severity: s, count: severityAgg.find((x) => x._id === s)?.count ?? 0 })),
+          severity: [1, 2, 3, 4, 5].map((s) => ({ severity: s, count: severityAgg.find((x) => x._id === s)?.count ?? 0 })),
           categories: categoryAgg.map((c) => ({ name: nameOf(categories, c._id), count: c.count })),
           domains,
           departments: (departmentAgg as any[]).map((d) => ({
@@ -424,6 +461,13 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
           capaEffectiveness,
           recurringHotspots,
           monthly,
+          risk: {
+            assessed: riskAssessed.length,
+            avgScore: avgRiskScore,
+            bands: riskBands,
+            byDepartment: riskByDepartment,
+            highRiskIncidents,
+          },
         },
       },
       'Dashboard overview retrieved'

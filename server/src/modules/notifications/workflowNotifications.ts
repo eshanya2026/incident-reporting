@@ -2,18 +2,17 @@ import mongoose from 'mongoose';
 import { IIncident, SEVERITY_LABELS } from '../incidents/incident.model.js';
 import type { WorkflowAction } from '../incidents/incidentWorkflow.rules.js';
 import type { JwtPayload } from '../auth/auth.utils.js';
-import { notifyUsers, qualityUserIds, qualityMemberUserIds } from './notification.service.js';
+import { notifyUsers, qualityUserIds, rcaHeadUserIds } from './notification.service.js';
 import { sendWhatsapp, sendWhatsappTemplate, whatsappEnabled } from './whatsapp.js';
 import { User } from '../users/user.model.js';
 import { Department } from '../departments/department.model.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
-import { ROLE_CODES } from '../../common/enums/permissions.js';
 
 // Who is told about each workflow step (docs/FLOW_REWORK_PLAN.md, Phase 4).
 // The person who performed the step is never notified.
 
-type Recipient = 'QUALITY' | 'REPORTER' | 'HOD' | 'QUALITY_MEMBER';
+type Recipient = 'QUALITY' | 'REPORTER' | 'HOD' | 'RCA_HEAD';
 type NotificationEvent = WorkflowAction | 'SUBMITTED';
 
 interface Message {
@@ -41,16 +40,16 @@ const MESSAGES: Partial<Record<NotificationEvent, Message[]>> = {
   SUBMIT_CLOSURE: [{ to: 'QUALITY', title: 'Incident ready for review', message: (i) => `The HOD submitted ${ref(i)} for your review.` }],
   REQUEST_RCA: [
     {
-      to: 'QUALITY_MEMBER',
+      to: 'RCA_HEAD',
       title: 'RCA requested by Quality',
-      message: (i, t) => `Quality requested Root Cause Analysis on ${ref(i)}${withText(t)}`,
+      message: (i, t) => `Quality requested an RCA meeting on ${ref(i)}${withText(t)}`,
     },
   ],
   SUBMIT_RCA: [
     {
       to: 'QUALITY',
-      title: 'RCA findings submitted',
-      message: (i, t) => `Quality member submitted RCA findings for ${ref(i)}${withText(t)}`,
+      title: 'RCA meeting report submitted',
+      message: (i, t) => `The RCA Head submitted the meeting report for ${ref(i)}${withText(t)}`,
     },
   ],
   REVIEW_RETURN: [{ to: 'HOD', title: 'Quality sent an incident back', message: (i, t) => `${ref(i)} needs more work${withText(t)}` }],
@@ -80,10 +79,10 @@ export const notifyWorkflowEvent = async (
       const userIds =
         m.to === 'QUALITY'
           ? await qualityUserIds()
-          : m.to === 'QUALITY_MEMBER'
-          ? incident.assignedQualityMemberId
-            ? [incident.assignedQualityMemberId]
-            : await qualityMemberUserIds()
+          : m.to === 'RCA_HEAD'
+          ? incident.rcaHeadId
+            ? [incident.rcaHeadId]
+            : await rcaHeadUserIds()
           : m.to === 'REPORTER'
           ? [incident.reportedBy]
           : [hodOf(incident)].filter(Boolean);
@@ -101,12 +100,13 @@ export const notifyWorkflowEvent = async (
       if (m.to === 'HOD' && event === 'ASSIGN') {
         await notifyHodByWhatsapp(incident, m, text);
 
+        const leadDept = incident.departmentId ? await Department.findById(incident.departmentId).select('name') : null;
+
         // Also notify HODs of additional involved departments for awareness
         if (incident.notifiedDepartmentIds && incident.notifiedDepartmentIds.length > 0) {
           const involvedDepts = await Department.find({ _id: { $in: incident.notifiedDepartmentIds } }).select('name hodUserId');
           const involvedHodIds = involvedDepts.map((d) => d.hodUserId).filter(Boolean) as mongoose.Types.ObjectId[];
           if (involvedHodIds.length > 0) {
-            const leadDept = incident.departmentId ? await Department.findById(incident.departmentId).select('name') : null;
             await notifyUsers({
               userIds: involvedHodIds,
               exceptUserId: actor.userId,
@@ -116,12 +116,12 @@ export const notifyWorkflowEvent = async (
               entityType: 'INCIDENT',
               entityId: incident._id as mongoose.Types.ObjectId,
             });
+            await notifyInvolvedHodsByWhatsapp(incident, involvedDepts, actor.userId, leadDept?.name);
           }
         }
 
         // Also notify personnel who were intimated (CC'd) on this incident
         if (incident.intimatedUserIds && incident.intimatedUserIds.length > 0) {
-          const leadDept = incident.departmentId ? await Department.findById(incident.departmentId).select('name') : null;
           await notifyUsers({
             userIds: incident.intimatedUserIds,
             exceptUserId: actor.userId,
@@ -131,8 +131,12 @@ export const notifyWorkflowEvent = async (
             entityType: 'INCIDENT',
             entityId: incident._id as mongoose.Types.ObjectId,
           });
-          await notifyIntimationMembersByWhatsapp(incident, actor.userId, leadDept?.name);
+          await notifyIntimatedUsersByWhatsapp(incident, actor.userId, leadDept?.name);
         }
+      }
+
+      if (m.to === 'REPORTER' && event === 'REQUEST_INFO') {
+        await notifyReporterByWhatsapp(incident, m, text);
       }
     }
   } catch (error) {
@@ -141,7 +145,50 @@ export const notifyWorkflowEvent = async (
   }
 };
 
-/** WhatsApp is only wired up for the ASSIGN event, so the HOD hears about new work immediately. */
+// Keeps the {{2}} parameter well clear of WhatsApp's 1024-char body cap, and the message itself
+// readable, even if a free-text field (e.g. a reviewer's remarks) happens to run long.
+const MAX_CONTENT_LENGTH = 400;
+const clamp = (text: string, max: number): string => (text.length > max ? `${text.slice(0, max - 1)}…` : text);
+
+// WATI's send API rejects a template parameter containing newlines/tabs or 5+ consecutive spaces
+// ("Sample Content param text cannot have new-line/tab characters or more than 4 consecutive
+// spaces") even though the same text is accepted as a sample when approving the template. Every
+// piece of free text going into {{2}} — including a reviewer's remarks, which may contain line
+// breaks — is sanitized to a single line before being joined.
+const singleLine = (text: string): string => text.replace(/[\r\n\t]+/g, ' ').replace(/ {2,}/g, ' ').trim();
+
+/**
+ * Builds the one single-line {{2}} block every notification packs its title, message, incident
+ * reference and any extra detail lines into — see sendWithTemplate below for why this is a single
+ * parameter rather than several.
+ */
+const buildContent = (params: { title: string; message: string; incidentRef: string; details?: Array<string | undefined> }): string =>
+  clamp(
+    singleLine([`*${params.title}*`, params.message, `Incident: ${params.incidentRef}`, ...(params.details || []).filter(Boolean)].join(' | ')),
+    MAX_CONTENT_LENGTH
+  );
+
+/**
+ * Sends the one generic WATI template (see docs/whatsapp-template.md) with this notification's
+ * name, content block and link filled into its three parameters, when a template is configured;
+ * otherwise falls back to a free-form session message (only deliverable within an open 24h
+ * WhatsApp session — testing only).
+ *
+ * Meta rejects templates with too many variables relative to their length, so every notification
+ * packs its title/message/incident-ref/details into one `content` block (built with buildContent
+ * above) instead of each being its own variable — keeping the approved template to just three:
+ * name, content, link.
+ */
+const sendWithTemplate = async (number: string, name: string, content: string, link: string, fallback: string): Promise<void> => {
+  if (env.WATI_TEMPLATE_NAME) {
+    // {{1}} name, {{2}} content block, {{3}} link — see docs/whatsapp-template.md.
+    await sendWhatsappTemplate(number, env.WATI_TEMPLATE_NAME, [singleLine(name), content, singleLine(link)]);
+    return;
+  }
+  await sendWhatsapp(number, fallback);
+};
+
+/** WhatsApps the HOD on ASSIGN, so they hear about new work immediately. */
 const notifyHodByWhatsapp = async (incident: IIncident, m: Message, text?: string): Promise<void> => {
   if (!whatsappEnabled()) return;
 
@@ -152,25 +199,66 @@ const notifyHodByWhatsapp = async (incident: IIncident, m: Message, text?: strin
   if (hod?.status !== 'ACTIVE' || !hod.whatsappNumber) return;
 
   const link = `${env.APP_URL}/incidents/${incident._id}`;
-
-  if (env.WATI_TEMPLATE_NAME) {
-    // Uses the "incident_assigned_hod" template (docs/whatsapp-template.md): {{1}} name,
-    // {{2}} incident ref, {{3}} severity, {{4}} remarks, {{5}} direct incident link.
-    const severity = SEVERITY_LABELS[incident.severity] ?? `Severity ${incident.severity}`;
-    const remarks = text?.trim() || 'Please review promptly.';
-    await sendWhatsappTemplate(hod.whatsappNumber, [hod.name, ref(incident), severity, remarks, link]);
-    return;
-  }
-
-  await sendWhatsapp(hod.whatsappNumber, `*${m.title}*\n${m.message(incident, text)}\n\nOpen: ${link}`);
+  const severity = SEVERITY_LABELS[incident.severity] ?? `Severity ${incident.severity}`;
+  const content = buildContent({
+    title: 'New Incident Assigned',
+    message: `A new incident has been assigned to your department by Quality. ${text?.trim() || 'Please review promptly.'}`,
+    incidentRef: ref(incident),
+    details: [`Severity: ${severity}`],
+  });
+  await sendWithTemplate(hod.whatsappNumber, hod.name, content, link, `*${m.title}*\n${m.message(incident, text)}\n\nOpen: ${link}`);
 };
 
-/**
- * WhatsApps every intimated user who holds the Intimation Member role — that role exists purely
- * to be notified this way, unlike other intimated users (e.g. a HOD or Quality officer CC'd for
- * awareness), who already get an in-app notification and don't need a WhatsApp as well.
- */
-const notifyIntimationMembersByWhatsapp = async (
+/** WhatsApps the reporter when Quality asks a question, so they see it even if not in the app right then. */
+const notifyReporterByWhatsapp = async (incident: IIncident, m: Message, text?: string): Promise<void> => {
+  if (!whatsappEnabled()) return;
+
+  const reporter = await User.findById(incident.reportedBy).select('name whatsappNumber status');
+  if (reporter?.status !== 'ACTIVE' || !reporter.whatsappNumber) return;
+
+  const link = `${env.APP_URL}/incidents/${incident._id}`;
+  const content = buildContent({
+    title: 'Quality Needs More Information',
+    message: text?.trim() || 'Please check the incident for details.',
+    incidentRef: ref(incident),
+  });
+  await sendWithTemplate(reporter.whatsappNumber, reporter.name, content, link, `*${m.title}*\n${m.message(incident, text)}\n\nOpen: ${link}`);
+};
+
+/** WhatsApps every active HOD of an additional involved department who has a WhatsApp number on file. */
+const notifyInvolvedHodsByWhatsapp = async (
+  incident: IIncident,
+  involvedDepts: Array<{ _id: mongoose.Types.ObjectId; name: string; hodUserId?: mongoose.Types.ObjectId }>,
+  actorUserId: string,
+  leadDeptName?: string
+): Promise<void> => {
+  if (!whatsappEnabled()) return;
+
+  const hodIds = involvedDepts.map((d) => d.hodUserId).filter(Boolean) as mongoose.Types.ObjectId[];
+  if (hodIds.length === 0) return;
+
+  const hods = await User.find({
+    _id: { $in: hodIds, $ne: actorUserId },
+    status: 'ACTIVE',
+    whatsappNumber: { $exists: true, $ne: '' },
+  }).select('name whatsappNumber');
+
+  const link = `${env.APP_URL}/incidents/${incident._id}`;
+  for (const hod of hods) {
+    const deptName = involvedDepts.find((d) => String(d.hodUserId) === String(hod._id))?.name || 'your department';
+    const fallback = `*Your department involved in safety report*\n${ref(incident)} — ${deptName}${leadDeptName ? ` (Lead: ${leadDeptName})` : ''}\n\nOpen: ${link}`;
+    const content = buildContent({
+      title: 'Department Involved',
+      message: `Your department has been marked as involved in a safety report${leadDeptName ? ` led by ${leadDeptName}` : ''}.`,
+      incidentRef: ref(incident),
+      details: [`Department: ${deptName}`],
+    });
+    await sendWithTemplate(hod.whatsappNumber!, hod.name, content, link, fallback);
+  }
+};
+
+/** WhatsApps every intimated (CC'd) user who has a WhatsApp number on file, regardless of role. */
+const notifyIntimatedUsersByWhatsapp = async (
   incident: IIncident,
   actorUserId: string,
   leadDeptName?: string
@@ -181,18 +269,67 @@ const notifyIntimationMembersByWhatsapp = async (
     _id: { $in: incident.intimatedUserIds, $ne: actorUserId },
     status: 'ACTIVE',
     whatsappNumber: { $exists: true, $ne: '' },
-  })
-    .populate('roles', 'code')
-    .select('name whatsappNumber roles');
+  }).select('name whatsappNumber');
 
   const link = `${env.APP_URL}/incidents/${incident._id}`;
   for (const member of members) {
-    const roles = (member.roles as unknown as Array<{ code: string }>) || [];
-    if (!roles.some((r) => r.code === ROLE_CODES.INTIMATION_MEMBER)) continue;
+    const fallback = `*You have been intimated on a safety report*\n${ref(incident)}${leadDeptName ? ` — Lead department: ${leadDeptName}` : ''}\n\nOpen: ${link}`;
+    const content = buildContent({
+      title: 'Intimated on Safety Report',
+      message: "You have been intimated (CC'd) on a safety report.",
+      incidentRef: ref(incident),
+      details: [leadDeptName ? `Lead department: ${leadDeptName}` : undefined],
+    });
+    await sendWithTemplate(member.whatsappNumber!, member.name, content, link, fallback);
+  }
+};
 
-    const message =
-      `*You have been intimated on a safety report*\n${ref(incident)}` +
-      `${leadDeptName ? ` — Lead department: ${leadDeptName}` : ''}\n\nOpen: ${link}`;
-    await sendWhatsapp(member.whatsappNumber!, message);
+const formatMeetingTime = (at: Date): string =>
+  at.toLocaleString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+/**
+ * WhatsApps every attendee (HODs, Quality, the RCA Head) once the RCA meeting is scheduled — an
+ * in-app notification is created for all attendees regardless of WhatsApp opt-in.
+ */
+export const notifyRcaMeetingScheduled = async (
+  incident: IIncident,
+  meeting: { meetingAt: Date; location: string; attendeeIds: mongoose.Types.ObjectId[] },
+  actorUserId: string
+): Promise<void> => {
+  try {
+    const title = 'RCA meeting scheduled';
+    const when = formatMeetingTime(meeting.meetingAt);
+    const message = `${ref(incident)} — ${when} at ${meeting.location}.`;
+
+    await notifyUsers({
+      userIds: meeting.attendeeIds,
+      exceptUserId: actorUserId,
+      type: 'RCA_MEETING_SCHEDULED',
+      title,
+      message,
+      entityType: 'INCIDENT',
+      entityId: incident._id as mongoose.Types.ObjectId,
+    });
+
+    if (!whatsappEnabled()) return;
+
+    const attendees = await User.find({
+      _id: { $in: meeting.attendeeIds, $ne: actorUserId },
+      status: 'ACTIVE',
+      whatsappNumber: { $exists: true, $ne: '' },
+    }).select('name whatsappNumber');
+
+    const link = `${env.APP_URL}/incidents/${incident._id}`;
+    const content = buildContent({
+      title: 'RCA Meeting Scheduled',
+      message: 'An RCA meeting has been scheduled for this safety report.',
+      incidentRef: ref(incident),
+      details: [`When: ${when}`, `Where: ${meeting.location}`],
+    });
+    for (const attendee of attendees) {
+      await sendWithTemplate(attendee.whatsappNumber!, attendee.name, content, link, `*${title}*\n${message}\n\nOpen: ${link}`);
+    }
+  } catch (error) {
+    logger.error({ err: error }, '❌ RCA meeting notifications failed');
   }
 };

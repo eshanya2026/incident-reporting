@@ -41,8 +41,9 @@ export const ROLE_CODES = {
   QUALITY: 'QUALITY',
   HOD: 'HOD',
   ADMIN: 'ADMIN',
-  // Quality Committee Members: conduct RCA when Quality requests it during review, then report back to Quality
-  QUALITY_MEMBER: 'QUALITY_MEMBER',
+  // Schedules and runs the RCA meeting when Quality isn't satisfied at review, then uploads the
+  // meeting's report back to Quality.
+  RCA_HEAD: 'RCA_HEAD',
   // No workflow permissions of their own — created purely to be picked in "Intimate to" so
   // non-staff contacts (external stakeholders, etc.) can be notified about an incident.
   INTIMATION_MEMBER: 'INTIMATION_MEMBER',

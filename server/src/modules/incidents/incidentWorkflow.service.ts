@@ -1,8 +1,17 @@
 import mongoose from 'mongoose';
 import { Request } from 'express';
-import { Incident, IIncident, IncidentPriority, computeQualityScore, severityRequirements } from './incident.model.js';
+import {
+  Incident,
+  IIncident,
+  IncidentPriority,
+  PRIORITY_DEADLINE_HOURS,
+  computeQualityScore,
+  riskBandFor,
+  severityRequirements,
+} from './incident.model.js';
 import { Investigation } from '../investigations/investigation.model.js';
 import { RootCauseAnalysis } from '../rca/rca.model.js';
+import { RcaMeeting } from '../rca/rcaMeeting.model.js';
 import { Capa } from '../capa/capa.model.js';
 import { Department } from '../departments/department.model.js';
 import { User } from '../users/user.model.js';
@@ -28,8 +37,19 @@ export interface WorkflowInput {
   intimatedUserIds?: string[];
   severity?: number;
   priority?: IncidentPriority;
-  /** REQUEST_RCA: optional assigned Quality member */
-  qualityMemberId?: string;
+  /** REQUEST_RCA: optional assigned RCA Head */
+  rcaHeadId?: string;
+  /** REQUEST_RCA: Quality's suggested meeting date/time and location, offered to the RCA Head when scheduling. */
+  rcaProposedMeetingAt?: Date;
+  rcaProposedLocation?: string;
+  /** REQUEST_RCA: extra HODs/Intimation Members Quality wants invited to the meeting. */
+  rcaAdditionalAttendeeIds?: string[];
+  /** REVIEW_RETURN: which department(s) need rework; omitted/empty returns every department. */
+  departmentIds?: string[];
+  /** REVIEW_ACCEPT: likelihood × severity risk assessment, required before closing. */
+  riskLikelihood?: number;
+  riskSeverity?: number;
+  riskRationale?: string;
 }
 
 export interface PerformParams {
@@ -44,9 +64,10 @@ const INVESTIGATION_DUE_DAYS = 7;
 const idOf = (v: any): string | undefined => (v ? (v._id ?? v).toString() : undefined);
 
 const loadContext = async (incident: IIncident, user: JwtPayload, input: WorkflowInput) => {
-  const [investigation, rca, capas] = await Promise.all([
-    Investigation.findOne({ incidentId: incident._id }),
+  const [investigations, rca, rcaMeeting, capas] = await Promise.all([
+    Investigation.find({ incidentId: incident._id }),
     RootCauseAnalysis.findOne({ incidentId: incident._id }),
+    RcaMeeting.findOne({ incidentId: incident._id }),
     Capa.find({ incidentId: incident._id }),
   ]);
 
@@ -63,21 +84,31 @@ const loadContext = async (incident: IIncident, user: JwtPayload, input: Workflo
       status: incident.status,
       reportedBy: idOf(incident.reportedBy)!,
       departmentId: idOf(incident.departmentId),
+      notifiedDepartmentIds: (incident.notifiedDepartmentIds || []).map((d) => idOf(d)!),
       requiresRca: incident.requiresRca,
       requiresCapa: incident.requiresCapa,
     },
     actor: { userId: user.userId, roles: user.roles || [], departmentId: user.departmentId },
-    investigation: investigation ? { status: investigation.status, findings: investigation.findings } : null,
+    investigations: investigations.map((i) => ({
+      departmentId: idOf(i.departmentId)!,
+      status: i.status,
+      findings: i.findings,
+    })),
     rca: rca ? { status: rca.status } : null,
-    capas: capas.map((c) => ({ id: c._id.toString(), status: c.status })),
+    rcaMeeting: rcaMeeting ? { status: rcaMeeting.status } : null,
+    capas: capas.map((c) => ({ id: c._id.toString(), status: c.status, ownerDepartmentId: idOf(c.ownerDepartmentId) })),
     input: {
       text: input.text,
       severity: input.severity,
       departmentHasActiveHod: Boolean(assignHodId),
+      departmentIds: input.departmentIds,
+      riskLikelihood: input.riskLikelihood,
+      riskSeverity: input.riskSeverity,
+      riskRationale: input.riskRationale,
     },
   };
 
-  return { ctx, investigation, capas, assignHodId };
+  return { ctx, investigations, capas, assignHodId };
 };
 
 export class IncidentWorkflowService {
@@ -95,7 +126,7 @@ export class IncidentWorkflowService {
       throw AppError.notFound('Incident record not found');
     }
 
-    const { ctx, investigation, capas, assignHodId } = await loadContext(incident, user, input);
+    const { ctx, investigations, capas, assignHodId } = await loadContext(incident, user, input);
 
     const check = checkTransition(action, ctx);
     if (!check.ok) {
@@ -137,6 +168,9 @@ export class IncidentWorkflowService {
         const intimatedUserIds = (input.intimatedUserIds || [])
           .filter(Boolean)
           .map((id) => new mongoose.Types.ObjectId(id));
+        const actionDueAt = input.priority
+          ? new Date(now.getTime() + PRIORITY_DEADLINE_HOURS[input.priority] * 60 * 60 * 1000)
+          : undefined;
         Object.assign(incident, severityRequirements(severity), {
           severity,
           departmentId,
@@ -144,6 +178,7 @@ export class IncidentWorkflowService {
           assignedBy: actorId,
           assignedAt: now,
           priority: input.priority,
+          actionDueAt,
           notifiedDepartmentIds,
           intimatedUserIds,
         });
@@ -165,16 +200,21 @@ export class IncidentWorkflowService {
         incident.departmentId = undefined;
         incident.assignedHod = undefined;
         incident.priority = undefined;
+        incident.actionDueAt = undefined;
         incident.notifiedDepartmentIds = [];
         incident.intimatedUserIds = [];
         break;
 
-      case 'START_INVESTIGATION':
-        if (!investigation) {
+      case 'START_INVESTIGATION': {
+        // One investigation record per department (lead or involved) — each starts their own.
+        const myDepartmentId = user.departmentId ? new mongoose.Types.ObjectId(user.departmentId) : incident.departmentId;
+        const alreadyStarted = investigations.some((i) => idOf(i.departmentId) === idOf(myDepartmentId));
+        if (!alreadyStarted) {
           const dueDate = new Date(now);
           dueDate.setDate(dueDate.getDate() + INVESTIGATION_DUE_DAYS);
           await Investigation.create({
             incidentId: incident._id,
+            departmentId: myDepartmentId,
             investigatorId: actorId,
             startedAt: now,
             dueDate,
@@ -182,6 +222,7 @@ export class IncidentWorkflowService {
           });
         }
         break;
+      }
 
       case 'SUBMIT_CLOSURE':
         incident.closureSubmission = { summary: text!, ...note };
@@ -189,10 +230,15 @@ export class IncidentWorkflowService {
 
       case 'REVIEW_RETURN':
       case 'REVIEW_ACCEPT': {
-        // Accepting closes the incident, so every completed CAPA is taken as effective; sending it
-        // back to the HOD means the opposite — each one goes back to OPEN for the HOD to redo.
+        // Accepting closes the incident, so every completed CAPA is taken as effective. Returning
+        // means the opposite — but only for the department(s) Quality picked; an unselected
+        // department's already-done CAPA is left alone, since it doesn't need rework.
         const accepted = action === 'REVIEW_ACCEPT';
-        const doneCapaIds = capas.filter((c) => c.status === 'DONE').map((c) => c._id);
+        const returnDeptIds = !accepted && input.departmentIds?.length ? new Set(input.departmentIds) : null;
+        const doneCapaIds = capas
+          .filter((c) => c.status === 'DONE')
+          .filter((c) => !returnDeptIds || returnDeptIds.has(idOf(c.ownerDepartmentId) || ''))
+          .map((c) => c._id);
         if (doneCapaIds.length > 0) {
           await Capa.updateMany(
             { _id: { $in: doneCapaIds } },
@@ -209,7 +255,12 @@ export class IncidentWorkflowService {
             }
           );
         }
-        incident.qualityReviews.push({ decision: accepted ? 'ACCEPTED' : 'RETURNED', remarks: text!, ...note });
+        incident.qualityReviews.push({
+          decision: accepted ? 'ACCEPTED' : 'RETURNED',
+          remarks: text!,
+          departmentIds: returnDeptIds ? input.departmentIds!.map((id) => new mongoose.Types.ObjectId(id)) : undefined,
+          ...note,
+        });
         if (accepted) {
           incident.closedAt = now;
           incident.closedBy = actorId;
@@ -223,6 +274,16 @@ export class IncidentWorkflowService {
             reworkCount,
             capaTypes: capas.map((c) => c.type),
           });
+          const riskScore = input.riskLikelihood! * input.riskSeverity!;
+          incident.riskAssessment = {
+            likelihood: input.riskLikelihood!,
+            severity: input.riskSeverity!,
+            score: riskScore,
+            band: riskBandFor(riskScore),
+            rationale: input.riskRationale,
+            assessedBy: actorId,
+            assessedAt: now,
+          };
         }
         break;
       }
@@ -235,8 +296,11 @@ export class IncidentWorkflowService {
         incident.rcaRequestedBy = actorId;
         incident.rcaRequestRemarks = text;
         incident.requiresRca = true;
-        if (input.qualityMemberId) {
-          incident.assignedQualityMemberId = new mongoose.Types.ObjectId(input.qualityMemberId);
+        incident.rcaProposedMeetingAt = input.rcaProposedMeetingAt;
+        incident.rcaProposedLocation = input.rcaProposedLocation;
+        incident.rcaAdditionalAttendeeIds = (input.rcaAdditionalAttendeeIds || []).map((id) => new mongoose.Types.ObjectId(id));
+        if (input.rcaHeadId) {
+          incident.rcaHeadId = new mongoose.Types.ObjectId(input.rcaHeadId);
         }
         break;
 
@@ -306,6 +370,7 @@ export class IncidentWorkflowService {
         status: incident.status,
         reportedBy: idOf(incident.reportedBy)!,
         departmentId: idOf(incident.departmentId),
+        notifiedDepartmentIds: (incident.notifiedDepartmentIds || []).map((d) => idOf(d)!),
         requiresRca: incident.requiresRca,
         requiresCapa: incident.requiresCapa,
       },

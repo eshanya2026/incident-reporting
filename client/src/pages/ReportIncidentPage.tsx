@@ -18,13 +18,14 @@ import type { LucideIcon } from 'lucide-react';
 import { api } from '../lib/api';
 import dayjs from 'dayjs';
 import { departmentOptions } from '../components/ui/DepartmentOptions';
+import { wardOptions } from '../components/ui/WardOptions';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { PageHeader } from '../components/ui/primitives';
 import { toast } from '../store/useToastStore';
 import { errorMessage } from '../lib/useAction';
 
 const FLOORS = ['Ground Floor', 'Floor 1', 'Floor 2', 'Floor 3', 'Floor 4', 'Floor 5'] as const;
-const ZONES = ['Zone-1', 'Zone-B', 'Zone-C'] as const;
+const ZONES = ['Zone-A', 'Zone-B', 'Zone-C'] as const;
 
 /** Who an incident affected. Matches server/src/modules/incidents/incident.model.ts AFFECTED_PERSON_TYPES. */
 const AFFECTED_PERSON_TYPES = [
@@ -48,8 +49,9 @@ const AFFECTED_DETAIL_COPY: Record<string, { title: string }> = {
 const SEVERITY_LEVELS = [
   { lvl: 1, name: 'Near Miss', desc: 'Caught before it happened', color: '#10B981', tint: '#ECFDF5', label: 'Level 1 – Near Miss', sublabel: 'Incident caught or corrected before it reached the patient' },
   { lvl: 2, name: 'No Harm', desc: 'Reached patient, no harm', color: '#0284C7', tint: '#F0F9FF', label: 'Level 2 – No Harm', sublabel: 'Incident occurred but resulted in no harm to the patient' },
-  { lvl: 3, name: 'Harm', desc: 'Harm resulted', color: '#DC2626', tint: '#FEF2F2', label: 'Level 3 – Harm', sublabel: 'Harm resulted, requiring intervention, treatment, or prolonged stay' },
-  { lvl: 4, name: 'Sentinel', desc: 'Death or severe harm', color: '#6B1418', tint: '#FBEEEF', label: 'Level 4 – Sentinel Event', sublabel: 'Catastrophic event: patient death or permanent severe loss of function' },
+  { lvl: 3, name: 'Adverse Event', desc: 'Harm resolving within 2 weeks', color: '#F59E0B', tint: '#FFFBEB', label: 'Level 3 – Adverse Event', sublabel: 'Harm resulted, requiring intervention or treatment, resolving within 2 weeks' },
+  { lvl: 4, name: 'Permanent Harm', desc: 'Harm lasting more than 2 weeks', color: '#DC2626', tint: '#FEF2F2', label: 'Level 4 – Permanent Harm', sublabel: 'Harm resulted and lasted more than 2 weeks, or caused prolonged/permanent impairment' },
+  { lvl: 5, name: 'Sentinel', desc: 'Death or severe harm', color: '#6B1418', tint: '#FBEEEF', label: 'Level 5 – Sentinel Event', sublabel: 'Catastrophic event: patient death or permanent severe loss of function' },
 ] as const;
 
 const inputClass =
@@ -195,15 +197,20 @@ export default function ReportIncidentPage() {
   const [selectedFloor, setSelectedFloor] = useState('');
   const [selectedZone, setSelectedZone] = useState('');
   const [locationId, setLocationId] = useState('');
+  // For an inpatient: did the incident happen in their own ward, or elsewhere?
+  // 'Yes' -> the ward itself is the location (no floor/zone needed).
+  // 'No' / unanswered -> fall back to the floor/zone picker, same as any other incident.
+  const [incidentInWard, setIncidentInWard] = useState<'Yes' | 'No' | ''>('');
   const [categoryId, setCategoryId] = useState('');
   const [subcategoryCode, setSubcategoryCode] = useState('');
   const [affectedPersonType, setAffectedPersonType] = useState('');
   // Fields asked per affected person type (see AFFECTED_DETAIL_COPY below)
-  const [inpatient, setInpatient] = useState({ name: '', ipNumber: '', ward: '' });
-  const [outpatient, setOutpatient] = useState({ name: '', regNo: '', consultant: '' });
+  const [inpatient, setInpatient] = useState({ name: '', uhid: '', ward: '' });
+  const [outpatient, setOutpatient] = useState({ name: '', uhid: '', consultant: '' });
   const [visitor, setVisitor] = useState({ name: '', contactNumber: '' });
   const [employee, setEmployee] = useState({ name: '', employeeNumber: '', departmentId: '' });
   const [other, setOther] = useState({ name: '', contactNumber: '', description: '' });
+  const [specificLocation, setSpecificLocation] = useState('');
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [witness, setWitness] = useState('');
@@ -234,12 +241,12 @@ export default function ReportIncidentPage() {
   const locations = (locationsData as any)?.data || [];
   const categories = (categoriesData as any)?.data || [];
 
-  const matchingLocations = React.useMemo(() => {
-    if (!selectedFloor || !selectedZone) return [];
-    return locations.filter((l: any) => l.floor === selectedFloor && l.zone === selectedZone);
-  }, [locations, selectedFloor, selectedZone]);
-
   const selectedLocation = locations.find((l: any) => l._id === locationId);
+  const wardLocationMode = affectedPersonType === 'INPATIENT' && Boolean(inpatient.ward) && incidentInWard === 'Yes';
+  const wardLocation = wardLocationMode
+    ? locations.find((l: any) => l.type === 'WARD' && l.name === inpatient.ward)
+    : undefined;
+  const locationDone = wardLocationMode ? Boolean(wardLocation) : Boolean(selectedFloor && selectedZone);
 
   const categoryOptions = React.useMemo(() => {
     const hasMultipleDomains = new Set(categories.map((c: any) => c.domain || 'General Categories')).size > 1;
@@ -259,8 +266,7 @@ export default function ReportIncidentPage() {
   const requiredChecks = [
     Boolean(incidentDateTime),
     Boolean(departmentId),
-    Boolean(selectedFloor),
-    Boolean(selectedZone),
+    locationDone,
     Boolean(affectedPersonType),
     Boolean(categoryId),
     Boolean(title.trim()),
@@ -269,9 +275,9 @@ export default function ReportIncidentPage() {
   const requiredDone = requiredChecks.filter(Boolean).length;
   const progress = Math.round((requiredDone / requiredChecks.length) * 100);
 
-  const whereDone = requiredChecks.slice(0, 5).every(Boolean);
-  const categoryDone = requiredChecks[5];
-  const detailsDone = requiredChecks[6] && requiredChecks[7];
+  const whereDone = requiredChecks.slice(0, 4).every(Boolean);
+  const categoryDone = requiredChecks[4];
+  const detailsDone = requiredChecks[5] && requiredChecks[6];
   const evidenceDone = uploadedFiles.length > 0;
 
   const steps = [
@@ -359,15 +365,46 @@ export default function ReportIncidentPage() {
     }
   };
 
+  const handleWardChange = (ward: string) => {
+    setInpatient({ ...inpatient, ward });
+    setIncidentInWard('');
+    setSelectedFloor('');
+    setSelectedZone('');
+    setLocationId('');
+  };
+
+  const handleIncidentInWardChange = (choice: 'Yes' | 'No') => {
+    setIncidentInWard(choice);
+    setSelectedFloor('');
+    setSelectedZone('');
+    if (choice === 'Yes') {
+      const wardLoc = locations.find((l: any) => l.type === 'WARD' && l.name === inpatient.ward);
+      setLocationId(wardLoc?._id || '');
+      setSpecificLocation('');
+    } else {
+      setLocationId('');
+    }
+  };
+
   // ---- Submit ----
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
     if (!departmentId) return setError('Please select the department where it occurred.');
-    if (!selectedFloor) return setError('Please select the hospital floor.');
-    if (!selectedZone) return setError('Please select the zone.');
+    if (wardLocationMode) {
+      if (!wardLocation) return setError('Please select a valid ward.');
+    } else {
+      if (!selectedFloor) return setError('Please select the hospital floor.');
+      if (!selectedZone) return setError('Please select the zone.');
+    }
     if (!affectedPersonType) return setError('Please select the affected person.');
+    if (affectedPersonType === 'INPATIENT' && (!inpatient.name.trim() || !inpatient.uhid.trim())) {
+      return setError('Please enter the patient’s name and UHID.');
+    }
+    if (affectedPersonType === 'OUTPATIENT' && (!outpatient.name.trim() || !outpatient.uhid.trim())) {
+      return setError('Please enter the patient’s name and UHID.');
+    }
     if (!categoryId) return setError('Please select an incident category.');
 
     setLoading(true);
@@ -377,8 +414,9 @@ export default function ReportIncidentPage() {
         incidentDateTime,
         occurredInDepartmentId: departmentId,
         locationId,
-        floor: selectedFloor || undefined,
-        zone: selectedZone || undefined,
+        floor: wardLocationMode ? undefined : selectedFloor || undefined,
+        zone: wardLocationMode ? undefined : selectedZone || undefined,
+        specificLocation: wardLocationMode ? undefined : specificLocation.trim() || undefined,
         categoryId,
         subcategoryCode: subcategoryCode || undefined,
         affectedPersonType,
@@ -395,13 +433,13 @@ export default function ReportIncidentPage() {
       if (affectedPersonType === 'INPATIENT') {
         payload.patient = {
           name: inpatient.name || undefined,
-          ipNumber: inpatient.ipNumber || undefined,
+          uhid: inpatient.uhid || undefined,
           ward: inpatient.ward || undefined,
         };
       } else if (affectedPersonType === 'OUTPATIENT') {
         payload.patient = {
           name: outpatient.name || undefined,
-          uhid: outpatient.regNo || undefined,
+          uhid: outpatient.uhid || undefined,
           consultant: outpatient.consultant || undefined,
         };
       } else if (affectedPersonType === 'VISITOR_FAMILY') {
@@ -532,7 +570,11 @@ export default function ReportIncidentPage() {
                 <div className="flex gap-2">
                   <dt className="text-slate-400 w-16 shrink-0">Location</dt>
                   <dd className="text-slate-700 font-medium min-w-0">
-                    {selectedFloor ? `${selectedFloor}${selectedZone ? ` • ${selectedZone}` : ''}` : '—'}
+                    {wardLocationMode
+                      ? `Ward • ${inpatient.ward}`
+                      : selectedFloor
+                        ? `${selectedFloor}${selectedZone ? ` • ${selectedZone}` : ''}`
+                        : '—'}
                   </dd>
                 </div>
                 <div className="flex gap-2">
@@ -588,7 +630,7 @@ export default function ReportIncidentPage() {
                   containerClassName="block w-full"
                   options={[
                     { value: '', label: 'Select department' },
-                    ...departmentOptions(departments, (d) => `${d.name} (${d.code})`),
+                    ...departmentOptions(departments),
                   ]}
                   searchPlaceholder="Search departments..."
                   className={inputClass}
@@ -617,58 +659,78 @@ export default function ReportIncidentPage() {
 
                   {affectedPersonType === 'INPATIENT' && (
                     <div className="grid sm:grid-cols-3 gap-4">
-                      <Field label="Name" htmlFor="ip-name">
+                      <Field label="Name" required htmlFor="ip-name">
                         <input
                           id="ip-name"
                           type="text"
+                          required
                           placeholder="Full name"
                           value={inpatient.name}
                           onChange={(e) => setInpatient({ ...inpatient, name: e.target.value })}
                           className={inputClass}
                         />
                       </Field>
-                      <Field label="IP number" htmlFor="ip-number">
+                      <Field label="UHID" required htmlFor="ip-uhid">
                         <input
-                          id="ip-number"
+                          id="ip-uhid"
                           type="text"
-                          placeholder="e.g. IP07024"
-                          value={inpatient.ipNumber}
-                          onChange={(e) => setInpatient({ ...inpatient, ipNumber: e.target.value })}
+                          required
+                          placeholder="e.g. UHID-61501"
+                          value={inpatient.uhid}
+                          onChange={(e) => setInpatient({ ...inpatient, uhid: e.target.value })}
                           className={inputClass}
                         />
                       </Field>
                       <Field label="Ward" htmlFor="ip-ward">
-                        <input
+                        <SearchableSelect
                           id="ip-ward"
-                          type="text"
-                          placeholder="e.g. Ward 3"
+                          containerClassName="block w-full"
                           value={inpatient.ward}
-                          onChange={(e) => setInpatient({ ...inpatient, ward: e.target.value })}
+                          onChange={handleWardChange}
+                          options={[{ value: '', label: 'Select ward' }, ...wardOptions()]}
+                          searchPlaceholder="Search wards..."
                           className={inputClass}
                         />
                       </Field>
+
+                      {inpatient.ward && (
+                        <Field
+                          label="Did this happen in the patient's ward?"
+                          className="sm:col-span-3"
+                          hint="If it happened somewhere else, pick the floor and zone below."
+                        >
+                          <ChipGroup
+                            label="Did this happen in the patient's ward?"
+                            options={['Yes', 'No']}
+                            value={incidentInWard}
+                            onChange={(v) => handleIncidentInWardChange(v as 'Yes' | 'No')}
+                          />
+                        </Field>
+                      )}
                     </div>
                   )}
 
                   {affectedPersonType === 'OUTPATIENT' && (
                     <div className="grid sm:grid-cols-3 gap-4">
-                      <Field label="Name" htmlFor="op-name">
+                      <Field label="Name" required htmlFor="op-name">
                         <input
                           id="op-name"
                           type="text"
+                          required
                           placeholder="Full name"
                           value={outpatient.name}
                           onChange={(e) => setOutpatient({ ...outpatient, name: e.target.value })}
                           className={inputClass}
                         />
                       </Field>
-                      <Field label="Reg No" htmlFor="op-regno">
+                      <Field label="UHID" required htmlFor="op-uhid">
                         <input
-                          id="op-regno"
+                          id="op-uhid"
                           type="text"
-                          placeholder="e.g. OP07024"
-                          value={outpatient.regNo}
-                          onChange={(e) => setOutpatient({ ...outpatient, regNo: e.target.value })}
+                          required
+                          placeholder="e.g. UHID-61501"
+                          value={outpatient.uhid}
+                          onChange={(e) => setOutpatient({ ...outpatient, uhid: e.target.value })}
                           className={inputClass}
                         />
                       </Field>
@@ -739,7 +801,7 @@ export default function ReportIncidentPage() {
                           containerClassName="block w-full"
                           options={[
                             { value: '', label: 'Select department' },
-                            ...departmentOptions(departments, (d) => `${d.name} (${d.code})`),
+                            ...departmentOptions(departments),
                           ]}
                           searchPlaceholder="Search departments..."
                           className={inputClass}
@@ -785,53 +847,59 @@ export default function ReportIncidentPage() {
                 </div>
               )}
 
-              <Field label="Hospital floor" required className="sm:col-span-2 lg:col-span-3">
-                <ChipGroup label="Hospital floor" options={FLOORS} value={selectedFloor} onChange={handleFloorChange} />
-              </Field>
-
-              <Field
-                label="Zone"
-                required
-                className="sm:col-span-2 lg:col-span-3"
-                hint={!selectedFloor ? 'Select a floor first.' : undefined}
-              >
-                <ChipGroup
-                  label="Zone"
-                  options={ZONES}
-                  value={selectedZone}
-                  onChange={handleZoneChange}
-                  disabled={!selectedFloor}
-                />
-              </Field>
-
-              {selectedFloor && selectedZone && matchingLocations.length > 1 && (
-                <Field
-                  label={`Specific room / ward / bay in ${selectedFloor} • ${selectedZone}`}
-                  className="sm:col-span-2 lg:col-span-3"
-                  hint="Optional — pick a more precise place if you know it."
-                >
-                  <SearchableSelect
-                    value={locationId}
-                    onChange={setLocationId}
-                    containerClassName="block w-full"
-                    options={matchingLocations.map((l: any) => ({
-                      value: l._id,
-                      label: `${l.name} ${l.type ? `[${l.type}]` : ''}`.trim(),
-                    }))}
-                    searchPlaceholder="Search rooms..."
-                    className={inputClass}
-                  />
-                </Field>
-              )}
-
-              {selectedFloor && selectedZone && (
+              {wardLocationMode ? (
                 <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-2.5 text-sm text-[#3D0F16] bg-[#FAF3EC] px-4 py-3 rounded-xl border border-[#E9D3BC] animate-tab-panel-in">
                   <MapPin className="w-4 h-4 shrink-0" />
                   <span>
-                    Incident location: <strong>{selectedFloor}</strong> &bull; <strong>{selectedZone}</strong>
-                    {selectedLocation && !selectedLocation.code.startsWith('FL') ? ` (${selectedLocation.name})` : ''}
+                    Incident location: <strong>{inpatient.ward}</strong> (patient&rsquo;s ward)
                   </span>
                 </div>
+              ) : (
+                <>
+                  <div className="sm:col-span-2 lg:col-span-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <Field label="Hospital floor" required>
+                      <ChipGroup label="Hospital floor" options={FLOORS} value={selectedFloor} onChange={handleFloorChange} />
+                    </Field>
+
+                    <Field label="Zone" required hint={!selectedFloor ? 'Select a floor first.' : undefined}>
+                      <ChipGroup
+                        label="Zone"
+                        options={ZONES}
+                        value={selectedZone}
+                        onChange={handleZoneChange}
+                        disabled={!selectedFloor}
+                      />
+                    </Field>
+                  </div>
+
+                  {selectedFloor && selectedZone && (
+                    <div className="sm:col-span-2 lg:col-span-3 flex items-center gap-2.5 text-sm text-[#3D0F16] bg-[#FAF3EC] px-4 py-3 rounded-xl border border-[#E9D3BC] animate-tab-panel-in">
+                      <MapPin className="w-4 h-4 shrink-0" />
+                      <span>
+                        Incident location: <strong>{selectedFloor}</strong> &bull; <strong>{selectedZone}</strong>
+                        {selectedLocation && !selectedLocation.code.startsWith('FL') ? ` (${selectedLocation.name})` : ''}
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {!wardLocationMode && (
+                <Field
+                  label="Specify location"
+                  className="sm:col-span-2 lg:col-span-3"
+                  htmlFor="specific-location"
+                  hint="Optional — add a precise spot, e.g. bed number or landmark."
+                >
+                  <input
+                    id="specific-location"
+                    type="text"
+                    placeholder="e.g. Near nurse station, Bed 12, Corridor outside OT 2"
+                    value={specificLocation}
+                    onChange={(e) => setSpecificLocation(e.target.value)}
+                    className={inputClass}
+                  />
+                </Field>
               )}
             </div>
           </Section>
@@ -890,7 +958,7 @@ export default function ReportIncidentPage() {
               <p className="text-xs font-semibold text-slate-700 mb-2">
                 Harm / severity level <span className="text-[#7A2430]">*</span>
               </p>
-              <div role="radiogroup" aria-label="Harm severity level" className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div role="radiogroup" aria-label="Harm severity level" className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                 {SEVERITY_LEVELS.map((s) => {
                   const active = severity === s.lvl;
                   return (

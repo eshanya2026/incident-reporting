@@ -1,15 +1,14 @@
 import { useEffect, useState } from 'react';
-import { Microscope, Save, CheckCircle2 } from 'lucide-react';
+import { Microscope, Save, CheckCircle2, Play } from 'lucide-react';
 import { api } from '../../../lib/api';
 import { useAction } from '../../../lib/useAction';
 import { Button, Card, EditToggle, Field, Notice, inputClass, labelClass } from '../../ui/primitives';
+import { toast } from '../../../store/useToastStore';
 
 const FIELDS = [
   { key: 'facts', label: 'Established facts', rows: 3 },
   { key: 'chronology', label: 'Timeline of events', rows: 3 },
-  { key: 'immediateCorrections', label: 'Immediate corrections made', rows: 2 },
   { key: 'findings', label: 'Findings *', rows: 3 },
-  { key: 'recommendation', label: 'Recommendation', rows: 2 },
 ] as const;
 
 type FormState = Record<(typeof FIELDS)[number]['key'], string> & { contributingFactors: string };
@@ -17,9 +16,7 @@ type FormState = Record<(typeof FIELDS)[number]['key'], string> & { contributing
 const toForm = (inv: any): FormState => ({
   facts: inv?.facts || '',
   chronology: inv?.chronology || '',
-  immediateCorrections: inv?.immediateCorrections || '',
   findings: inv?.findings || '',
-  recommendation: inv?.recommendation || '',
   contributingFactors: (inv?.contributingFactors || []).join(', '),
 });
 
@@ -45,7 +42,20 @@ export default function InvestigationSection({
   useEffect(() => setEditing(incident.status === 'UNDER_INVESTIGATION'), [incident.status]);
   useEffect(() => setForm(toForm(investigation)), [investigation?._id, investigation?.updatedAt]);
 
-  if (!investigation) return null;
+  if (!investigation) {
+    // Another department already moved the incident past ASSIGNED — this department (lead or
+    // involved) hasn't started its own investigation yet; let them start it here.
+    if (!editable) return null;
+    return (
+      <Card title="Investigation" icon={Microscope} tone="action">
+        <p className="text-xs text-clinicalText-secondary">Start your department's investigation for this incident.</p>
+        <Button busy={busy} onClick={() => run(() => api.post(`/incidents/${incident._id}/investigation`))}>
+          <Play className="w-4 h-4" /> Start investigation
+        </Button>
+        {error && <Notice tone="error">{error}</Notice>}
+      </Card>
+    );
+  }
 
   const payload = () => ({
     ...Object.fromEntries(FIELDS.map((f) => [f.key, form[f.key]])),
@@ -111,7 +121,14 @@ export default function InvestigationSection({
                 variant="success"
                 busy={busy}
                 disabled={!form.findings.trim() || rcaMissing}
-                onClick={() => run(() => api.post(`/investigations/${investigation._id}/complete`, payload()))}
+                onClick={async () => {
+                  let message = '';
+                  const ok = await run(async () => {
+                    const res: any = await api.post(`/investigations/${investigation._id}/complete`, payload());
+                    message = res?.message || '';
+                  });
+                  if (ok && message) toast.success(message);
+                }}
               >
                 <CheckCircle2 className="w-4 h-4" />
                 {incident.requiresCapa ? 'Complete investigation and move to CAPA' : 'Complete investigation'}
