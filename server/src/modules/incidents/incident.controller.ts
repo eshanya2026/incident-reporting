@@ -84,7 +84,7 @@ const createIncidentSchema = z.object({
 
 // ---------- Response shaping ----------
 
-const populateDetail = (query: any) =>
+export const populateDetail = (query: any) =>
   query
     .populate('reportedBy', 'name email designation employeeId phone')
     .populate('departmentId', 'name code hodUserId')

@@ -17,6 +17,7 @@ import {
   requestRca,
   getRcaHeads,
 } from './incident.controller.js';
+import { downloadIncidentReport } from './incidentReport.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requirePermission } from '../../middleware/authorize.js';
 import { PERMISSIONS } from '../../common/enums/permissions.js';
@@ -36,6 +37,8 @@ router.post('/', requirePermission(PERMISSIONS.INCIDENT_CREATE), createIncident)
 router.get('/', getIncidents);
 router.get('/:id', getIncidentById);
 router.get('/:id/timeline', getIncidentTimeline);
+// Closed incidents only — a single PDF with the full record and merged attachments.
+router.get('/:id/report', downloadIncidentReport);
 
 // Workflow actions. The workflow rules additionally check status, the specific person
 // (reporter / responsible HOD / Quality / RCA Head) and each step's conditions.

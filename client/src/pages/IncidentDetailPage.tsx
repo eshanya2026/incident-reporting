@@ -1,9 +1,11 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { ArrowLeft, Building, Calendar, MapPin, Tag, UserCheck, Users } from 'lucide-react';
+import { ArrowLeft, Building, Calendar, Download, Loader2, MapPin, Tag, UserCheck, Users } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
+import { toast } from '../store/useToastStore';
 import { hasPermission, homePath, isWorkingDepartment } from '../lib/rbac';
 import { PRIORITY_COLOR, PRIORITY_META, SEVERITY_META, WORKFLOW_STEPS } from '../lib/incidentMeta';
 import { errorMessage } from '../lib/useAction';
@@ -62,6 +64,37 @@ export default function IncidentDetailPage() {
 
   const back = () => (window.history.length > 1 ? navigate(-1) : navigate(homePath(user)));
 
+  const [downloadingReport, setDownloadingReport] = useState(false);
+  const handleDownloadReport = async () => {
+    setDownloadingReport(true);
+    try {
+      const blob = (await api.get(`/incidents/${id}/report`, { responseType: 'blob' })) as unknown as Blob;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${incident.incidentNumber}-final-report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      let message = 'Could not download the report';
+      const data = err?.response?.data;
+      if (data instanceof Blob) {
+        try {
+          message = JSON.parse(await data.text())?.error?.message || message;
+        } catch {
+          // body wasn't JSON — keep the generic message
+        }
+      } else {
+        message = errorMessage(err, message);
+      }
+      toast.error(message);
+    } finally {
+      setDownloadingReport(false);
+    }
+  };
+
   if (incidentQuery.isLoading) {
     return <div className="p-8 text-center text-xs text-clinicalText-secondary">Loading incident…</div>;
   }
@@ -114,13 +147,27 @@ export default function IncidentDetailPage() {
 
   return (
     <div className="space-y-6 text-clinicalText-primary">
-      <button
-        onClick={back}
-        className="inline-flex items-center space-x-2 text-xs font-semibold text-[#64748B] hover:text-[#5C1A22] bg-white hover:bg-[#FAF3EC] border border-clinicalBorder px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
-      >
-        <ArrowLeft className="w-4 h-4" />
-        <span>Back</span>
-      </button>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <button
+          onClick={back}
+          className="inline-flex items-center space-x-2 text-xs font-semibold text-[#64748B] hover:text-[#5C1A22] bg-white hover:bg-[#FAF3EC] border border-clinicalBorder px-4 py-2 rounded-xl shadow-xs transition cursor-pointer"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Back</span>
+        </button>
+
+        {status === 'CLOSED' && (
+          <button
+            onClick={handleDownloadReport}
+            disabled={downloadingReport}
+            className="inline-flex items-center space-x-2 text-xs font-semibold text-white bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] disabled:opacity-60 px-4 py-2 rounded-xl shadow-button-red transition cursor-pointer"
+            title="Download the final report as a single PDF, including attached files"
+          >
+            {downloadingReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+            <span>{downloadingReport ? 'Preparing report…' : 'Download Final Report'}</span>
+          </button>
+        )}
+      </div>
 
       {/* Header - dark theme */}
       <div className="hero-banner p-6 rounded-2xl space-y-3">
