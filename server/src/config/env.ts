@@ -44,6 +44,24 @@ const envSchema = z.object({
   // deliverable while the recipient has an open WhatsApp session with the business number —
   // testing only).
   WATI_TEMPLATE_NAME: z.string().optional().default(''),
+  // AI for the AI Insights page's written analysis: Google Gemini directly, or any model through
+  // OpenRouter (https://openrouter.ai). Only the chosen provider's key is needed; without it the
+  // page still shows every computed figure, just no AI narrative. Models are configurable so they
+  // can be switched without a code change.
+  AI_PROVIDER: z.enum(['gemini', 'openrouter']).default('gemini'),
+  GEMINI_API_KEY: z.string().optional().default(''),
+  GEMINI_MODEL: z.string().optional().default('gemini-3.6-flash'),
+  // Tried in order when the main model fails (quota used up, unavailable, overloaded). Comma-separated.
+  GEMINI_FALLBACK_MODELS: z.string().optional().default('gemini-3.5-flash-lite,gemini-3.1-flash-lite'),
+  OPENROUTER_API_KEY: z.string().optional().default(''),
+  OPENROUTER_FALLBACK_MODELS: z.string().optional().default(''),
+  // Also send the AI the written case details (investigation findings, root causes, CAPA wording,
+  // review/return remarks, rejection reasons), de-identified. Off by default: only titles are sent.
+  AI_SHARE_CASE_TEXT: z
+    .string()
+    .optional()
+    .transform((val) => val === 'true'),
+  OPENROUTER_MODEL: z.string().optional().default('google/gemini-2.5-flash'),
   APP_URL: z.string().default('http://localhost:5173'),
   API_URL: z.string().default('http://localhost:5000'),
   // Number of reverse proxies in front of the API (1 behind Nginx). Needed so rate limits and

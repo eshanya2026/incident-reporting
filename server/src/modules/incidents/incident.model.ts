@@ -223,7 +223,7 @@ export const severityRequirements = (severity: number) => ({
 });
 
 /** Days Quality targets for closing an incident, by severity — more severe, faster expected turnaround. */
-const CLOSURE_TARGET_DAYS: Record<number, number> = { 1: 30, 2: 21, 3: 14, 4: 10, 5: 7 };
+export const CLOSURE_TARGET_DAYS: Record<number, number> = { 1: 30, 2: 21, 3: 14, 4: 10, 5: 7 };
 
 /**
  * Analytics score computed automatically when Quality closes an incident (see REVIEW_ACCEPT in

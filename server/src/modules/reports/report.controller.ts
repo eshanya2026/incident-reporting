@@ -27,7 +27,8 @@ const incidentQuerySchema = z.object({
   toDate: dateParam,
   departmentId: z.string().optional(),
   severity: z.coerce.number().int().min(1).max(4).optional(),
-  status: z.enum(INCIDENT_STATUSES).optional(),
+  // 'OPEN' is an aggregate (anything not yet closed), not a real status value.
+  status: z.union([z.enum(INCIDENT_STATUSES), z.literal('OPEN')]).optional(),
   format: z.enum(['csv', 'json']).optional(),
 });
 
@@ -79,7 +80,8 @@ export const getIncidentRegisterReport = async (req: Request, res: Response, nex
     }
     if (q.departmentId) query.departmentId = q.departmentId; // responsible department
     if (q.severity) query.severity = q.severity;
-    if (q.status) query.status = q.status;
+    if (q.status === 'OPEN') query.status = { $ne: 'CLOSED' };
+    else if (q.status) query.status = q.status;
 
     const incidents: any[] = await Incident.find(query)
       .populate('reportedBy', 'name')

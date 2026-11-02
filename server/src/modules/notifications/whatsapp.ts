@@ -11,7 +11,12 @@ export const whatsappEnabled = (): boolean =>
 /** WATI expects digits only, with country code and no leading "+" or spaces. */
 const toWhatsappId = (rawNumber: string): string => rawNumber.replace(/\D/g, '');
 
-const post = async (path: string, payload: Record<string, unknown>): Promise<void> => {
+interface SendResult {
+  ok: boolean;
+  error?: string;
+}
+
+const post = async (path: string, payload: Record<string, unknown>): Promise<SendResult> => {
   try {
     const base = env.WATI_API_ENDPOINT.replace(/\/+$/, '');
     const res = await fetch(`${base}${path}`, {
@@ -22,11 +27,22 @@ const post = async (path: string, payload: Record<string, unknown>): Promise<voi
       },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) {
-      logger.error({ status: res.status, body: await res.text() }, '❌ WhatsApp notification failed');
+    const text = await res.text();
+    // WATI can answer 200 with { result: false, info: "..." } when it refuses the message
+    let body: any = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      /* not JSON */
     }
+    if (!res.ok || body?.result === false) {
+      logger.error({ status: res.status, body: text }, '❌ WhatsApp notification failed');
+      return { ok: false, error: String(body?.info || body?.message || `HTTP ${res.status}`).slice(0, 300) };
+    }
+    return { ok: true };
   } catch (error) {
     logger.error({ err: error }, '❌ WhatsApp notification failed');
+    return { ok: false, error: (error as Error)?.message || 'Network error' };
   }
 };
 
@@ -51,10 +67,16 @@ export const sendWhatsapp = async (rawNumber: string, message: string): Promise<
  */
 export const sendWhatsappTemplate = async (rawNumber: string, templateName: string, bodyParams: string[]): Promise<void> => {
   if (!whatsappEnabled() || !templateName) return;
-  const to = toWhatsappId(rawNumber);
-  if (!to) return;
+  await sendWhatsappTemplateChecked(rawNumber, templateName, bodyParams);
+};
 
-  await post(`/api/v1/sendTemplateMessage?whatsappNumber=${to}`, {
+/** Same as sendWhatsappTemplate, but reports whether WATI accepted it (used by "Send test"). */
+export const sendWhatsappTemplateChecked = async (rawNumber: string, templateName: string, bodyParams: string[]): Promise<SendResult> => {
+  if (!whatsappEnabled() || !templateName) return { ok: false, error: 'WhatsApp sending is not configured' };
+  const to = toWhatsappId(rawNumber);
+  if (!to) return { ok: false, error: 'No WhatsApp number' };
+
+  return post(`/api/v1/sendTemplateMessage?whatsappNumber=${to}`, {
     template_name: templateName,
     broadcast_name: templateName,
     parameters: bodyParams.map((value, i) => ({ name: String(i + 1), value })),

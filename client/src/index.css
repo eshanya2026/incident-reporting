@@ -119,8 +119,8 @@
   }
 }
 
-/* Statlog wordmark: heartbeat line wipes in from the left */
-@keyframes statlog-wipe {
+/* Brand wordmark: heartbeat line wipes in from the left */
+@keyframes brand-wipe {
   from {
     clip-path: inset(0 100% 0 0);
   }
@@ -128,11 +128,11 @@
     clip-path: inset(0 0 0 0);
   }
 }
-.statlog-heartbeat {
-  animation: statlog-wipe 1200ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms) backwards;
+.brand-heartbeat {
+  animation: brand-wipe 1200ms cubic-bezier(0.22, 1, 0.36, 1) var(--d, 0ms) backwards;
 }
 @media (prefers-reduced-motion: reduce) {
-  .statlog-heartbeat {
+  .brand-heartbeat {
     animation: none;
   }
 }

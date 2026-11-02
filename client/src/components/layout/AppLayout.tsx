@@ -11,6 +11,9 @@ import {
   LogOut,
   User as UserIcon,
   Check,
+  Sparkles,
+  ShieldCheck,
+  MessageCircle,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Inbox, ClipboardCheck, Building2 } from 'lucide-react';
@@ -18,8 +21,8 @@ import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../lib/api';
-import { hasAnyPermission, hasAnyRole, hasPermission } from '../../lib/rbac';
-import StatlogLogo from '../ui/StatlogLogo';
+import { hasAnyPermission, hasPermission } from '../../lib/rbac';
+import BrandLogo from '../ui/BrandLogo';
 
 dayjs.extend(relativeTime);
 
@@ -61,9 +64,7 @@ export default function AppLayout() {
       };
       return {
         triage: hasPermission(user, 'incident.triage') ? await count('/incidents/triage-queue') : 0,
-        // Quality and RCA Heads only — RCA_WRITE alone (also held by HOD) isn't enough,
-        // and the server now rejects this call for anyone else (see getReviewQueue)
-        review: hasAnyRole(user, ['QUALITY', 'RCA_HEAD'])
+        review: hasPermission(user, 'review_queue.view')
           ? (await count('/incidents/review-queue')) + (await count('/incidents/review-queue', { status: 'RCA_REQUESTED' }))
           : 0,
         department: hasPermission(user, 'incident.read_assigned')
@@ -127,27 +128,26 @@ export default function AppLayout() {
     icon: any;
     permission?: string;
     anyPermissions?: string[];
-    anyRoles?: string[];
     count?: number;
   }> = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
     { label: 'Report Incident', path: '/incidents/new', icon: PlusCircle, permission: 'incident.create' },
     { label: 'My Reports', path: '/my-reports', icon: FileText, permission: 'incident.read_own', count: queueCounts.myReports },
     { label: 'Triage Inbox', path: '/triage', icon: Inbox, permission: 'incident.triage', count: queueCounts.triage },
-    // Not a permission check: RCA_WRITE is also held by HOD, for their own incidents, who should
-    // not see this (Quality's and RCA Heads' review queue) — see server's getReviewQueue.
-    { label: 'Review & RCA Queue', path: '/review', icon: ClipboardCheck, anyRoles: ['QUALITY', 'RCA_HEAD'], count: queueCounts.review },
+    { label: 'Review & RCA Queue', path: '/review', icon: ClipboardCheck, permission: 'review_queue.view', count: queueCounts.review },
     { label: "My Department's Incidents", path: '/my-department', icon: Building2, permission: 'incident.read_assigned', count: queueCounts.department },
     { label: 'All Incidents', path: '/incidents', icon: FileSpreadsheet, permission: 'incident.read_all' },
     { label: 'CAPA', path: '/capas', icon: CheckSquare, permission: 'capa.read' },
     { label: 'Reports', path: '/reports', icon: BarChart3, anyPermissions: ['report.view_all', 'report.view_department'] },
+    { label: 'AI Insights', path: '/insights', icon: Sparkles, anyPermissions: ['insights.view_all', 'insights.view_department'] },
     { label: 'Administration', path: '/admin', icon: Settings, permission: 'admin.user_manage' },
+    { label: 'Access Control', path: '/access-control', icon: ShieldCheck, permission: 'admin.access_control' },
+    { label: 'WhatsApp Messages', path: '/whatsapp-messages', icon: MessageCircle, permission: 'admin.whatsapp_templates' },
   ];
 
   const visibleNavItems = navItems.filter((item) => {
     if (item.permission) return hasPermission(user, item.permission);
     if (item.anyPermissions) return hasAnyPermission(user, item.anyPermissions);
-    if (item.anyRoles) return hasAnyRole(user, item.anyRoles);
     return true;
   });
   // The active pill glides to the current tab instead of snapping (no match on a sub-route, e.g.
@@ -173,12 +173,12 @@ export default function AppLayout() {
             ></span>
             <div className="min-w-0 flex flex-col gap-1.5">
               <h1 className="leading-none">
-                <StatlogLogo className="text-[22px] sm:text-[26px]" />
+                <BrandLogo className="text-[18px] sm:text-[23px]" />
               </h1>
               <p className="hidden sm:flex items-center gap-1.5 text-[11.5px] text-[#64748B] uppercase tracking-[0.14em] font-semibold truncate">
-                <span>Incident Reporting</span>
-                <span className="w-1 h-1 rounded-full bg-[#7A2430]/60 shrink-0"></span>
                 <span>Patient Safety</span>
+                <span className="w-1 h-1 rounded-full bg-[#7A2430]/60 shrink-0"></span>
+                <span>Adhiparasakthi Hospitals</span>
               </p>
             </div>
           </Link>
@@ -329,7 +329,7 @@ export default function AppLayout() {
       {/* Footer */}
       <footer className="bg-white border-t border-[#E2E8F0] py-4">
         <div className="w-full px-4 sm:px-6 lg:px-8 flex flex-col sm:flex-row items-center justify-between text-xs text-[#64748B] gap-2">
-          <span>Statlog © 2026 – Adhiparasakthi Hospitals Patient Safety & Incident Reporting</span>
+          <span>© 2026 Adhiparasakthi Hospitals – Incident Reporting & Patient Safety</span>
           <div className="flex items-center space-x-4 text-[12.5px] text-[#94A3B8]">
             <span>Privacy</span>
             <span>•</span>

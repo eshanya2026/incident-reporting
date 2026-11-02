@@ -2,6 +2,7 @@ import { Role } from '../modules/roles/role.model.js';
 import { User } from '../modules/users/user.model.js';
 import { logger } from '../config/logger.js';
 import { PERMISSIONS, ROLE_CODES } from '../common/enums/permissions.js';
+import { isConfigurablePermission } from '../common/enums/permissionCatalog.js';
 
 // The four system roles:
 // - Staff report incidents and track their own reports.
@@ -32,6 +33,7 @@ export const SYSTEM_ROLES = [
       PERMISSIONS.CAPA_READ,
       PERMISSIONS.DASHBOARD_VIEW,
       PERMISSIONS.REPORT_VIEW_ALL,
+      PERMISSIONS.REVIEW_QUEUE_VIEW,
       // Quality also administers master data (users, departments, locations, categories, roles, audit log)
       PERMISSIONS.ADMIN_USER_MANAGE,
       PERMISSIONS.ADMIN_ROLE_MANAGE,
@@ -70,6 +72,8 @@ export const SYSTEM_ROLES = [
       PERMISSIONS.CAPA_READ,
       PERMISSIONS.DASHBOARD_VIEW,
       PERMISSIONS.REPORT_VIEW_ALL,
+      // AI Insights is an Admin screen by default; Super Admin can grant it to other roles
+      PERMISSIONS.INSIGHTS_VIEW_ALL,
       PERMISSIONS.ADMIN_USER_MANAGE,
       PERMISSIONS.ADMIN_ROLE_MANAGE,
       PERMISSIONS.ADMIN_DEPARTMENT_MANAGE,
@@ -93,6 +97,7 @@ export const SYSTEM_ROLES = [
       PERMISSIONS.RCA_WRITE,
       PERMISSIONS.DASHBOARD_VIEW,
       PERMISSIONS.REPORT_VIEW_ALL,
+      PERMISSIONS.REVIEW_QUEUE_VIEW,
     ],
     isSystemRole: true,
   },
@@ -107,7 +112,19 @@ export const SYSTEM_ROLES = [
     permissions: [PERMISSIONS.INCIDENT_READ_OWN],
     isSystemRole: true,
   },
+  {
+    // Sees and can configure everything: the only role allowed to change which roles see which
+    // screens (Access Control). Always holds every permission; it can't be edited, so it can't be
+    // locked out. Workflow steps still need the matching role (Quality, HOD...) to perform them.
+    name: 'Super Admin',
+    code: ROLE_CODES.SUPER_ADMIN,
+    permissions: Object.values(PERMISSIONS),
+    isSystemRole: true,
+  },
 ];
+
+/** A system role's default permissions, or undefined for a custom role. */
+export const defaultPermissionsFor = (code: string): string[] | undefined => SYSTEM_ROLES.find((r) => r.code === code)?.permissions;
 
 // Roles from the previous design and the role that replaces each of them
 const LEGACY_ROLE_RENAMES: Record<string, string> = {
@@ -137,10 +154,24 @@ export const migrateLegacyRoles = async (): Promise<void> => {
   }
 };
 
-/** Migrates legacy roles, then upserts the system roles so their permissions always match this file. */
+/**
+ * Migrates legacy roles, then brings the system roles in line with this file. A role a Super Admin
+ * has customised keeps their screen choices; only its workflow steps (not configurable) are reset
+ * to the defaults, so a code change to the workflow still reaches it. The Super Admin role always
+ * holds every permission.
+ */
 export const syncSystemRoles = async (): Promise<void> => {
   await migrateLegacyRoles();
   for (const r of SYSTEM_ROLES) {
-    await Role.findOneAndUpdate({ code: r.code }, r, { upsert: true, new: true });
+    const existing = await Role.findOne({ code: r.code });
+    if (!existing) {
+      await Role.create({ ...r, customized: false });
+    } else if (r.code === ROLE_CODES.SUPER_ADMIN || !existing.customized) {
+      await Role.updateOne({ _id: existing._id }, { $set: { name: r.name, permissions: r.permissions, isSystemRole: true, customized: false } });
+    } else {
+      const chosenScreens = existing.permissions.filter(isConfigurablePermission);
+      const fixedSteps = r.permissions.filter((p) => !isConfigurablePermission(p));
+      await Role.updateOne({ _id: existing._id }, { $set: { name: r.name, permissions: [...new Set([...chosenScreens, ...fixedSteps])], isSystemRole: true } });
+    }
   }
 };

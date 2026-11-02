@@ -16,11 +16,14 @@ import {
   Layers,
   ArrowUpDown,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
 import dayjs from 'dayjs';
 import { api } from '../lib/api';
 import { SeverityBadge, StatusBadge } from '../components/incident/Badges';
 import { useAuthStore } from '../store/useAuthStore';
+import { toast } from '../store/useToastStore';
+import { errorMessage } from '../lib/useAction';
 import { hasPermission } from '../lib/rbac';
 import { departmentOptions } from '../components/ui/DepartmentOptions';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
@@ -307,6 +310,37 @@ export default function QualityReportsPage() {
     window.print();
   };
 
+  const [downloadingReportId, setDownloadingReportId] = useState<string | null>(null);
+  const handleDownloadIncidentReport = async (incidentId: string, incidentNumber: string) => {
+    setDownloadingReportId(incidentId);
+    try {
+      const blob = (await api.get(`/incidents/${incidentId}/report`, { responseType: 'blob' })) as unknown as Blob;
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${incidentNumber}-final-report.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err: any) {
+      let message = 'Could not download the report';
+      const data = err?.response?.data;
+      if (data instanceof Blob) {
+        try {
+          message = JSON.parse(await data.text())?.error?.message || message;
+        } catch {
+          // body wasn't JSON — keep the generic message
+        }
+      } else {
+        message = errorMessage(err, message);
+      }
+      toast.error(message);
+    } finally {
+      setDownloadingReportId(null);
+    }
+  };
+
   return (
     <div className="space-y-6 text-[#172033]">
       {/* Title Card / Banner - dark theme */}
@@ -451,7 +485,7 @@ export default function QualityReportsPage() {
           </button>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className={`grid grid-cols-1 sm:grid-cols-2 gap-3 ${activeTab === 'INCIDENTS' ? 'lg:grid-cols-6' : 'lg:grid-cols-5'}`}>
           {/* Quick Search */}
           <div className="lg:col-span-1">
             <label className="block text-xs font-semibold text-slate-600 mb-1.5">Search keywords</label>
@@ -503,7 +537,25 @@ export default function QualityReportsPage() {
             />
           </div>
 
-          {/* Dynamic Tab Filter: Severity/Status vs CAPA Status/Overdue */}
+          {activeTab === 'INCIDENTS' && (
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1.5">Status</label>
+              <SearchableSelect
+                containerClassName="block w-full"
+                value={status}
+                onChange={setStatus}
+                options={[
+                  { value: '', label: '-- All --' },
+                  { value: 'OPEN', label: 'Open' },
+                  { value: 'CLOSED', label: 'Closed' },
+                ]}
+                searchPlaceholder="Search..."
+                className={filterControlClass}
+              />
+            </div>
+          )}
+
+          {/* Dynamic Tab Filter: Severity vs CAPA Status/Overdue */}
           {activeTab === 'INCIDENTS' ? (
             <div>
               <label className="block text-xs font-semibold text-slate-600 mb-1.5">Severity / Harm Level</label>
@@ -589,14 +641,15 @@ export default function QualityReportsPage() {
                   <th className="py-3 px-3">Status</th>
                   <th className="py-3 px-3 text-center">Turnaround Days</th>
                   <th className="py-3 px-3 text-center">Rework</th>
+                  <th className="py-3 px-3 text-center print:hidden">Final Report</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loadingIncidents ? (
-                  <TableSkeleton columns={11} />
+                  <TableSkeleton columns={12} />
                 ) : filteredIncidents.length === 0 ? (
                   <tr>
-                    <td colSpan={11} className="!p-0">
+                    <td colSpan={12} className="!p-0">
                       <EmptyState icon={FileText} message="No matching incident records found for the selected filters." />
                     </td>
                   </tr>
@@ -686,6 +739,28 @@ export default function QualityReportsPage() {
                           </span>
                         ) : (
                           <span className="text-[11.5px] text-[#94A3B8]">0</span>
+                        )}
+                      </td>
+
+                      {/* Final report (closed only) */}
+                      <td className="py-3 px-3 text-center whitespace-nowrap print:hidden">
+                        {inc.status === 'CLOSED' ? (
+                          <button
+                            type="button"
+                            onClick={() => handleDownloadIncidentReport(inc._id, inc.incidentNumber)}
+                            disabled={downloadingReportId === inc._id}
+                            className="inline-flex items-center gap-1.5 h-8 px-3 text-[12.5px] font-semibold text-[#5C1A22] bg-[#FAF3EC] hover:bg-[#F4E6D7] border border-[#E9D3BC] rounded-lg transition cursor-pointer disabled:opacity-60"
+                            title="Download the final report as a single PDF"
+                          >
+                            {downloadingReportId === inc._id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Download className="w-3.5 h-3.5" />
+                            )}
+                            <span>PDF</span>
+                          </button>
+                        ) : (
+                          <span className="text-[#94A3B8]">—</span>
                         )}
                       </td>
                     </tr>

@@ -409,10 +409,10 @@ const buildIncidentReportPdf = async (data: ReportData): Promise<Uint8Array> => 
   w.text('G.S.T. Road, Melmaruvathur – 603 319   |   Phone: 044-2752 8528   |   Toll Free: 1800 599 0999   |   www.mapims.org', MARGIN + 46, 8, w.regular, MUTED);
 
   const taglineTopY = PAGE_H - 50;
-  const tagline = pdfSafe('STATLOG');
+  const tagline = pdfSafe('INCIDENT REPORTING');
   const taglineW = w.bold.widthOfTextAtSize(tagline, 13);
   w.page.drawText(tagline, { x: MARGIN + CONTENT_W - taglineW, y: taglineTopY - 2, size: 13, font: w.bold, color: ACCENT });
-  const subTagline = pdfSafe('INCIDENT REPORTING  ·  PATIENT SAFETY');
+  const subTagline = pdfSafe('PATIENT SAFETY');
   const subTaglineW = w.regular.widthOfTextAtSize(subTagline, 7.5);
   w.page.drawText(subTagline, { x: MARGIN + CONTENT_W - subTaglineW, y: taglineTopY - 15, size: 7.5, font: w.regular, color: MUTED });
 

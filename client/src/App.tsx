@@ -13,6 +13,9 @@ import MyReportsPage from './pages/MyReportsPage';
 import TriageInboxPage from './pages/TriageInboxPage';
 import ReviewQueuePage from './pages/ReviewQueuePage';
 import MyDepartmentPage from './pages/MyDepartmentPage';
+import AiInsightsPage from './pages/AiInsightsPage';
+import AccessControlPage from './pages/AccessControlPage';
+import WhatsappTemplatesPage from './pages/WhatsappTemplatesPage';
 import { useAuthStore } from './store/useAuthStore';
 import { api } from './lib/api';
 import { hasAnyPermission, homePath } from './lib/rbac';
@@ -109,7 +112,7 @@ export default function App() {
           <Route
             path="review"
             element={
-              <RequirePermission anyOf={['incident.review', 'rca.write']}>
+              <RequirePermission anyOf={['review_queue.view']}>
                 <ReviewQueuePage />
               </RequirePermission>
             }
@@ -145,6 +148,30 @@ export default function App() {
             element={
               <RequirePermission anyOf={['report.view_all', 'report.view_department']}>
                 <QualityReportsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="insights"
+            element={
+              <RequirePermission anyOf={['insights.view_all', 'insights.view_department']}>
+                <AiInsightsPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="access-control"
+            element={
+              <RequirePermission anyOf={['admin.access_control']}>
+                <AccessControlPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="whatsapp-messages"
+            element={
+              <RequirePermission anyOf={['admin.whatsapp_templates']}>
+                <WhatsappTemplatesPage />
               </RequirePermission>
             }
           />

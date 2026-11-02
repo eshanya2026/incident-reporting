@@ -11,7 +11,7 @@ already has an open session — so most people simply never receive it.
 separate template per event, the app always sends this one template and fills its three
 parameters with whatever text that notification needs — the notification's title, message,
 incident reference and any extra detail lines are all packed into the single `{{2}}` block
-(built by `buildContent` in `workflowNotifications.ts`), not split into separate variables.
+(built by `renderMessage` in `whatsappTemplates.ts`, from wording editable in the app), not split into separate variables.
 
 The body is a plain, direct message, not a generic "automated notification" preamble — Meta still
 sees a healthy ratio of static wording (155 characters) to variables (3), so dropping that line
@@ -60,7 +60,7 @@ Adhiparasakthi Hospitals
 | # | Meaning |
 |---|---|
 | `{{1}}` | Recipient's name |
-| `{{2}}` | Multi-line block: bold title, main message, `Incident: <ref>`, and up to two extra detail lines — all built by `buildContent` per notification (see table below) |
+| `{{2}}` | Multi-line block: bold title, main message, `Incident: <ref>`, and up to two extra detail lines — built from the wording set on the WhatsApp Messages screen (see below) |
 | `{{3}}` | Direct link to the incident |
 
 ### Sample values (WATI asks for one example per variable during submission)
@@ -77,7 +77,7 @@ on one line:
 | `{{3}}` | https://your-domain.com/incidents/64f1a2b3c4d5e6f7a8b9c0d1 |
 
 The real `{{2}}` the app sends is multi-line (title, message, incident reference, detail lines —
-see table below) and can run longer than 200 characters; `buildContent` caps it at 400 characters
+see table below) and can run longer than 200 characters; the app caps it at 400 characters
 so it never gets close to WhatsApp's 1024-character body limit. Only the one-line sample above is
 needed to get the template approved.
 
@@ -86,23 +86,35 @@ structure, not the literal text; real notifications will carry different content
 must read as transactional/utility, not marketing, or it's rejected. Approval usually takes
 minutes to a few hours; status shows in the same Message Templates screen.
 
-## What each notification currently sends in `{{2}}`
+## Editing what each notification says (no WATI re-approval)
 
-| Notification | Title | Detail lines |
+The wording inside `{{2}}` is edited in the app: **WhatsApp Messages** in the navbar (Super Admin
+by default; can be granted to other roles in Access Control). For each notification you can change
+the bold title, the message and the detail lines, insert placeholders such as `{incident}`,
+`{severity}` or `{remarks}`, switch the WhatsApp message off, see a live preview inside the approved
+wrapper, and send a test to your own phone. Every change is in the audit log; "Reset to default"
+goes back to the built-in wording.
+
+A detail line whose placeholder has no value (e.g. `Quality's remarks: {remarks}` when Quality
+wrote none) is left out. The parts are joined with ` | ` on one line, because WATI rejects line
+breaks in parameters, and the whole block is capped at 400 characters.
+
+The fixed wrapper (header, "Hello {{1}}", the closing lines, footer) can only be changed by
+editing and re-approving the template in WATI.
+
+| Notification | Default title | Default detail lines |
 |---|---|---|
-| Incident assigned to HOD | New Incident Assigned | Severity: ... |
-| Involved department notified | Department Involved | Department: ... |
-| Intimated (CC'd) personnel | Intimated on Safety Report | Lead department: ... (only when there is one) |
-| Quality asks the reporter a question | Quality Needs More Information | — |
-| RCA meeting scheduled | RCA Meeting Scheduled | When: ...; Where: ... |
+| Incident assigned to HOD | New Incident Assigned | Incident; Severity; Quality's remarks |
+| Department marked as involved | Department Involved | Incident; Department; Lead department |
+| Intimated (CC) on an incident | Intimated on Safety Report | Incident; Lead department |
+| Quality asks the reporter a question | Quality Needs More Information | Incident (the question is the message) |
+| RCA meeting scheduled | RCA Meeting Scheduled | Incident; When; Where |
 
-`{{1}}` and `{{3}}` always carry the recipient's name and the incident link, for every
-notification. See `buildContent` / `sendWithTemplate` in
-`server/src/modules/notifications/workflowNotifications.ts` for the exact text each one builds.
+Definitions, placeholders and defaults: `server/src/modules/notifications/whatsappTemplates.ts`.
 
-**Adding a new notification later:** call `buildContent({ title, message, incidentRef, details })`
-with its own title, message and up to a few detail lines — no new template or re-approval needed,
-since it's all just text inside the existing `{{2}}` parameter.
+**Adding a new notification later:** add a definition there and call `sendTemplated(key, ...)` in
+`workflowNotifications.ts`. No new template or re-approval is needed, since it's all text inside
+the existing `{{2}}` parameter.
 
 ## Everything else needed to actually send it
 

@@ -214,10 +214,12 @@ export const seedDatabase = async (): Promise<void> => {
       [ROLE_CODES.HOD]: await hashPassword('Hod@123'),
       [ROLE_CODES.ADMIN]: await hashPassword('Admin@123'),
       [ROLE_CODES.INTIMATION_MEMBER]: await hashPassword('Intimate@123'),
+      [ROLE_CODES.SUPER_ADMIN]: await hashPassword('SuperAdmin@123'),
     };
 
     // [employeeId, name, email local part, username, department code, designation, role]
     const people: Array<[string, string, string, string, string | null, string, RoleCode]> = [
+      ['EMP-000', 'Super Administrator', 'superadmin', 'superadmin', null, 'Super Administrator', ROLE_CODES.SUPER_ADMIN],
       ['EMP-001', 'System Administrator', 'admin', 'admin', null, 'IT Administrator', ROLE_CODES.ADMIN],
       ['EMP-005', 'Dr. Suresh Medical Director', 'suresh.md', 'md.director', null, 'Medical Director', ROLE_CODES.ADMIN],
 

@@ -7,7 +7,8 @@ import { Department } from '../departments/department.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { hashPassword } from '../auth/auth.utils.js';
-import { ROLE_CODES } from '../../common/enums/permissions.js';
+import { PERMISSIONS, ROLE_CODES } from '../../common/enums/permissions.js';
+import { hasPermission } from '../../common/helpers/incidentAccess.js';
 
 const objectId = z.string().refine((v) => mongoose.Types.ObjectId.isValid(v), 'Invalid ID');
 
@@ -55,6 +56,23 @@ const resolveRoleCodes = async (roleIds: string[]): Promise<string[]> => {
     throw AppError.badRequest('One or more selected roles do not exist');
   }
   return roles.map((r) => r.code);
+};
+
+/** Role codes a user currently holds (tolerates roles that have since been deleted). */
+const currentRoleCodes = async (user: IUser): Promise<string[]> =>
+  (await Role.find({ _id: { $in: user.roles } }).select('code')).map((r) => r.code);
+
+const canManageSuperAdmins = (req: Request) => hasPermission(req.user, PERMISSIONS.ADMIN_ACCESS_CONTROL);
+
+/**
+ * Only a Super Admin may grant the Super Admin role or change a Super Admin's account (edit it,
+ * reset its password, overwrite it by bulk import) — otherwise any Admin could make themselves
+ * Super Admin, or take over a Super Admin account through a password reset.
+ */
+const assertCanManageSuperAdmin = (req: Request, ...roleCodeLists: string[][]): void => {
+  if (roleCodeLists.some((codes) => codes.includes(ROLE_CODES.SUPER_ADMIN)) && !canManageSuperAdmins(req)) {
+    throw AppError.forbidden('Only a Super Admin can manage Super Admin accounts');
+  }
 };
 
 const assertDepartmentForRoles = async (roleCodes: string[], departmentId?: string | null): Promise<void> => {
@@ -193,6 +211,7 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
     }
 
     const roleCodes = await resolveRoleCodes(data.roles);
+    assertCanManageSuperAdmin(req, roleCodes);
     await assertDepartmentForRoles(roleCodes, data.departmentId);
     assertDesignationForHod(roleCodes, data.designation);
 
@@ -236,6 +255,8 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
 
     const roleIds = data.roles ?? user.roles.map((r) => r.toString());
     const roleCodes = await resolveRoleCodes(roleIds);
+    const existingRoleCodes = await currentRoleCodes(user);
+    assertCanManageSuperAdmin(req, roleCodes, existingRoleCodes);
     const departmentId = data.departmentId !== undefined ? data.departmentId : user.departmentId?.toString();
     await assertDepartmentForRoles(roleCodes, departmentId);
     const designation = data.designation !== undefined ? data.designation : user.designation;
@@ -246,8 +267,13 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
       if (data.status && data.status !== 'ACTIVE') {
         throw AppError.badRequest('You cannot deactivate your own account');
       }
-      if (!roleCodes.includes(ROLE_CODES.ADMIN)) {
-        throw AppError.badRequest('You cannot remove the Admin role from your own account');
+      for (const [code, label] of [
+        [ROLE_CODES.ADMIN, 'Admin'],
+        [ROLE_CODES.SUPER_ADMIN, 'Super Admin'],
+      ] as const) {
+        if (existingRoleCodes.includes(code) && !roleCodes.includes(code)) {
+          throw AppError.badRequest(`You cannot remove the ${label} role from your own account`);
+        }
       }
     }
 
@@ -295,6 +321,7 @@ export const resetUserPassword = async (req: Request, res: Response, next: NextF
     if (!user) {
       throw AppError.notFound('User not found');
     }
+    assertCanManageSuperAdmin(req, await currentRoleCodes(user));
 
     user.passwordHash = await hashPassword(password);
     user.failedLoginAttempts = 0;
@@ -358,6 +385,11 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
         continue;
       }
 
+      if (roleCodeUpper === ROLE_CODES.SUPER_ADMIN && !canManageSuperAdmins(req)) {
+        errors.push({ row: rowNum, employeeId: item.employeeId, error: 'Only a Super Admin can create Super Admin accounts' });
+        continue;
+      }
+
       // Department resolution
       let departmentDoc: any = null;
       if (item.departmentCode) {
@@ -389,6 +421,10 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
         if (existing) {
           if (!updateExisting) {
             skipped++;
+            continue;
+          }
+          if (!canManageSuperAdmins(req) && (await currentRoleCodes(existing)).includes(ROLE_CODES.SUPER_ADMIN)) {
+            errors.push({ row: rowNum, employeeId: item.employeeId, error: 'Only a Super Admin can change a Super Admin account' });
             continue;
           }
 

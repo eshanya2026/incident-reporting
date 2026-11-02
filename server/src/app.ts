@@ -22,6 +22,8 @@ import capaRoutes from './modules/capa/capa.routes.js';
 import notificationRoutes from './modules/notifications/notification.routes.js';
 import dashboardRoutes from './modules/dashboard/dashboard.routes.js';
 import reportRoutes from './modules/reports/report.routes.js';
+import insightRoutes from './modules/insights/insight.routes.js';
+import whatsappTemplateRoutes from './modules/notifications/whatsappTemplate.routes.js';
 
 const app: Express = express();
 
@@ -86,6 +88,8 @@ app.use('/api/v1', capaRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/reports', reportRoutes);
+app.use('/api/v1/insights', insightRoutes);
+app.use('/api/v1/whatsapp-templates', whatsappTemplateRoutes);
 
 // Global Error Handler Middleware
 app.use(errorHandler);

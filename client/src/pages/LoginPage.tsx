@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Info, Check } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
-import StatlogLogo from '../components/ui/StatlogLogo';
+import BrandLogo from '../components/ui/BrandLogo';
 
 const REMEMBER_KEY = 'incident-portal:remembered-username';
 
@@ -101,7 +101,7 @@ export default function LoginPage() {
 
         
           <div style={delay(420)} className="animate-fade-in-up mt-5">
-            <StatlogLogo tone="dark" delay={900} className="text-4xl sm:text-5xl xl:text-6xl" />
+            <BrandLogo tone="dark" delay={900} className="text-[32px] sm:text-[40px] xl:text-[50px]" />
           </div>
           <p
             style={delay(540)}
@@ -126,7 +126,7 @@ export default function LoginPage() {
               Sign in
             </h2>
             <p style={delay(580)} className="animate-fade-in-up text-xs xl:text-sm text-[#64748B] mt-2">
-              Use your username or employee ID to access Statlog.
+              Use your username or employee ID to sign in.
             </p>
 
             <form onSubmit={handleLogin} className="mt-7 space-y-4">

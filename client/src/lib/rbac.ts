@@ -15,14 +15,6 @@ export const hasPermission = (user: UserProfile | null | undefined, permission: 
 export const hasAnyPermission = (user: UserProfile | null | undefined, permissions: string[]): boolean =>
   permissions.some((p) => hasPermission(user, p));
 
-/**
- * Checks role codes directly, for the few cases a permission string can't tell two roles apart
- * (e.g. RCA_WRITE is held by both HOD, for their own incidents, and the RCA Head, for RCA meetings
- * Quality hands them — see server's getReviewQueue).
- */
-export const hasAnyRole = (user: UserProfile | null | undefined, roles: string[]): boolean =>
-  roles.some((r) => user?.roles?.includes(r));
-
 export const isReceivingDepartment = (user: UserProfile | null | undefined, incident: any): boolean =>
   Boolean(user?.departmentId) && idOf(incident?.departmentId) === idOf(user?.departmentId);
 

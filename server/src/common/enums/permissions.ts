@@ -1,4 +1,4 @@
-// Permission set for the five roles: Staff, Quality, HOD, Admin, Intimation Member.
+// Permission set for the system roles (Staff, Quality, HOD, Admin, RCA Head, Intimation Member, Super Admin).
 // Role → permission mapping lives in server/src/seeders/systemRoles.ts.
 export const PERMISSIONS = {
   // Incident permissions
@@ -25,6 +25,11 @@ export const PERMISSIONS = {
   REPORT_VIEW_DEPARTMENT: 'report.view_department',
   REPORT_VIEW_ALL: 'report.view_all',
 
+  // Screens that used to be decided by role name
+  REVIEW_QUEUE_VIEW: 'review_queue.view', // Review & RCA Queue
+  INSIGHTS_VIEW_ALL: 'insights.view_all', // AI Insights for the whole hospital
+  INSIGHTS_VIEW_DEPARTMENT: 'insights.view_department', // AI Insights for the user's own department
+
   // Administration (Admin only)
   ADMIN_USER_MANAGE: 'admin.user_manage',
   ADMIN_ROLE_MANAGE: 'admin.role_manage',
@@ -32,6 +37,11 @@ export const PERMISSIONS = {
   ADMIN_LOCATION_MANAGE: 'admin.location_manage',
   ADMIN_CATEGORY_MANAGE: 'admin.category_manage',
   ADMIN_AUDIT_VIEW: 'admin.audit_view',
+  // Edit the wording of WhatsApp notifications (Super Admin by default)
+  ADMIN_WHATSAPP_TEMPLATES: 'admin.whatsapp_templates',
+
+  // Super Admin only: decide which roles can see which screens (Access Control)
+  ADMIN_ACCESS_CONTROL: 'admin.access_control',
 } as const;
 
 export type Permission = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -47,6 +57,8 @@ export const ROLE_CODES = {
   // No workflow permissions of their own — created purely to be picked in "Intimate to" so
   // non-staff contacts (external stakeholders, etc.) can be notified about an incident.
   INTIMATION_MEMBER: 'INTIMATION_MEMBER',
+  // Holds every permission and is the only role that can change what other roles can see
+  SUPER_ADMIN: 'SUPER_ADMIN',
 } as const;
 
 export type RoleCode = (typeof ROLE_CODES)[keyof typeof ROLE_CODES];
