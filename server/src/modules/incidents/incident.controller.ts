@@ -352,11 +352,24 @@ export const getTriageQueue = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-/** Quality's review queue: incidents the HOD submitted for closure or awaiting RCA. */
+/** Statuses in which the HOD's priority deadline (actionDueAt) applies: the department is still working it. */
+export const HOD_WORK_STATUSES = ['ASSIGNED', 'UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS'];
+
+/**
+ * Quality's review queue: incidents the HOD submitted for closure, awaiting RCA, or (status=OVERDUE)
+ * still with the department past the deadline set by the priority Quality gave at assignment.
+ */
 export const getReviewQueue = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!hasPermission(req.user, PERMISSIONS.REVIEW_QUEUE_VIEW)) {
       throw AppError.forbidden('You do not have access to the review queue');
+    }
+    if (req.query.status === 'OVERDUE') {
+      const overdue = await populateList(Incident.find({ status: { $in: HOD_WORK_STATUSES }, actionDueAt: { $lt: new Date() } }))
+        .sort({ actionDueAt: 1 })
+        .limit(QUEUE_LIMIT);
+      sendSuccess(res, overdue, 'Overdue incidents retrieved', 200, { total: overdue.length });
+      return;
     }
     const status = req.query.status === 'RCA_REQUESTED' ? 'RCA_REQUESTED' : 'PENDING_QUALITY_REVIEW';
     const sortField = status === 'RCA_REQUESTED' ? { rcaRequestedAt: 1, updatedAt: 1 } : { 'closureSubmission.at': 1 };

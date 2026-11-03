@@ -1,6 +1,9 @@
 import mongoose from 'mongoose';
 import { logger } from '../config/logger.js';
-import { Incident, IncidentStatus, riskBandFor } from '../modules/incidents/incident.model.js';
+import { Incident, IncidentStatus, riskBandFor, SEVERITY_LABELS, PRIORITY_DEADLINE_HOURS } from '../modules/incidents/incident.model.js';
+import { Location } from '../modules/locations/location.model.js';
+import { AiInsight } from '../modules/insights/insight.model.js';
+import { buildHistory, HistoryDef } from './dummyHistory.js';
 import { Investigation } from '../modules/investigations/investigation.model.js';
 import { RootCauseAnalysis } from '../modules/rca/rca.model.js';
 import { RcaMeeting } from '../modules/rca/rcaMeeting.model.js';
@@ -9,11 +12,21 @@ import { Notification } from '../modules/notifications/notification.model.js';
 import { AuditLog } from '../modules/audit/audit.model.js';
 import { Counter } from '../common/models/counter.model.js';
 
-const SEVERITY_LABELS: Record<number, string> = {
-  1: 'Near Miss',
-  2: 'No Harm',
-  3: 'Harm',
-  4: 'Sentinel Event',
+// The hand-written demo cases were written against demo locations; they now sit on the hospital's
+// real wards. Anything unmapped falls back to the first active ward.
+const DEMO_LOCATION_WARD: Record<string, string> = {
+  'ER-BAY-1': 'AMW',
+  'ER-BAY-2': 'TICU1',
+  'ICU-BED-01': 'MICU',
+  'ICU-BED-02': 'SICU',
+  'OT-SUITE-1': 'OTC',
+  'OT-SUITE-2': 'OTCW',
+  'WARD-302': 'FMW',
+  'WARD-401': 'MSW',
+  'PHARM-CTR-1': 'MMW',
+  'RAD-CT-1': 'TICU2',
+  'LAB-PHLEBO-1': 'FMW',
+  'QUALITY-OFFICE': 'SPW',
 };
 
 // The HOD of the receiving department is assigned the incident and writes/owns its CAPA
@@ -97,6 +110,8 @@ interface DummyRca {
 
 interface DummyCapa {
   seq: number;
+  /** Overrides CAPA-<year>-<seq> (used by the generated history). */
+  capaNumber?: string;
   type: CapaType;
   action: string;
   priority: CapaPriority;
@@ -115,6 +130,8 @@ interface DummyCapa {
 
 interface DummyIncidentDef {
   seq: number;
+  /** Overrides INC-<year>-<seq> (used by the generated history). */
+  incidentNumber?: string;
   daysAgo: number;
   department: string;
   reportingDepartment?: string;
@@ -1769,8 +1786,19 @@ export async function seedDummyOperationalData(params: {
   // from before that change is missing it and would no longer match the seeder's upsert filter.
   await Investigation.deleteMany({ departmentId: { $exists: false } });
 
-  for (const def of INCIDENTS) {
-    const incidentNumber = `INC-${year}-${def.seq.toString().padStart(6, '0')}`;
+  // Locations: only the hospital's own wards
+  const wards = (await Location.find({ type: 'WARD', active: { $ne: false } }).select('code').sort({ code: 1 }).lean()) as any[];
+  const wardIdByCode = new Map<string, mongoose.Types.ObjectId>(wards.map((w) => [w.code, w._id]));
+  const resolveLocation = (code: string): mongoose.Types.ObjectId =>
+    wardIdByCode.get(DEMO_LOCATION_WARD[code] ?? code) ?? wards[0]?._id ?? requireId(locationMap, code, 'location');
+
+  // A year of generated history, numbered in its own reserved block (see planHistoryNumbers)
+  const history = buildHistory(wards.map((w) => w.code));
+  const plan = await planHistoryNumbers(history, year);
+  const historyDefs: DummyIncidentDef[] = history.map((h, i) => toDummyDef(h, plan.incidentNumbers[i], plan.capaNumbersFor(i)));
+
+  for (const def of [...INCIDENTS, ...historyDefs]) {
+    const incidentNumber = def.incidentNumber ?? `INC-${year}-${def.seq.toString().padStart(6, '0')}`;
     const reportingDeptCode = def.reportingDepartment || def.department;
     const occurredInDeptCode = def.occurredInDepartment || def.department;
     const reportingDepartmentId = requireId(deptMap, reportingDeptCode, 'department');
@@ -1779,7 +1807,7 @@ export async function seedDummyOperationalData(params: {
 
     const departmentId = requireId(deptMap, def.department, 'department');
     const departmentHodId = requireId(userMap, DEPARTMENT_HOD[def.department], 'user');
-    const locationId = requireId(locationMap, def.location, 'location');
+    const locationId = resolveLocation(def.location);
     const categoryId = requireId(categoryMap, def.category, 'category');
     const incidentDateTime = daysAgo(def.daysAgo, 8 + (def.seq % 10));
     const reportedAt = daysAgo(Math.max(def.daysAgo - 0, 0), 11 + (def.seq % 6));
@@ -1944,6 +1972,10 @@ export async function seedDummyOperationalData(params: {
           ...(assigned
             ? { departmentId, assignedHod: departmentHodId, assignedBy: qualityId, assignedAt }
             : {}),
+          // Same deadline a live assignment sets from the priority (incidentWorkflow.service.ts)
+          ...(assigned && def.priority
+            ? { actionDueAt: new Date(assignedAt.getTime() + PRIORITY_DEADLINE_HOURS[def.priority] * 3600 * 1000) }
+            : {}),
           assignments,
           infoRequests,
           ...(rejection ? { rejection } : {}),
@@ -1983,6 +2015,7 @@ export async function seedDummyOperationalData(params: {
         $unset: {
           investigatorId: '',
           ...(assigned ? {} : { departmentId: '', assignedHod: '', assignedBy: '', assignedAt: '' }),
+          ...(assigned && def.priority ? {} : { actionDueAt: '' }),
           ...(def.status === 'REJECTED' ? {} : { rejection: '' }),
           ...(closureSubmission ? {} : { closureSubmission: '' }),
           ...(def.status === 'CLOSED' ? {} : { closureRemarks: '', closedAt: '', closedBy: '', qualityScore: '', riskAssessment: '' }),
@@ -2061,7 +2094,7 @@ export async function seedDummyOperationalData(params: {
 
     if (def.capas?.length) {
       for (const capa of def.capas) {
-        const capaNumber = `CAPA-${year}-${capa.seq.toString().padStart(6, '0')}`;
+        const capaNumber = capa.capaNumber ?? `CAPA-${year}-${capa.seq.toString().padStart(6, '0')}`;
         await Capa.findOneAndUpdate(
           { capaNumber },
           {
@@ -2122,7 +2155,7 @@ export async function seedDummyOperationalData(params: {
       investigationCount += 1;
 
       for (const capa of iw.capas) {
-        const capaNumber = `CAPA-${year}-${capa.seq.toString().padStart(6, '0')}`;
+        const capaNumber = capa.capaNumber ?? `CAPA-${year}-${capa.seq.toString().padStart(6, '0')}`;
         await Capa.findOneAndUpdate(
           { capaNumber },
           {
@@ -2400,7 +2433,82 @@ export async function seedDummyOperationalData(params: {
     if (created) notificationCount += 1;
   }
 
+  // The data changed, so the cached AI analysis no longer matches it
+  await AiInsight.deleteMany({});
+
   logger.info(
-    `✅ Dummy operational data seeded (${INCIDENTS.length} incidents, ${investigationCount} investigations, ${rcaCount} RCAs, ${rcaMeetingCount} RCA meetings, ${capaCount} CAPAs, ${notificationCount} notifications)`
+    `✅ Dummy operational data seeded (${INCIDENTS.length + historyDefs.length} incidents incl. ${historyDefs.length} from the past year, ${investigationCount} investigations, ${rcaCount} RCAs, ${rcaMeetingCount} RCA meetings, ${capaCount} CAPAs, ${notificationCount} notifications)`
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// Generated history: numbering and conversion
+
+const META_ID = 'demo-history';
+
+/**
+ * Incident and CAPA numbers for the generated history. The first run reserves a block after every
+ * number already in use (so real incidents are never overwritten) and records it; later runs reuse
+ * the same numbers, updating the history in place. If the history size changes, the old block is
+ * removed and a new one reserved.
+ */
+async function planHistoryNumbers(history: HistoryDef[], year: number) {
+  const meta = mongoose.connection.collection<{ _id: string; incidentNumbers: string[]; capaNumbers: string[] }>('seed_meta');
+  const capaTotal = history.reduce((n, h) => n + h.capas.length, 0);
+  const saved = await meta.findOne({ _id: META_ID });
+
+  let incidentNumbers: string[];
+  let capaNumbers: string[];
+  if (saved && saved.incidentNumbers.length === history.length && saved.capaNumbers.length === capaTotal) {
+    incidentNumbers = saved.incidentNumbers;
+    capaNumbers = saved.capaNumbers;
+  } else {
+    if (saved) await removeIncidents(saved.incidentNumbers);
+    incidentNumbers = await reserveNumbers('INC', 'incident', year, history.length);
+    capaNumbers = await reserveNumbers('CAPA', 'capa', year, capaTotal);
+    await meta.updateOne({ _id: META_ID }, { $set: { incidentNumbers, capaNumbers } }, { upsert: true });
+  }
+
+  const offsets: number[] = [];
+  history.reduce((n, h, i) => ((offsets[i] = n), n + h.capas.length), 0);
+  return { incidentNumbers, capaNumbersFor: (i: number) => capaNumbers.slice(offsets[i], offsets[i] + history[i].capas.length) };
+}
+
+/** Takes `count` numbers after the highest one in use (counter or existing records) and advances the counter. */
+async function reserveNumbers(prefix: 'INC' | 'CAPA', counterKey: 'incident' | 'capa', year: number, count: number): Promise<string[]> {
+  if (!count) return [];
+  const name = `${counterKey}_${year}`;
+  const re = new RegExp(`^${prefix}-${year}-(\\d+)$`);
+  const field = prefix === 'INC' ? 'incidentNumber' : 'capaNumber';
+  const model: any = prefix === 'INC' ? Incident : Capa;
+  const latest = await model.findOne({ [field]: re }).sort({ [field]: -1 }).select(field).lean();
+  const highestUsed = latest ? Number(String(latest[field]).match(re)?.[1] ?? 0) : 0;
+  await Counter.findOneAndUpdate({ name }, { $max: { seq: highestUsed } }, { upsert: true });
+  const after = await Counter.findOneAndUpdate({ name }, { $inc: { seq: count } }, { new: true });
+  const first = after!.seq - count + 1;
+  return Array.from({ length: count }, (_, k) => `${prefix}-${year}-${String(first + k).padStart(6, '0')}`);
+}
+
+/** Deletes demo incidents and everything attached to them (used only for a superseded history block). */
+async function removeIncidents(incidentNumbers: string[]): Promise<void> {
+  const ids = (await Incident.find({ incidentNumber: { $in: incidentNumbers } }).select('_id').lean()).map((i: any) => i._id);
+  if (!ids.length) return;
+  await Promise.all([
+    Investigation.deleteMany({ incidentId: { $in: ids } }),
+    RootCauseAnalysis.deleteMany({ incidentId: { $in: ids } }),
+    RcaMeeting.deleteMany({ incidentId: { $in: ids } }),
+    Capa.deleteMany({ incidentId: { $in: ids } }),
+    Notification.deleteMany({ entityId: { $in: ids } }),
+    AuditLog.deleteMany({ entityId: { $in: ids } }),
+  ]);
+  await Incident.deleteMany({ _id: { $in: ids } });
+}
+
+function toDummyDef(h: HistoryDef, incidentNumber: string, capaNumbers: string[]): DummyIncidentDef {
+  return {
+    ...h,
+    seq: 0,
+    incidentNumber,
+    capas: h.capas.map((c, k) => ({ ...c, seq: 0, capaNumber: capaNumbers[k] })),
+  };
 }

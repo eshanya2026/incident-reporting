@@ -1,10 +1,10 @@
 import React from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowRight, MapPin, Clock, FileSearch } from 'lucide-react';
+import { ArrowRight, MapPin, Clock, FileSearch, AlarmClock } from 'lucide-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { SeverityBadge, StatusBadge } from './Badges';
-import { SEVERITY_COLOR } from '../../lib/incidentMeta';
+import { SEVERITY_COLOR, PRIORITY_META, PRIORITY_DEADLINE_LABEL, IncidentPriority } from '../../lib/incidentMeta';
 import { EmptyState, TableSkeleton } from '../ui/listKit';
 
 dayjs.extend(relativeTime);
@@ -20,7 +20,9 @@ export type IncidentColumn =
   | 'severity'
   | 'reportedSeverity'
   | 'status'
-  | 'waiting';
+  | 'waiting'
+  | 'priority'
+  | 'deadline';
 
 const HEADERS: Record<IncidentColumn, string> = {
   number: 'Incident No',
@@ -34,6 +36,8 @@ const HEADERS: Record<IncidentColumn, string> = {
   reportedSeverity: 'Reported severity',
   status: 'Status',
   waiting: 'Waiting since',
+  priority: 'Priority',
+  deadline: 'Deadline',
 };
 
 const initials = (name?: string) =>
@@ -171,6 +175,34 @@ export default function IncidentTable({
         return <SeverityBadge severity={inc.initialSeverity ?? inc.severity} provisional />;
       case 'status':
         return <StatusBadge status={inc.status} />;
+      case 'priority': {
+        const p = inc.priority as IncidentPriority | undefined;
+        if (!p || !PRIORITY_META[p]) return '—';
+        return (
+          <div className="whitespace-nowrap">
+            <span className={`inline-flex px-2.5 py-1 rounded-full border text-xs font-semibold ${PRIORITY_META[p].classes}`}>{PRIORITY_META[p].label}</span>
+            <div className="text-[11px] text-slate-500 mt-1">Within {PRIORITY_DEADLINE_LABEL[p]}</div>
+          </div>
+        );
+      }
+      case 'deadline': {
+        if (!inc.actionDueAt) return '—';
+        const due = dayjs(inc.actionDueAt);
+        const late = due.isBefore(dayjs());
+        return (
+          <div className="whitespace-nowrap" title={due.format('DD MMM YYYY HH:mm')}>
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-xs font-semibold ${
+                late ? 'text-red-700 bg-red-50 border-red-200' : 'text-slate-600 bg-slate-50 border-slate-200'
+              }`}
+            >
+              <AlarmClock className="w-3 h-3" />
+              {late ? `Overdue by ${due.fromNow(true)}` : `Due ${due.fromNow()}`}
+            </span>
+            <div className="text-[11px] text-slate-500 mt-1">Was due {due.format('DD MMM, HH:mm')}</div>
+          </div>
+        );
+      }
       case 'waiting': {
         const since = waitingSince?.(inc);
         if (!since) return '—';
