@@ -7,7 +7,7 @@ import { Department } from '../departments/department.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { hashPassword } from '../auth/auth.utils.js';
-import { COMMON_STAFF_PASSWORD } from '../auth/auth.controller.js';
+import { COMMON_STAFF_PASSWORD, normaliseWhatsapp } from '../auth/auth.controller.js';
 import { PERMISSIONS, ROLE_CODES } from '../../common/enums/permissions.js';
 import { hasPermission } from '../../common/helpers/incidentAccess.js';
 
@@ -149,15 +149,21 @@ export const getUsers = async (req: Request, res: Response, next: NextFunction):
     const status = req.query.status as string;
 
     const query: any = {};
-    if (search) {
+    if (search?.trim()) {
+      // Typed text is matched literally, not as a pattern
+      const pattern = search.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       query.$or = [
-        { name: { $regex: search, $options: 'i' } },
-        { email: { $regex: search, $options: 'i' } },
-        { employeeId: { $regex: search, $options: 'i' } },
-        { username: { $regex: search, $options: 'i' } },
+        { name: { $regex: pattern, $options: 'i' } },
+        { email: { $regex: pattern, $options: 'i' } },
+        { employeeId: { $regex: pattern, $options: 'i' } },
+        { username: { $regex: pattern, $options: 'i' } },
+        { designation: { $regex: pattern, $options: 'i' } },
       ];
     }
-    if (departmentId) {
+    if (departmentId === 'NONE') {
+      query.departmentId = null; // staff who still have to pick their department
+    } else if (departmentId) {
+      if (!mongoose.Types.ObjectId.isValid(departmentId)) throw AppError.badRequest('Invalid department');
       query.departmentId = departmentId;
     }
     if (status) {
@@ -231,7 +237,7 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
       username: data.username.toLowerCase(),
       passwordHash: await hashPassword(data.password),
       phone: data.phone,
-      whatsappNumber: data.whatsappNumber,
+      whatsappNumber: normaliseWhatsapp(data.whatsappNumber),
       departmentId: data.departmentId || null,
       designation: data.designation,
       roles: data.roles,
@@ -295,7 +301,7 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     }
     if (data.name) user.name = data.name;
     if (data.phone !== undefined) user.phone = data.phone;
-    if (data.whatsappNumber !== undefined) user.whatsappNumber = data.whatsappNumber;
+    if (data.whatsappNumber !== undefined) user.whatsappNumber = normaliseWhatsapp(data.whatsappNumber);
     if (data.departmentId !== undefined) user.departmentId = (data.departmentId || null) as any;
     if (data.designation !== undefined) user.designation = data.designation;
     if (data.roles) user.roles = data.roles as any;

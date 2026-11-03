@@ -6,6 +6,7 @@ import { api } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { errorMessage } from '../lib/useAction';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
+import { WhatsappInput, isValidMobile } from '../components/ui/WhatsappInput';
 
 const COMMON_PASSWORD = 'mapims@123';
 
@@ -74,8 +75,7 @@ export default function CompleteProfilePage() {
       text: 'Both passwords match',
     },
   ];
-  const whatsappDigits = whatsapp.replace(/\D/g, '').replace(/^0+/, '');
-  const whatsappOk = !whatsappDigits || whatsappDigits.length === 10 || (whatsappDigits.length >= 11 && whatsappDigits.length <= 15);
+  const whatsappOk = isValidMobile(whatsapp);
   const emailOk = !email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   const canSubmit = Boolean(departmentId) && designation.trim().length >= 2 && whatsappOk && emailOk && rules.every((r) => r.ok) && !saving;
 
@@ -189,15 +189,7 @@ export default function CompleteProfilePage() {
                 <label className={label} htmlFor="cp-whatsapp">
                   WhatsApp number <span className="font-normal text-[#94A3B8]">(optional)</span>
                 </label>
-                <input
-                  id="cp-whatsapp"
-                  className={`${inputClass} ${whatsappOk ? '' : '!border-red-400'}`}
-                  value={whatsapp}
-                  onChange={(e) => setWhatsapp(e.target.value)}
-                  inputMode="tel"
-                  placeholder="98401 12345"
-                  maxLength={20}
-                />
+                <WhatsappInput id="cp-whatsapp" value={whatsapp} onChange={setWhatsapp} className="!rounded-xl" />
                 <p className={whatsappOk ? hint : 'text-[12px] text-red-600 mt-1'}>
                   {whatsappOk ? 'To get updates about incidents you report.' : 'Enter a 10-digit mobile number.'}
                 </p>

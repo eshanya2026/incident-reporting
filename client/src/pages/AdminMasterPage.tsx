@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import React, { useEffect, useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Settings, Users, Building, MapPin, Tag, PlusCircle, Plus, Upload, Download, FileText, CheckCircle2, AlertCircle, X } from 'lucide-react';
 import { api } from '../lib/api';
 import { departmentOptions, DEPARTMENT_CATEGORIES } from '../components/ui/DepartmentOptions';
@@ -7,7 +7,8 @@ import { toast } from '../store/useToastStore';
 import { errorMessage } from '../lib/useAction';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { PageHeader } from '../components/ui/primitives';
-import { EmptyState, FilterBar, SearchInput, TabBar, filterControlClass } from '../components/ui/listKit';
+import { EmptyState, FilterBar, Pagination, SearchInput, TabBar, filterControlClass } from '../components/ui/listKit';
+import { WhatsappInput, isValidMobile, toLocalMobile } from '../components/ui/WhatsappInput';
 
 
 export default function AdminMasterPage() {
@@ -30,6 +31,15 @@ export default function AdminMasterPage() {
   const [replaceHod, setReplaceHod] = useState(false);
   const [userSearch, setUserSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('');
+  const [deptFilter, setDeptFilter] = useState('');
+  const [userPage, setUserPage] = useState(1);
+  // Search runs on the server; wait for a pause in typing
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(userSearch.trim()), 300);
+    return () => clearTimeout(t);
+  }, [userSearch]);
+  useEffect(() => setUserPage(1), [debouncedSearch, roleFilter, deptFilter]);
 
   // Password reset state
   const [resetUser, setResetUser] = useState<any>(null);
@@ -169,9 +179,26 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
   const [subCode, setSubCode] = useState('');
 
   // Queries
-  const { data: usersData } = useQuery({
-    queryKey: ['users'],
-    queryFn: () => api.get('/users?limit=200'),
+  // Directory: one page at a time, searched and filtered on the server (there are thousands of staff)
+  const USERS_PER_PAGE = 50;
+  const { data: usersData, isFetching: usersLoading } = useQuery({
+    queryKey: ['users', 'directory', userPage, debouncedSearch, roleFilter, deptFilter],
+    queryFn: () =>
+      api.get('/users', {
+        params: {
+          page: userPage,
+          limit: USERS_PER_PAGE,
+          search: debouncedSearch || undefined,
+          role: roleFilter || undefined,
+          departmentId: deptFilter || undefined,
+        },
+      }),
+    placeholderData: keepPreviousData,
+  });
+  // HODs for the Departments tab, fetched separately so they are never cut off by paging
+  const { data: hodUsersData } = useQuery({
+    queryKey: ['users', 'hods'],
+    queryFn: () => api.get('/users', { params: { role: 'HOD', status: 'ACTIVE', limit: 200 } }),
   });
 
   const { data: rolesData } = useQuery({
@@ -231,6 +258,8 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
     return matchCategory || matchSub;
   });
   const users = (usersData as any)?.data || [];
+  const usersMeta = (usersData as any)?.meta || { total: users.length, page: 1, totalPages: 1 };
+  const hodUsers = (hodUsersData as any)?.data || [];
   const roles = (rolesData as any)?.data || [];
   const roleById = (id: string) => roles.find((r: any) => r._id === id);
   const selectedRoleCode = roleById(roleId)?.code;
@@ -252,15 +281,10 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
     currentDeptHod.status === 'ACTIVE' &&
     currentDeptHod._id !== editingUser?._id;
 
-  const filteredUsers = users.filter((u: any) => {
-    if (roleFilter && !u.roles?.some((r: any) => r.code === roleFilter)) return false;
-    if (!userSearch) return true;
-    const q = userSearch.toLowerCase();
-    return [u.name, u.username, u.email, u.employeeId].some((v) => v?.toLowerCase().includes(q));
-  });
+  const filteredUsers = users;
 
   const hodsFor = (departmentId: string) =>
-    users.filter(
+    hodUsers.filter(
       (u: any) =>
         u.status === 'ACTIVE' &&
         u.departmentId?._id === departmentId &&
@@ -291,7 +315,7 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
     setUsername(u.username);
     setPassword('');
     setDesignation(u.designation || '');
-    setWhatsappNumber(u.whatsappNumber || '');
+    setWhatsappNumber(toLocalMobile(u.whatsappNumber));
     setDeptId(u.departmentId?._id || '');
     setRoleId(u.roles?.[0]?._id || '');
     setUserStatus(u.status);
@@ -303,6 +327,10 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
     e.preventDefault();
     if (!roleId) {
       toast.error('Please choose a role');
+      return;
+    }
+    if (!isValidMobile(whatsappNumber)) {
+      toast.error('Enter a 10-digit WhatsApp mobile number, or leave it empty');
       return;
     }
     if (needsDepartment && !deptId) {
@@ -495,7 +523,7 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
         active={activeTab}
         onChange={(key) => setActiveTab(key)}
         tabs={[
-          { key: 'users', label: 'User Directory', count: users.length },
+          { key: 'users', label: 'User Directory', count: usersMeta.total },
           { key: 'departments', label: 'Departments', count: departments.length },
           { key: 'wards', label: 'Wards', count: wards.length },
           { key: 'categories', label: 'Categories', count: categories.length },
@@ -519,6 +547,20 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                 options={[{ value: '', label: 'All roles' }, ...roles.map((r: any) => ({ value: r.code, label: r.name }))]}
                 searchPlaceholder="Search roles..."
                 className={`${filterControlClass} min-w-[11rem]`}
+              />
+              <SearchableSelect
+                value={deptFilter}
+                onChange={setDeptFilter}
+                options={[
+                  { value: '', label: 'All departments' },
+                  { value: 'NONE', label: 'No department yet' },
+                  ...[...departments]
+                    .filter((d: any) => d.active !== false)
+                    .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                    .map((d: any) => ({ value: d._id, label: d.name, group: d.category })),
+                ]}
+                searchPlaceholder="Search departments..."
+                className={`${filterControlClass} min-w-[13rem]`}
               />
             </div>
             <div className="flex items-center space-x-2 self-start">
@@ -618,11 +660,14 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                 })}
                 {filteredUsers.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="!p-0"><EmptyState message="No users match the filter." /></td>
+                    <td colSpan={7} className="!p-0"><EmptyState message={usersLoading ? 'Loading users…' : 'No users match the filter.'} /></td>
                   </tr>
                 )}
               </tbody>
             </table>
+          </div>
+          <div className={`text-sm text-slate-500 transition-opacity ${usersLoading ? 'opacity-60' : ''}`}>
+            <Pagination page={usersMeta.page} totalPages={usersMeta.totalPages} total={usersMeta.total} onChange={setUserPage} />
           </div>
         </div>
       )}
@@ -1024,7 +1069,8 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
               {roleId && (
                 <div>
                   <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">WhatsApp Number (optional)</label>
-                  <input type="tel" value={whatsappNumber} onChange={(e) => setWhatsappNumber(e.target.value)} placeholder="e.g. +91 98765 43210" className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
+                  <WhatsappInput value={whatsappNumber} onChange={setWhatsappNumber} size="sm" />
+                  {!isValidMobile(whatsappNumber) && <p className="mt-1 text-[11.5px] text-red-600">Enter a 10-digit mobile number.</p>}
                   <p className="mt-1 text-[11.5px] text-clinicalText-muted">{whatsappHint}</p>
                 </div>
               )}
