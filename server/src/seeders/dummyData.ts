@@ -130,6 +130,10 @@ interface DummyCapa {
 
 interface DummyIncidentDef {
   seq: number;
+  /** Hour of day it happened (generated history); otherwise derived from seq. */
+  occurredHour?: number;
+  /** Hours between occurrence and the report (generated history). */
+  reportDelayHours?: number;
   /** Overrides INC-<year>-<seq> (used by the generated history). */
   incidentNumber?: string;
   daysAgo: number;
@@ -1809,8 +1813,11 @@ export async function seedDummyOperationalData(params: {
     const departmentHodId = requireId(userMap, DEPARTMENT_HOD[def.department], 'user');
     const locationId = resolveLocation(def.location);
     const categoryId = requireId(categoryMap, def.category, 'category');
-    const incidentDateTime = daysAgo(def.daysAgo, 8 + (def.seq % 10));
-    const reportedAt = daysAgo(Math.max(def.daysAgo - 0, 0), 11 + (def.seq % 6));
+    const incidentDateTime = daysAgo(def.daysAgo, def.occurredHour ?? 8 + (def.seq % 10));
+    const reportedAt =
+      def.reportDelayHours != null
+        ? new Date(incidentDateTime.getTime() + def.reportDelayHours * 3600 * 1000)
+        : daysAgo(Math.max(def.daysAgo - 0, 0), 11 + (def.seq % 6));
 
     const patient = def.patient
       ? {
@@ -1823,7 +1830,8 @@ export async function seedDummyOperationalData(params: {
     // In these statuses Quality has not assigned a responsible department yet
     const assigned = !['SUBMITTED', 'INFO_REQUESTED', 'REJECTED'].includes(def.status);
     const qualityId = requireId(userMap, 'quality.anita', 'user');
-    const assignedAt = daysAgo(Math.max(def.daysAgo - 1, 0), 12);
+    // Never before the report (a late report pushes the assignment later)
+    const assignedAt = new Date(Math.max(daysAgo(Math.max(def.daysAgo - 1, 0), 12).getTime(), reportedAt.getTime() + 3 * 3600 * 1000));
     const submittedForReview = ['PENDING_QUALITY_REVIEW', 'CLOSED'].includes(def.status);
     const closedAt = def.closedDaysAgo != null ? daysAgo(def.closedDaysAgo, 16) : undefined;
 

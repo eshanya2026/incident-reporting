@@ -217,9 +217,12 @@ export const chatWithInsights = async (req: Request, res: Response, next: NextFu
     const question = messages[messages.length - 1].content;
     const log = { userId, scopeKey: scopeKeyOf(scope), dayKey: dayKeyOf(new Date()), question: question.slice(0, CHAT_MAX_CHARS) };
 
+    // The previous question and answer let a short follow-up ("who closed it?") stay on the same incidents
+    const followUp = messages.slice(-3, -1).map((m) => m.content).join('\n');
     const { dataset, idByNumber } = await loadChatDataset(scope, {
       identify: hasPermission(req.user, PERMISSIONS.INSIGHTS_PATIENT_DETAILS),
       question,
+      followUp,
     });
     try {
       const result = await answerQuestion({ scope, dataset, idByNumber, messages });

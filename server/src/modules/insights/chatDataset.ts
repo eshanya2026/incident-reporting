@@ -106,9 +106,70 @@ export interface ChatDatasetOptions {
   scope: InsightScope;
   /** The asker may see patient names, UHIDs and the incident description (insights.patient_details). */
   identify?: boolean;
-  /** Latest question: with `identify`, incidents whose patient matches a name or UHID in it are always included. */
+  /** Latest question: incidents it names (by number, CAPA number, or patient name/UHID) decide the focus. */
   question?: string;
+  /** Recent conversation (previous question and answer), used to keep a short follow-up on the same incidents. */
+  followUp?: string;
 }
+
+/** At most this many incidents are sent in full when a question is about specific incidents. */
+export const FOCUS_MAX_RECORDS = 25;
+
+const pad6 = (n: string) => n.padStart(6, '0');
+/** Incident and CAPA numbers written in a piece of text (tolerating a dropped leading zero). */
+export const referencedNumbers = (textIn?: string) => {
+  const t = textIn ?? '';
+  return {
+    incidents: new Set([...t.matchAll(/\bINC-?\s?(\d{4})-?(\d{1,6})\b/gi)].map((m) => `INC-${m[1]}-${pad6(m[2])}`)),
+    capas: new Set([...t.matchAll(/\bCAPA-?\s?(\d{4})-?(\d{1,6})\b/gi)].map((m) => `CAPA-${m[1]}-${pad6(m[2])}`)),
+  };
+};
+// A short follow-up that points back at what was just discussed ("who closed it?")
+const FOLLOW_UP = /\b(it|its|this|that|these|those|them|they|their|he|she|him|her|same|above)\b/i;
+
+/**
+ * General questions get every record in a compact form: anything empty, zero or false is left out, and
+ * a CAPA's or investigation's department/owner is left out when it is the incident's own department/HOD.
+ */
+const compactRecord = (r: any) => {
+  const prune = (v: any): any => {
+    if (Array.isArray(v)) {
+      const a = v.map(prune).filter((x) => x !== undefined);
+      return a.length ? a : undefined;
+    }
+    if (v && typeof v === 'object') {
+      const o: any = {};
+      for (const [k, x] of Object.entries(v)) {
+        const p = prune(x);
+        if (p !== undefined) o[k] = p;
+      }
+      return Object.keys(o).length ? o : undefined;
+    }
+    return v === null || v === '' || v === 0 || v === false ? undefined : v;
+  };
+  const out = { ...r };
+  delete out.description;
+  delete out.immediateAction;
+  if (out.patient) out.patient = { name: out.patient.name, uhid: out.patient.uhid };
+  if (out.occurredInDept === out.responsibleDept) delete out.occurredInDept;
+  if (out.reportingDept === out.responsibleDept) delete out.reportingDept;
+  out.investigations = out.investigations?.map((v: any) => ({
+    ...v,
+    dept: v.dept === r.responsibleDept ? undefined : v.dept,
+    investigator: v.investigator === r.hod ? undefined : v.investigator,
+  }));
+  out.capas = out.capas?.map((c: any) => ({
+    ...c,
+    dept: c.dept === r.responsibleDept ? undefined : c.dept,
+    owner: c.owner === r.hod ? undefined : c.owner,
+  }));
+  // Keep explicit "reported on time" (false) and "not within target" answers
+  const kept = { reportedLate: r.reportedLate, withinTarget: r.closure?.withinTarget };
+  const pruned = prune(out) ?? {};
+  if (kept.reportedLate === false) pruned.reportedLate = false;
+  if (kept.withinTarget === false && pruned.closure) pruned.closure.withinTarget = false;
+  return pruned;
+};
 
 export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => {
   const { now, shareCaseText, identify = false } = opts;
@@ -322,6 +383,12 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
   const reportedRecently = new Set(
     src.incidents.filter((i) => i.reportedAt && new Date(i.reportedAt) >= sixMonthsAgo).map((i) => idOf(i.reportingDepartmentId)).filter(Boolean)
   );
+  const reportedRecentlyNames = new Set(
+    src.incidents
+      .filter((i) => i.reportedAt && new Date(i.reportedAt) >= sixMonthsAgo)
+      .map((i) => nameOf(i.reportingDepartmentId)?.trim().toLowerCase())
+      .filter(Boolean)
+  );
 
   const aggregates = {
     note: 'Complete counts over every incident in scope (rejected reports excluded unless stated).',
@@ -345,8 +412,18 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
     bySeverityFinal: tally(notRejected, (i) => `${i.severity} ${SEVERITY_LABELS[i.severity] ?? ''}`.trim()),
     byShift: tally(notRejected, (i) => (i.incidentDateTime ? shiftOf(localParts(new Date(i.incidentDateTime)).hour) : undefined)),
     byWeekday: tally(notRejected, (i) => (i.incidentDateTime ? localParts(new Date(i.incidentDateTime)).weekday : undefined)),
+    // Two departments can share a name (e.g. an old and a new "Emergency Medicine"); a name that
+    // reported under either is not listed as silent, and each name is listed once.
     departmentsWithNoReportsInLast6Months:
-      opts.scope.kind === 'HOSPITAL' ? src.allDepartments.filter((d) => !reportedRecently.has(d.id)).map((d) => d.name) : undefined,
+      opts.scope.kind === 'HOSPITAL'
+        ? [
+            ...new Set(
+              src.allDepartments
+                .filter((d) => !reportedRecently.has(d.id) && !reportedRecentlyNames.has(d.name.trim().toLowerCase()))
+                .map((d) => d.name)
+            ),
+          ]
+        : undefined,
   };
 
   // Possible duplicates: same category and location, occurring within 2 days of each other
@@ -365,33 +442,61 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
     }
   }
 
-  // With patient details allowed, incidents whose patient matches a name or UHID in the question are
-  // always included, even if they are older than the most recent CHAT_MAX_RECORDS.
-  const tokens = identify ? identityTokens(opts.question) : [];
-  const matchesQuestion = (r: any) => {
-    if (!tokens.length) return false;
-    const nameWords = `${r.patient?.name ?? ''} ${r.affectedPersonName ?? ''}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
-    const ids = [r.patient?.uhid, r.patient?.ipNumber].map(normalise).filter(Boolean);
-    return tokens.some((t) => nameWords.some((w) => w.length >= 3 && (w.startsWith(t) || t.startsWith(w))) || ids.some((id) => id.includes(normalise(t)) && normalise(t).length >= 4));
+  // Which incidents does the text refer to: by incident/CAPA number, or (with patient details
+  // allowed) by a patient name or UHID.
+  const referencedBy = (textIn?: string) => {
+    const nums = referencedNumbers(textIn);
+    const tokens = identify ? identityTokens(textIn) : [];
+    const byPatient = (r: any) => {
+      if (!tokens.length) return false;
+      const nameWords = `${r.patient?.name ?? ''} ${r.affectedPersonName ?? ''}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      const ids = [r.patient?.uhid, r.patient?.ipNumber].map(normalise).filter(Boolean);
+      return tokens.some(
+        (t) => nameWords.some((w) => w.length >= 3 && (w.startsWith(t) || t.startsWith(w))) || ids.some((id) => normalise(t).length >= 4 && id.includes(normalise(t)))
+      );
+    };
+    return records.filter((r: any) => nums.incidents.has(r.no) || (r.capas || []).some((c: any) => nums.capas.has(c.no)) || byPatient(r));
   };
-  const recent = records.slice(0, CHAT_MAX_RECORDS);
-  const older = records.slice(CHAT_MAX_RECORDS).filter(matchesQuestion);
-  const caseRecords = [...recent, ...older];
+  let focus = referencedBy(opts.question);
+  const question = opts.question ?? '';
+  if (!focus.length && opts.followUp && FOLLOW_UP.test(question) && question.split(/\s+/).length <= 14) focus = referencedBy(opts.followUp);
 
-  return {
+  const header = {
     today: isoDay(now),
     caseTextShared: shareCaseText,
     patientDetailsShared: identify,
     policy: POLICY,
     notRecordedInSystem: NOT_RECORDED,
     aggregates,
+  };
+
+  // Question about specific incidents: send just those, in full (fast: a few thousand tokens)
+  if (focus.length && focus.length <= FOCUS_MAX_RECORDS) {
+    return {
+      ...header,
+      caseList: {
+        mode: 'FOCUSED',
+        note: `Full details of the ${focus.length} incident(s) the question refers to. Other incidents are not listed here; use "aggregates" for overall counts.`,
+        records: focus,
+      },
+    };
+  }
+
+  // General question: every incident, compact. Older ones beyond the cap only if named in the question.
+  const recent = records.slice(0, CHAT_MAX_RECORDS);
+  const named = new Set(focus.map((r: any) => r.no));
+  const older = records.slice(CHAT_MAX_RECORDS).filter((r: any) => named.has(r.no));
+  return {
+    ...header,
     possibleDuplicates: possibleDuplicates.slice(0, 30),
     caseList: {
+      mode: 'ALL',
       note:
-        records.length > CHAT_MAX_RECORDS
-          ? `Showing full details for the ${CHAT_MAX_RECORDS} most recently reported of ${records.length} incidents${older.length ? `, plus ${older.length} older incident(s) matching a patient named in the question` : ''}. Other older incidents are counted in "aggregates" but their individual details are not included; say so if a question needs them.`
-          : `All ${records.length} incidents in scope.`,
-      records: caseRecords,
+        (records.length > CHAT_MAX_RECORDS
+          ? `The ${CHAT_MAX_RECORDS} most recently reported of ${records.length} incidents${older.length ? `, plus ${older.length} older incident(s) named in the question` : ''}. Other older incidents are counted in "aggregates" but not listed; say so if a question needs them.`
+          : `All ${records.length} incidents in scope.`) +
+        ' Compact form: a field that is missing means none, zero or not applicable; a CAPA or investigation without "dept"/"owner"/"investigator" belongs to the incident\'s responsibleDept and hod. Descriptions are not included here; ask about a specific incident to see them.',
+      records: [...recent, ...older].map(compactRecord),
     },
   };
 };
@@ -415,7 +520,7 @@ export const chatCoverage = async (scope: InsightScope): Promise<{ incidents: nu
 };
 
 /** Every incident in scope since the beginning, newest first. Independent of the Insights page period. */
-export const loadChatDataset = async (scope: InsightScope, opts: { identify?: boolean; question?: string; now?: Date } = {}) => {
+export const loadChatDataset = async (scope: InsightScope, opts: { identify?: boolean; question?: string; followUp?: string; now?: Date } = {}) => {
   const now = opts.now ?? new Date();
   const incidents = await Incident.find(scopeFilterOf(scope))
     // Without patient-details permission, identifiers are never loaded; the description is loaded only
@@ -464,7 +569,7 @@ export const loadChatDataset = async (scope: InsightScope, opts: { identify?: bo
       capas,
       allDepartments: (departments as any[]).map((d) => ({ id: String(d._id), name: d.name })),
     },
-    { now, shareCaseText: env.AI_SHARE_CASE_TEXT, scope, identify: opts.identify, question: opts.question }
+    { now, shareCaseText: env.AI_SHARE_CASE_TEXT, scope, identify: opts.identify, question: opts.question, followUp: opts.followUp }
   );
   return { dataset, idByNumber };
 };

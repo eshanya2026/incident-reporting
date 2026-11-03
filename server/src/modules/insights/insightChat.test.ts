@@ -90,10 +90,11 @@ describe('buildChatDataset', () => {
 
     const shown = buildChatDataset(
       { incidents: [withPatient], investigations: [], rcas: [], rcaMeetings: [], capas: [], allDepartments: [] },
-      { now, shareCaseText: false, scope: { kind: 'HOSPITAL' }, identify: true }
+      { now, shareCaseText: false, scope: { kind: 'HOSPITAL' }, identify: true, question: 'What happened to Sharma?' }
     );
     const r1 = shown.caseList.records[0] as any;
     expect(shown.patientDetailsShared).toBe(true);
+    expect(shown.caseList.mode).toBe('FOCUSED');
     expect(r1.patient).toMatchObject({ name: 'Mr. Ramesh Sharma', uhid: 'UH-778899' });
     expect(r1.title).toBe('Mr. Sharma fell near bed');
     expect(r1.description).toContain('detailed description');
@@ -128,6 +129,35 @@ describe('citedIncidents', () => {
   it("links only incident numbers that are in the asker's scope", () => {
     const answer = 'See INC-2026-000001 and INC-2026-000001 again, plus INC-2026-999999 from elsewhere.';
     expect(citedIncidents(answer, new Map([['INC-2026-000001', 'id1']]))).toEqual([{ number: 'INC-2026-000001', id: 'id1' }]);
+  });
+});
+
+describe('focused and compact modes', () => {
+  const src = (incidents: any[]) => ({ incidents, investigations: [], rcas: [], rcaMeetings: [], capas: [], allDepartments: [] });
+  const opts = (question?: string, followUp?: string) => ({ now, shareCaseText: false, scope: { kind: 'HOSPITAL' as const }, identify: true, question, followUp });
+  const many = Array.from({ length: 30 }, (_, k) => incident(k + 1));
+
+  it('sends only the incidents a question names, in full', () => {
+    const d = buildChatDataset(src(many), opts('Tell me more about INC-2026-000007 and inc-2026-12'));
+    expect(d.caseList.mode).toBe('FOCUSED');
+    expect(d.caseList.records.map((r: any) => r.no)).toEqual(['INC-2026-000007', 'INC-2026-000012']);
+    expect((d.caseList.records[0] as any).description).toBeTruthy();
+    expect(d.aggregates.totalIncludingRejected).toBe(30);
+  });
+
+  it('keeps a short follow-up on the incidents just discussed', () => {
+    const d = buildChatDataset(src(many), opts('Who closed it?', 'Tell me about INC-2026-000003. INC-2026-000003 was closed...'));
+    expect(d.caseList.records.map((r: any) => r.no)).toEqual(['INC-2026-000003']);
+  });
+
+  it('sends every incident in compact form for general questions', () => {
+    const d = buildChatDataset(src(many), opts('Which departments report the most?'));
+    expect(d.caseList.mode).toBe('ALL');
+    expect(d.caseList.records).toHaveLength(30);
+    const r = d.caseList.records[0] as any;
+    expect(r.description).toBeUndefined();
+    expect(r.involvedDepts).toBeUndefined();
+    expect(r.no).toBeTruthy();
   });
 });
 

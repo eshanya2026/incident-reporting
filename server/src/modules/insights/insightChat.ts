@@ -46,7 +46,7 @@ Scope: ${scopeLabelOf(scope)}. Today is ${today}. The data covers every incident
 
 How the DATA is organised:
 - "aggregates": complete counts over every incident in scope. Use these for totals, trends and comparisons.
-- "caseList.records": one record per incident with its timings, severity history, assignments, investigations, RCA, CAPA, Quality reviews, closure and risk score. Use these to list, filter, check conditions on, or trace specific incidents.
+- "caseList.records": one record per incident with its timings, severity history, assignments, investigations, RCA, CAPA, Quality reviews, closure and risk score. Use these to list, filter, check conditions on, or trace specific incidents. "caseList.mode" is FOCUSED when only the incidents the question refers to are included (in full, with description), or ALL when every incident is included in compact form (see "caseList.note").
 - "possibleDuplicates": pairs of incidents with the same category and location within 2 days.
 - "policy": the hospital rules and definitions to judge against (reporting window, shifts, initial review, closure targets, HOD deadlines, RCA and CAPA requirements, closure approvals, CAPA effectiveness, risk bands).
 - "notRecordedInSystem": things this system does not record.

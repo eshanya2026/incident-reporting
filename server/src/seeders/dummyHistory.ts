@@ -360,6 +360,8 @@ const rng = (seed: number) => () => {
 
 export interface HistoryDef {
   daysAgo: number;
+  occurredHour: number;
+  reportDelayHours: number;
   department: Dept;
   location: string;
   category: string;
@@ -493,8 +495,14 @@ export const buildHistory = (wardCodes: string[]): HistoryDef[] => {
     }
 
     const riskSeverity = Math.min(5, Math.max(1, severity + (rand() < 0.2 ? 1 : 0)));
+    // Around the clock, busiest in the day; most reported within hours, a few late (> 24 hrs)
+    const occurredHour = weighted([between(8, 13), between(14, 19), between(20, 23), between(0, 7)], [45, 33, 12, 10]);
+    const lateRoll = rand();
+    const reportDelayHours = lateRoll < 0.07 ? between(26, 70) : lateRoll < 0.2 ? between(8, 22) : between(1, 7);
     defs.push({
       daysAgo,
+      occurredHour,
+      reportDelayHours,
       department,
       location: wardFor(department),
       category: t.category,
