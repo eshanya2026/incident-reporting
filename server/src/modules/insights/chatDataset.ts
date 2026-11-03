@@ -136,7 +136,85 @@ const FOLLOW_UP = /\b(it|its|this|that|these|those|them|they|their|he|she|him|he
  * General questions get every record in a compact form: anything empty, zero or false is left out, and
  * a CAPA's or investigation's department/owner is left out when it is the incident's own department/HOD.
  */
-const compactRecord = (r: any) => {
+/**
+ * Heavy per-incident sections a general question may need, picked from its wording. A question that
+ * names none of these areas gets all of them, so nothing is lost; one that clearly does gets only those.
+ */
+const SECTION_HINTS: Array<[string[], RegExp]> = [
+  [['capas'], /capa|action|corrective|preventive|overdue|effective|evidence|training|counsel|implement|intervention|improve/i],
+  [['investigations', 'rca', 'rcaMeeting'], /investigat|finding|root|cause|contribut|factor|rca|analysis|human error|negligen|equipment|recur|repeat|same/i],
+  [['reviews', 'closure', 'returnReasons', 'returnsByHod', 'rejection', 'infoRequests'], /review|return|clos|approv|reopen|sent back|accept|reject|duplicate|question|information|evidence|reassign/i],
+  [['risk'], /risk|score|band|likelihood|serious|significant|concern/i],
+  [['patient', 'affectedPersonName'], /patient|uhid|\bname|age\b|gender|elderly|child|infant|neonat|visitor|employee|\bmale\b|female/i],
+  [['assignedBy'], /\bwho\b|assigned|by whom|person|staff/i],
+  [
+    ['weekday', 'shift', 'reportDelayHours', 'reportedLate', 'hoursToInitialReview', 'unassignedHours', 'ageDaysIfOpen', 'hodDeadline', 'overdueDays', 'assignedAt', 'floorZone'],
+    /late|delay|time|hour|shift|day|week|night|morning|evening|age|old|overdue|deadline|unassigned|escalat|when|trend|month|quarter|year|period|recent|since|before|after/i,
+  ],
+];
+const HEAVY_SECTIONS = new Set(SECTION_HINTS.flatMap(([keys]) => keys));
+/**
+ * Rows of a table instead of a list of objects, so each field name is sent once rather than once per
+ * incident (about 40% fewer tokens). Missing values are null.
+ */
+export const toTable = (rows: any[]): { columns: string[]; rows: unknown[][] } => {
+  const columns: string[] = [];
+  for (const r of rows) for (const k of Object.keys(r)) if (!columns.includes(k)) columns.push(k);
+  return { columns, rows: rows.map((r) => columns.map((c) => (r[c] === undefined ? null : r[c]))) };
+};
+
+/** The incident records of a dataset as objects, whether they were sent as a list or as a table. */
+export const caseRecords = (d: any): any[] =>
+  d.caseList.records ??
+  d.caseList.rows.map((row: unknown[]) => Object.fromEntries(d.caseList.columns.map((c: string, i: number) => [c, row[i]]).filter(([, v]: [string, unknown]) => v !== null)));
+
+/** Light default for a general question that names no particular area: counts come from "aggregates". */
+const DEFAULT_SECTIONS = ['risk', ...SECTION_HINTS.find(([keys]) => keys.includes('shift'))![0]];
+/** Sections to keep for this question (each heavy section only when the question needs it). */
+export const sectionsFor = (question?: string): Set<string> => {
+  const wanted = SECTION_HINTS.filter(([, re]) => re.test(question ?? '')).flatMap(([keys]) => keys);
+  return new Set(wanted.length ? wanted : DEFAULT_SECTIONS);
+};
+/** Questions about things happening again, where the recurrence analysis is worth its size. */
+const RECURRENCE_HINT = /recur|repeat|again|same|despite|pattern|trend|after (?:the )?(?:capa|action|intervention)|effective|sustain|improve/i;
+
+const joinParts = (parts: Array<string | false | null | undefined>) => parts.filter(Boolean).join(' · ');
+/** One CAPA as a single line: the same facts as the object, at about half the size. */
+const capaLine = (c: any, r: any) =>
+  joinParts([
+    c.no,
+    c.type,
+    c.status,
+    c.priority,
+    c.dept && c.dept !== r.responsibleDept && `dept ${c.dept}`,
+    c.owner && c.owner !== r.hod && `owner ${c.owner}`,
+    c.target && `target ${c.target}`,
+    c.completed && `done ${c.completed}`,
+    c.overdueDays && `OVERDUE ${c.overdueDays}d`,
+    c.status !== 'OPEN' && (c.evidenceFiles ? `${c.evidenceFiles} evidence file(s)` : 'no evidence file'),
+    c.verification && `verified ${c.verification.effective === false ? 'NOT effective' : 'effective'} ${c.verification.at ?? ''}${c.verification.by ? ` by ${c.verification.by}` : ''}`.trim(),
+    c.verification?.remarks && `verification note: ${c.verification.remarks}`,
+    c.action && `action: ${c.action}`,
+    c.completionRemarks && `completion note: ${c.completionRemarks}`,
+  ]);
+/** One investigation as a single line. */
+const investigationLine = (v: any, r: any) =>
+  joinParts([
+    v.dept && v.dept !== r.responsibleDept && `dept ${v.dept}`,
+    v.investigator && v.investigator !== r.hod && `by ${v.investigator}`,
+    v.status,
+    v.started && `started ${v.started}`,
+    v.due && `due ${v.due}`,
+    v.completed && `done ${v.completed}`,
+    v.overdueDays && `overdue ${v.overdueDays}d`,
+    v.contributingFactors?.length && `factors: ${v.contributingFactors.join('; ')}`,
+    v.peopleInterviewed && `${v.peopleInterviewed} interviewed`,
+    v.evidenceFiles ? `${v.evidenceFiles} evidence file(s)` : v.status === 'COMPLETED' && 'no evidence file',
+    v.findings && `findings: ${v.findings}`,
+  ]);
+
+const compactRecord = (r: any, keep: Set<string> | null = null) => {
+  const lines = { capas: r.capas?.map((c: any) => capaLine(c, r)), investigations: r.investigations?.map((v: any) => investigationLine(v, r)) };
   const prune = (v: any): any => {
     if (Array.isArray(v)) {
       const a = v.map(prune).filter((x) => x !== undefined);
@@ -155,19 +233,13 @@ const compactRecord = (r: any) => {
   const out = { ...r };
   delete out.description;
   delete out.immediateAction;
+  delete out.interimControls; // the immediate action's text: sent with focused questions only
+  if (keep) for (const k of HEAVY_SECTIONS) if (!keep.has(k)) delete out[k];
   if (out.patient) out.patient = { name: out.patient.name, uhid: out.patient.uhid };
   if (out.occurredInDept === out.responsibleDept) delete out.occurredInDept;
   if (out.reportingDept === out.responsibleDept) delete out.reportingDept;
-  out.investigations = out.investigations?.map((v: any) => ({
-    ...v,
-    dept: v.dept === r.responsibleDept ? undefined : v.dept,
-    investigator: v.investigator === r.hod ? undefined : v.investigator,
-  }));
-  out.capas = out.capas?.map((c: any) => ({
-    ...c,
-    dept: c.dept === r.responsibleDept ? undefined : c.dept,
-    owner: c.owner === r.hod ? undefined : c.owner,
-  }));
+  if (out.investigations) out.investigations = lines.investigations;
+  if (out.capas) out.capas = lines.capas;
   // Keep explicit "reported on time" (false) and "not within target" answers
   const kept = { reportedLate: r.reportedLate, withinTarget: r.closure?.withinTarget };
   const pruned = prune(out) ?? {};
@@ -488,7 +560,7 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
   // designations...) are never treated as a person's name, so "staff error" can't match "Staff Nurse".
   const vocabulary = new Set(
     records
-      .flatMap((r: any) => [r.category, r.subcategory, r.location, r.responsibleDept, r.reportingDept, r.occurredInDept, r.hod, r.assignedBy, r.affected])
+      .flatMap((r: any) => [r.category, r.subcategory, r.location, r.responsibleDept, r.reportingDept, r.occurredInDept, r.affected])
       .concat(COMMON_HOSPITAL_WORDS)
       .join(' ')
       .toLowerCase()
@@ -528,8 +600,11 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
 
   // Question about specific incidents: send just those, in full (fast: a few thousand tokens)
   if (focus.length && focus.length <= FOCUS_MAX_RECORDS) {
+    const { coverage, totalIncludingRejected, rejected, byStatus, bySeverityFinal } = aggregates as any;
     return {
       ...header,
+      // A question about specific incidents only needs the headline totals, not every breakdown
+      aggregates: { note: 'Headline totals only (this question is about specific incidents).', coverage, totalIncludingRejected, rejected, byStatus, bySeverityFinal },
       caseList: {
         mode: 'FOCUSED',
         note: `Full details of the ${focus.length} incident(s) the question refers to. Other incidents are not listed here; use "aggregates" for overall counts.`,
@@ -542,8 +617,13 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
   const recent = records.slice(0, CHAT_MAX_RECORDS);
   const named = new Set(focus.map((r: any) => r.no));
   const older = records.slice(CHAT_MAX_RECORDS).filter((r: any) => named.has(r.no));
+  const general = sectionsFor(opts.question);
+  const { recurrenceAfterClosure: recurrenceAggregate, ...restOfAggregates } = aggregates as any;
   return {
     ...header,
+    aggregates: RECURRENCE_HINT.test(opts.question ?? '')
+      ? aggregates
+      : { ...restOfAggregates, recurrenceAfterClosure: { note: `${recurrenceAggregate.groups.length} category/department groups recurred after an earlier closure; ask about recurrence to see them.` } },
     possibleDuplicates: possibleDuplicates.slice(0, 30),
     caseList: {
       mode: 'ALL',
@@ -551,8 +631,10 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
         (records.length > CHAT_MAX_RECORDS
           ? `The ${CHAT_MAX_RECORDS} most recently reported of ${records.length} incidents${older.length ? `, plus ${older.length} older incident(s) named in the question` : ''}. Other older incidents are counted in "aggregates" but not listed; say so if a question needs them.`
           : `All ${records.length} incidents in scope.`) +
-        ' Compact form: a field that is missing means none, zero or not applicable; a CAPA or investigation without "dept"/"owner"/"investigator" belongs to the incident\'s responsibleDept and hod. Descriptions are not included here; ask about a specific incident to see them.',
-      records: [...recent, ...older].map(compactRecord),
+        ` Only the per-incident sections this question needs are included (${[...general].join(', ')}). If the answer needs a detail that is not included (for example CAPA, investigation, review or patient details), say which detail is missing and suggest asking about it directly.` +
+        ' CAPAs and investigations, when included, are one line each with facts separated by " · ".' +
+        ' Table form: "columns" names the fields and each entry in "rows" gives one incident\'s values in that order. null means none, zero or not applicable; a CAPA or investigation without "dept"/"owner"/"investigator" belongs to the incident\'s responsibleDept and hod. Descriptions are not included here; ask about a specific incident to see them.',
+      ...toTable([...recent, ...older].map((r) => compactRecord(r, general))),
     },
   };
 };

@@ -31,7 +31,7 @@ describe('extractJson', () => {
 });
 
 import { afterEach, vi } from 'vitest';
-import { activeAi, generateJson, generateReply, isQuotaError, modelChain } from './aiClient.js';
+import { activeAi, generateJson, generateReply, isQuotaError, modelChain, quotaInfoFromGemini, msUntilPacificMidnight, resetCooldowns } from './aiClient.js';
 
 describe('modelChain', () => {
   it('puts the main model first and drops blanks and duplicates', () => {
@@ -42,19 +42,22 @@ describe('modelChain', () => {
 
 describe('model fallback', () => {
   // A fake Gemini endpoint: each model either answers with `text` or fails with an HTTP status
-  const fakeGemini = (byModel: Record<string, { status?: number; text?: string }>) => {
+  const fakeGemini = (byModel: Record<string, { status?: number; text?: string; error?: any }>) => {
     const calls: string[] = [];
     vi.stubGlobal('fetch', async (url: string) => {
       const model = decodeURIComponent(url.split('/models/')[1].split(':')[0]);
       calls.push(model);
       const r = byModel[model] ?? { status: 404 };
       return r.status
-        ? { ok: false, status: r.status, json: async () => ({ error: { message: `fake ${r.status}` } }) }
+        ? { ok: false, status: r.status, json: async () => ({ error: { message: `fake ${r.status}`, ...r.error } }) }
         : { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: r.text }] } }] }) };
     });
     return calls;
   };
-  afterEach(() => vi.unstubAllGlobals());
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    resetCooldowns();
+  });
   const [first, second, third] = activeAi().models;
 
   it('falls back to the next model when the main one is out of quota', async () => {
@@ -71,9 +74,51 @@ describe('model fallback', () => {
   });
 
   it('reports the last model\'s error when every model fails', async () => {
-    const calls = fakeGemini({ [first]: { status: 429 }, [second]: { status: 404 }, ...(third ? { [third]: { status: 429 } } : {}) });
+    const models = activeAi().models;
+    const calls = fakeGemini(Object.fromEntries(models.map((m, i) => [m, { status: i === 1 ? 404 : 429 }])));
     const err = await generateReply({ system: 's', messages: [{ role: 'user', content: 'q' }] }).catch((e) => e);
     expect(isQuotaError(err)).toBe(true);
-    expect(calls).toEqual(activeAi().models);
+    expect(calls).toEqual(models);
+  });
+
+  const dailyQuota = { details: [{ violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] }, { retryDelay: '30s' }] };
+
+  it('skips a model that has used up its daily allowance on later questions', async () => {
+    let calls = fakeGemini({ [first]: { status: 429, error: dailyQuota }, [second]: { text: 'ok' } });
+    await generateReply({ system: 's', messages: [{ role: 'user', content: 'q1' }] });
+    expect(calls).toEqual([first, second]);
+    calls = fakeGemini({ [first]: { text: 'should not be asked' }, [second]: { text: 'ok again' } });
+    const res = await generateReply({ system: 's', messages: [{ role: 'user', content: 'q2' }] });
+    expect(res.model).toBe(second);
+    expect(calls).toEqual([second]);
+  });
+
+  it('still tries every model when all of them are cooling down', async () => {
+    const models = activeAi().models;
+    fakeGemini(Object.fromEntries(models.map((m) => [m, { status: 429, error: dailyQuota }])));
+    await generateReply({ system: 's', messages: [{ role: 'user', content: 'q' }] }).catch(() => undefined);
+    const calls = fakeGemini({ [third ?? second]: { text: 'quota reset' } });
+    const res = await generateReply({ system: 's', messages: [{ role: 'user', content: 'q' }] });
+    expect(res.value).toBe('quota reset');
+    expect(calls[0]).toBe(first);
   });
 });
+
+describe('quota details', () => {
+  it('tells a daily limit from a per-minute one, with the retry delay', () => {
+    expect(
+      quotaInfoFromGemini({ details: [{ violations: [{ quotaId: 'GenerateRequestsPerDayPerProjectPerModel-FreeTier' }] }, { retryDelay: '34.5s' }] })
+    ).toEqual({ perDay: true, retryAfterMs: 34500 });
+    expect(quotaInfoFromGemini({ details: [{ violations: [{ quotaId: 'GenerateContentInputTokensPerModelPerMinute-FreeTier' }] }] })).toEqual({
+      perDay: false,
+      retryAfterMs: undefined,
+    });
+    expect(quotaInfoFromGemini({ message: 'other' })).toBeUndefined();
+  });
+
+  it('counts down to midnight Pacific time', () => {
+    // 2026-11-03 23:00 Pacific (PST, UTC-8) = 2026-11-04 07:00 UTC: one hour to go
+    expect(msUntilPacificMidnight(new Date('2026-11-04T07:00:00Z'))).toBe(3_600_000);
+  });
+});
+

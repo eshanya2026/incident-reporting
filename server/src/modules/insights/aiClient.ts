@@ -54,10 +54,59 @@ export const toGeminiSchema = (schema: any): any => {
 };
 
 export class AiHttpError extends Error {
-  constructor(public readonly status: number, detail?: string) {
+  constructor(
+    public readonly status: number,
+    detail?: string,
+    /** Quota details from the provider, when it says which limit was hit and when to retry. */
+    public readonly quota?: { perDay: boolean; retryAfterMs?: number }
+  ) {
     super(`AI service returned ${status}: ${detail || 'unknown error'}`);
   }
 }
+
+/** Reads Gemini's 429 details: was it the daily allowance, and how long until a retry may work. */
+export const quotaInfoFromGemini = (error: any): { perDay: boolean; retryAfterMs?: number } | undefined => {
+  const details: any[] = Array.isArray(error?.details) ? error.details : [];
+  const quotaIds = details.flatMap((d) => (d?.violations || []).map((v: any) => String(v?.quotaId || '')));
+  const retry = details.find((d) => d?.retryDelay)?.retryDelay; // e.g. "34s"
+  if (!quotaIds.length && !retry) return undefined;
+  return {
+    perDay: quotaIds.some((q) => /PerDay/i.test(q)),
+    retryAfterMs: retry ? Math.ceil(parseFloat(String(retry)) * 1000) : undefined,
+  };
+};
+
+// ---- Models that are out of allowance are skipped instead of being asked again every time ----
+
+const cooldownUntil = new Map<string, number>();
+
+/** Milliseconds until the provider's daily quotas reset (midnight Pacific time). */
+export const msUntilPacificMidnight = (now = new Date()): number => {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Los_Angeles', hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }).formatToParts(now);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const secondsSinceMidnight = (get('hour') % 24) * 3600 + get('minute') * 60 + get('second'); // some runtimes print midnight as 24
+  return (86_400 - secondsSinceMidnight) * 1000;
+};
+
+/**
+ * After a failure, skip the model for a while so later questions don't wait on it again:
+ * daily quota used up or model not available (404) -> until the daily reset; per-minute limit ->
+ * the retry delay (at least a minute); busy / timed out -> two minutes.
+ */
+export const coolDown = (model: string, err: unknown, now = Date.now()): void => {
+  let wait: number | undefined;
+  if (err instanceof AiHttpError) {
+    if (err.status === 429) wait = err.quota?.perDay ? msUntilPacificMidnight(new Date(now)) : Math.max(err.quota?.retryAfterMs ?? 0, 60_000);
+    else if (err.status === 404) wait = msUntilPacificMidnight(new Date(now));
+    else if (err.status >= 500) wait = 120_000;
+  } else if (/took too long/i.test(String((err as any)?.message))) {
+    wait = 120_000;
+  }
+  if (wait) cooldownUntil.set(model, now + wait);
+};
+export const isCoolingDown = (model: string, now = Date.now()): boolean => (cooldownUntil.get(model) ?? 0) > now;
+/** For tests. */
+export const resetCooldowns = (): void => cooldownUntil.clear();
 
 // Overloaded / momentary server errors are worth another try after a short wait. 429 (quota or rate
 // limit) is not: on a free tier every retry is itself counted, so retrying only burns the allowance.
@@ -103,7 +152,12 @@ const callGemini = async (req: AiRequest, key: string, model: string, signal: Ab
     signal,
   });
   const body: any = await res.json().catch(() => null);
-  if (!res.ok) throw new AiHttpError(res.status, body?.error?.message);
+  if (!res.ok) throw new AiHttpError(res.status, body?.error?.message, quotaInfoFromGemini(body?.error));
+  const usage = body?.usageMetadata;
+  if (usage) {
+    // Token use per request, to keep an eye on the provider's tokens-per-minute limit
+    logger.info({ model, promptTokens: usage.promptTokenCount, outputTokens: usage.candidatesTokenCount, thinkingTokens: usage.thoughtsTokenCount }, 'AI tokens');
+  }
   const candidate = body?.candidates?.[0];
   // Thinking models can return their reasoning as extra parts flagged `thought`; only the answer counts
   const text = (candidate?.content?.parts || [])
@@ -166,14 +220,20 @@ const complete = async <T>(req: AiRequest, accept: (text: string) => T, timeoutM
     }
   };
 
+  // Skip models known to be out of allowance; if every model is, try them all anyway (limits may have reset)
+  const available = models.filter((m) => !isCoolingDown(m));
+  const order = available.length ? available : models;
+
   let lastError: unknown;
-  for (const [i, model] of models.entries()) {
-    const isLast = i === models.length - 1;
+  for (const [i, model] of order.entries()) {
+    const isLast = i === order.length - 1;
     try {
-      return { value: await tryModel(model, isLast ? RETRY_DELAYS_MS.length : 1), model };
+      // Only the last option is retried; earlier ones hand over at once so a busy model costs one attempt
+      return { value: await tryModel(model, isLast ? RETRY_DELAYS_MS.length : 0), model };
     } catch (err: any) {
       lastError = err;
-      if (!isLast) logger.warn({ model, next: models[i + 1], reason: String(err?.message).slice(0, 200) }, '⚠️ AI model failed, falling back');
+      coolDown(model, err);
+      if (!isLast) logger.warn({ model, next: order[i + 1], reason: String(err?.message).slice(0, 200) }, '⚠️ AI model failed, falling back');
     }
   }
   throw lastError;

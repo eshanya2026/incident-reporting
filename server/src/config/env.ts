@@ -50,9 +50,9 @@ const envSchema = z.object({
   // can be switched without a code change.
   AI_PROVIDER: z.enum(['gemini', 'openrouter']).default('gemini'),
   GEMINI_API_KEY: z.string().optional().default(''),
-  GEMINI_MODEL: z.string().optional().default('gemini-3.6-flash'),
+  GEMINI_MODEL: z.string().optional().default('gemini-3.5-flash-lite'),
   // Tried in order when the main model fails (quota used up, unavailable, overloaded). Comma-separated.
-  GEMINI_FALLBACK_MODELS: z.string().optional().default('gemini-3.5-flash-lite,gemini-3.1-flash-lite'),
+  GEMINI_FALLBACK_MODELS: z.string().optional().default('gemini-3.1-flash-lite,gemini-3.6-flash,gemini-3.8-flash,gemini-3-flash-preview'),
   OPENROUTER_API_KEY: z.string().optional().default(''),
   OPENROUTER_FALLBACK_MODELS: z.string().optional().default(''),
   // Also send the AI the written case details (investigation findings, root causes, CAPA wording,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildChatDataset, shiftOf } from './chatDataset.js';
+import { buildChatDataset, caseRecords, shiftOf } from './chatDataset.js';
 import { citedIncidents, fixIncidentNumbers } from './insightChat.js';
 
 const now = new Date('2026-11-15T06:00:00Z');
@@ -23,32 +23,34 @@ const incident = (n: number, over: any = {}) => ({
   riskAssessment: { likelihood: 2, severity: 2, score: 4, band: 'LOW' },
   ...over,
 });
-const build = (incidents: any[], extra: any = {}, shareCaseText = false) =>
+// A general question that touches every per-incident section, so record contents can be checked
+const EVERYTHING = 'CAPA actions, investigation root cause, review and closure, risk, who assigned, late reports by shift and day';
+const build = (incidents: any[], extra: any = {}, shareCaseText = false, question = EVERYTHING) =>
   buildChatDataset(
     { incidents, investigations: [], rcas: [], rcaMeetings: [], capas: [], allDepartments: [], ...extra },
-    { now, shareCaseText, scope: { kind: 'HOSPITAL' } }
+    { now, shareCaseText, scope: { kind: 'HOSPITAL' }, question }
   );
 
 describe('buildChatDataset', () => {
   it('derives reporting delay, lateness, shift and weekday in hospital time', () => {
-    const r = build([incident(1, { reportedAt: '2026-10-02T06:30:00Z' })]).caseList.records[0];
+    const r = caseRecords(build([incident(1, { reportedAt: '2026-10-02T06:30:00Z' })]))[0];
     expect(r).toMatchObject({ reportDelayHours: 27, reportedLate: true, shift: 'Morning', weekday: 'Thu' });
   });
 
   it('records a severity change and who made it', () => {
-    const r = build([incident(1, { initialSeverity: 1, severity: 3, assignedBy: { name: 'Dr. Anita' } })]).caseList.records[0];
+    const r = caseRecords(build([incident(1, { initialSeverity: 1, severity: 3, assignedBy: { name: 'Dr. Anita' } })]))[0];
     expect(r).toMatchObject({ severityReported: 1, severityFinal: 3, severityChangedBy: 'Dr. Anita' });
   });
 
   it('only includes written case details when sharing is switched on, and de-identifies them', () => {
     const capas = [{ incidentId: 'id1', capaNumber: 'CAPA-1', action: 'Retrain Ramesh on dose checks', status: 'EFFECTIVE' }];
     const inc = incident(1, { patient: { name: 'Ramesh' } });
-    expect(build([inc], { capas }).caseList.records[0].capas[0].action).toBeUndefined();
-    expect(build([inc], { capas }, true).caseList.records[0].capas[0].action).toBe('Retrain [name] on dose checks');
+    expect(caseRecords(build([inc], { capas }))[0].capas[0]).not.toContain('Retrain');
+    expect(caseRecords(build([inc], { capas }, true))[0].capas[0]).toContain('action: Retrain [name] on dose checks');
   });
 
   it('flags a missing RCA, missing data and impossible dates', () => {
-    const r = build([incident(1, { requiresRca: true, immediateAction: '', closedAt: '2026-09-01T00:00:00Z' })]).caseList.records[0];
+    const r = caseRecords(build([incident(1, { requiresRca: true, immediateAction: '', closedAt: '2026-09-01T00:00:00Z' })]))[0];
     expect(r.rca).toEqual({ status: 'MISSING' });
     expect(r.missingData).toContain('immediate action');
     expect(r.dateIssues).toContain('closed before it was reported');
@@ -56,7 +58,7 @@ describe('buildChatDataset', () => {
 
   it('notes when the person who closed it also investigated it', () => {
     const investigations = [{ incidentId: 'id1', departmentId: dept('ICU'), investigatorId: { _id: 'u1', name: 'Dr. X' }, status: 'COMPLETED' }];
-    const r = build([incident(1, { closedBy: { _id: 'u1', name: 'Dr. X' } })], { investigations }).caseList.records[0];
+    const r = caseRecords(build([incident(1, { closedBy: { _id: 'u1', name: 'Dr. X' } })], { investigations }))[0];
     expect(r.closure?.closedByAlsoInvestigated).toBe(true);
   });
 
@@ -76,13 +78,13 @@ describe('buildChatDataset', () => {
     expect(d.aggregates.coverage.firstReported).toBe('2023-02-11');
     expect(d.aggregates.coverage.firstOccurred).toBe('2023-02-10');
     expect(d.aggregates.byYearReported).toEqual({ '2023': 1, '2024': 1, '2026': 1 });
-    expect(d.caseList.records).toHaveLength(3);
+    expect(caseRecords(d)).toHaveLength(3);
   });
 
   it('keeps patient names, UHIDs and descriptions out unless the asker may see them', () => {
     const withPatient = incident(1, { title: 'Mr. Sharma fell near bed', patient: { name: 'Mr. Ramesh Sharma', uhid: 'UH-778899' } });
     const hidden = build([withPatient]);
-    const r0 = hidden.caseList.records[0] as any;
+    const r0 = caseRecords(hidden)[0] as any;
     expect(hidden.patientDetailsShared).toBe(false);
     expect(r0.patient).toBeUndefined();
     expect(r0.description).toBeUndefined();
@@ -92,7 +94,7 @@ describe('buildChatDataset', () => {
       { incidents: [withPatient], investigations: [], rcas: [], rcaMeetings: [], capas: [], allDepartments: [] },
       { now, shareCaseText: false, scope: { kind: 'HOSPITAL' }, identify: true, question: 'What happened to Sharma?' }
     );
-    const r1 = shown.caseList.records[0] as any;
+    const r1 = caseRecords(shown)[0] as any;
     expect(shown.patientDetailsShared).toBe(true);
     expect(shown.caseList.mode).toBe('FOCUSED');
     expect(r1.patient).toMatchObject({ name: 'Mr. Ramesh Sharma', uhid: 'UH-778899' });
@@ -104,10 +106,10 @@ describe('buildChatDataset', () => {
     const many = Array.from({ length: 405 }, (_, k) => incident(k + 1, { patient: { name: `Patient ${k + 1}`, uhid: `UH-${100000 + k}` } }));
     many[404] = incident(405, { patient: { name: 'Mrs. Kamala Sharma', uhid: 'UH-555123' } });
     const ask = (question: string) =>
-      buildChatDataset(
+      caseRecords(buildChatDataset(
         { incidents: many, investigations: [], rcas: [], rcaMeetings: [], capas: [], allDepartments: [] },
         { now, shareCaseText: false, scope: { kind: 'HOSPITAL' }, identify: true, question }
-      ).caseList.records.map((r: any) => r.no);
+      )).map((r: any) => r.no);
     expect(ask('What happened to Sharma last week?')).toContain('INC-2026-000405');
     expect(ask('Show the incident for UHID 555123')).toContain('INC-2026-000405');
     expect(ask('What happened last week?')).not.toContain('INC-2026-000405');
@@ -140,14 +142,14 @@ describe('focused and compact modes', () => {
   it('sends only the incidents a question names, in full', () => {
     const d = buildChatDataset(src(many), opts('Tell me more about INC-2026-000007 and inc-2026-12'));
     expect(d.caseList.mode).toBe('FOCUSED');
-    expect(d.caseList.records.map((r: any) => r.no)).toEqual(['INC-2026-000007', 'INC-2026-000012']);
-    expect((d.caseList.records[0] as any).description).toBeTruthy();
+    expect(caseRecords(d).map((r: any) => r.no)).toEqual(['INC-2026-000007', 'INC-2026-000012']);
+    expect((caseRecords(d)[0] as any).description).toBeTruthy();
     expect(d.aggregates.totalIncludingRejected).toBe(30);
   });
 
   it('keeps a short follow-up on the incidents just discussed', () => {
     const d = buildChatDataset(src(many), opts('Who closed it?', 'Tell me about INC-2026-000003. INC-2026-000003 was closed...'));
-    expect(d.caseList.records.map((r: any) => r.no)).toEqual(['INC-2026-000003']);
+    expect(caseRecords(d).map((r: any) => r.no)).toEqual(['INC-2026-000003']);
   });
 
   it('does not mistake ordinary words for a name', () => {
@@ -156,14 +158,24 @@ describe('focused and compact modes', () => {
     expect(general.caseList.mode).toBe('ALL');
     const named = buildChatDataset(src(withStaff), opts('What happened to Kavitha?'));
     expect(named.caseList.mode).toBe('FOCUSED');
-    expect(named.caseList.records.map((r: any) => r.no)).toEqual(['INC-2026-000030']);
+    expect(caseRecords(named).map((r: any) => r.no)).toEqual(['INC-2026-000030']);
+  });
+
+  it('sends only the heavy sections a general question needs, CAPAs as one line each', () => {
+    const capas = [{ incidentId: 'id1', capaNumber: 'CAPA-2026-000001', type: 'CORRECTIVE', status: 'OPEN', targetDate: '2026-10-01T00:00:00Z' }];
+    const d = buildChatDataset(src([incident(1)]) as any, opts('Which CAPA actions are overdue?'));
+    const withCapa = buildChatDataset({ ...src([incident(1)]), capas } as any, opts('Which CAPA actions are overdue?'));
+    expect(caseRecords(withCapa)[0].capas[0]).toMatch(/^CAPA-2026-000001 · CORRECTIVE · OPEN .*OVERDUE \d+d/);
+    expect(caseRecords(d)[0].reviews).toBeUndefined();
+    const counts = buildChatDataset(src(many) as any, opts('Which departments report the most?'));
+    expect((counts.aggregates as any).recurrenceAfterClosure.groups).toBeUndefined();
   });
 
   it('sends every incident in compact form for general questions', () => {
     const d = buildChatDataset(src(many), opts('Which departments report the most?'));
     expect(d.caseList.mode).toBe('ALL');
-    expect(d.caseList.records).toHaveLength(30);
-    const r = d.caseList.records[0] as any;
+    expect(caseRecords(d)).toHaveLength(30);
+    const r = caseRecords(d)[0] as any;
     expect(r.description).toBeUndefined();
     expect(r.involvedDepts).toBeUndefined();
     expect(r.no).toBeTruthy();
