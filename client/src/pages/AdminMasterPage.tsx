@@ -63,7 +63,9 @@ export default function AdminMasterPage() {
         else if (h.includes('phone') || h === 'mobile') obj.phone = val;
         else if (h.includes('password') || h === 'pwd') obj.password = val;
       });
-      if (obj.employeeId && obj.name && obj.email && obj.username) {
+      // Email is optional; the username defaults to the Employee ID
+      if (obj.employeeId && obj.name) {
+        obj.username = obj.username || obj.employeeId;
         rows.push(obj);
       }
     }
@@ -91,14 +93,13 @@ export default function AdminMasterPage() {
   };
 
   const downloadSampleCsv = () => {
-    const csvContent = `# Adhiparasakthi Hospitals - HR Staff Bulk Onboarding Template
-# departmentCode: EMERGENCY, ICU, OT, WARD, PHARMACY, RADIOLOGY, LAB, QUALITY
-# roleCode: STAFF, HOD, QUALITY, ADMIN (defaults to STAFF)
-employeeId,name,email,username,departmentCode,roleCode,designation,phone,password
-EMP-EMG-101,Dr. Ananya Nair,ananya.nair@adhiparasakthi.org,dr.ananya,EMERGENCY,STAFF,Emergency Medical Officer,9840112345,Staff@123
-EMP-EMG-102,Staff Nurse Rajesh,rajesh.k@adhiparasakthi.org,nurse.rajesh,EMERGENCY,STAFF,Senior Staff Nurse,9840112346,Staff@123
-EMP-ICU-201,Dr. Karthik Sundar,karthik.sundar@adhiparasakthi.org,dr.karthik,ICU,STAFF,Intensivist / Registrar,9840112347,Staff@123
-EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,STAFF,Ward Staff Nurse,9840112351,Staff@123
+    const csvContent = `# Adhiparasakthi Hospitals - staff bulk upload
+# departmentCode: the department name exactly as in Administration > Departments (or its code)
+# email and username are optional; username defaults to the Employee ID
+# New staff start with the password mapims@123 and set their own on first login
+employeeId,name,email,username,departmentCode,roleCode,designation,phone
+10234,Kavitha M,,,Nursing Services,STAFF,Staff Nurse,9840112345
+10235,Dr. Arun Kumar,arun.kumar@mapims.org,,General Medicine,STAFF,Duty Medical Officer,
 `;
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
@@ -286,7 +287,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
     setEditingUser(u);
     setEmpId(u.employeeId);
     setName(u.name);
-    setEmail(u.email);
+    setEmail(u.email || '');
     setUsername(u.username);
     setPassword('');
     setDesignation(u.designation || '');
@@ -568,7 +569,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                         <div className="font-semibold text-clinicalText-primary">{u.name}</div>
                         <div className="text-[12.5px] text-clinicalText-muted">{u.designation}</div>
                       </td>
-                      <td className="py-3 px-4 text-clinicalText-secondary">{u.username} ({u.email})</td>
+                      <td className="py-3 px-4 text-clinicalText-secondary">{u.username}{u.email ? ` (${u.email})` : ''}</td>
                       <td className="py-3 px-4 text-clinicalText-secondary">{u.departmentId?.name || '—'}</td>
                       <td className="py-3 px-4">
                         {u.roles?.map((r: any) => (
@@ -989,8 +990,8 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
                 <input type="text" required value={name} onChange={(e) => setName(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Email *</label>
-                <input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
+                <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Email (optional)</label>
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
               </div>
               {!editingUser && (
                 <div>
@@ -1305,7 +1306,7 @@ EMP-WRD-401,Staff Nurse Kavitha,kavitha.m@adhiparasakthi.org,nurse.kavitha,WARD,
             <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 flex items-center justify-between">
               <div className="flex items-center space-x-2 text-xs text-clinicalText-secondary">
                 <FileText className="w-4 h-4 text-maroon-700 flex-shrink-0" />
-                <span>Required columns: <code className="text-maroon-700 font-semibold">employeeId, name, email, username, departmentCode, roleCode</code></span>
+                <span>Required columns: <code className="text-maroon-700 font-semibold">employeeId, name, departmentCode</code> (email and username optional; username defaults to the Employee ID; new staff start with password mapims@123 and set their own on first login)</span>
               </div>
               <button
                 type="button"

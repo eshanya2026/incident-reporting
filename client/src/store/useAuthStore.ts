@@ -4,12 +4,14 @@ export interface UserProfile {
   id: string;
   employeeId: string;
   name: string;
-  email: string;
+  email?: string;
   username: string;
   departmentId?: string;
   designation?: string;
   roles: string[];
   permissions: string[];
+  /** Imported staff: must confirm details and set their own password before using the app. */
+  mustCompleteProfile?: boolean;
 }
 
 interface AuthState {

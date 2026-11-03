@@ -15,6 +15,7 @@ import ReviewQueuePage from './pages/ReviewQueuePage';
 import MyDepartmentPage from './pages/MyDepartmentPage';
 import AiInsightsPage from './pages/AiInsightsPage';
 import AccessControlPage from './pages/AccessControlPage';
+import CompleteProfilePage from './pages/CompleteProfilePage';
 import WhatsappTemplatesPage from './pages/WhatsappTemplatesPage';
 import { useAuthStore } from './store/useAuthStore';
 import { api } from './lib/api';
@@ -22,7 +23,7 @@ import { hasAnyPermission, homePath } from './lib/rbac';
 import Toaster from './components/ui/Toaster';
 
 function ProtectedRoute({ children }: { children: React.JSX.Element }) {
-  const { isAuthenticated, accessToken, setUser, logout } = useAuthStore();
+  const { isAuthenticated, accessToken, setUser, logout, user } = useAuthStore();
 
   useEffect(() => {
     if (accessToken) {
@@ -43,6 +44,10 @@ function ProtectedRoute({ children }: { children: React.JSX.Element }) {
 
   if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
+  }
+  // Imported staff confirm their details and set their own password before anything else
+  if (user?.mustCompleteProfile) {
+    return <Navigate to="/complete-profile" replace />;
   }
   return children;
 }
@@ -67,6 +72,7 @@ export default function App() {
       <Toaster />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
+        <Route path="/complete-profile" element={<CompleteProfilePage />} />
 
         <Route
           path="/"

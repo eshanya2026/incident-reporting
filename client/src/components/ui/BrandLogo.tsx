@@ -23,32 +23,34 @@ export default function BrandLogo({ tone = 'light', delay = 0, className = 'text
   const dot = dark ? 'bg-[#F6DFC2]' : 'bg-[#B5484F]';
 
   return (
-    <span role="img" aria-label="Incident Reporting" className={`inline-flex items-center gap-[0.3em] leading-[1.05] select-none ${className}`}>
-      {/* Wraps to two lines on narrow phones; one line wherever it fits */}
-      <span aria-hidden="true" className="min-w-0 font-extrabold tracking-[-0.02em]">
+    <span role="img" aria-label="Incident Reporting" className={`inline-block leading-[1.05] select-none ${className}`}>
+      {/* Wraps to two lines wherever one line doesn't fit. The pulse is glued to "Reporting" so it
+          always sits right after the word instead of drifting to the far edge when it wraps. */}
+      <span aria-hidden="true" className="font-extrabold tracking-[-0.02em]">
         <span className={strong}>Incident</span>{' '}
-        <span className={accent}>Reporting</span>
-      </span>
-
-      {/* ECG pulse ending in a live dot */}
-      <span aria-hidden="true" className="relative inline-flex items-center translate-y-[0.04em]">
-        <svg
-          viewBox="0 0 40 20"
-          style={{ '--d': `${delay}ms` } as React.CSSProperties}
-          className="brand-heartbeat h-[0.78em] w-[1.55em] overflow-visible"
-          fill="none"
-        >
-          <path
-            d="M1 11 H10 L13 11 L16.5 3 L21 18 L24.5 7 L27 11 H35"
-            stroke={stroke}
-            strokeWidth="2.8"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        </svg>
-        <span className="relative ml-[0.04em] w-[0.22em] h-[0.22em]">
-          <span className={`absolute inset-0 rounded-full ${dot} animate-ping opacity-50`}></span>
-          <span className={`absolute inset-0 rounded-full ${dot}`}></span>
+        <span className="whitespace-nowrap">
+          <span className={accent}>Reporting</span>
+          {/* ECG pulse ending in a live dot */}
+          <span className="relative inline-flex items-center align-middle ml-[0.3em] -translate-y-[0.02em]">
+            <svg
+              viewBox="0 0 40 20"
+              style={{ '--d': `${delay}ms` } as React.CSSProperties}
+              className="brand-heartbeat h-[0.78em] w-[1.55em] overflow-visible"
+              fill="none"
+            >
+              <path
+                d="M1 11 H10 L13 11 L16.5 3 L21 18 L24.5 7 L27 11 H35"
+                stroke={stroke}
+                strokeWidth="2.8"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+            <span className="relative ml-[0.04em] w-[0.22em] h-[0.22em]">
+              <span className={`absolute inset-0 rounded-full ${dot} animate-ping opacity-50`}></span>
+              <span className={`absolute inset-0 rounded-full ${dot}`}></span>
+            </span>
+          </span>
         </span>
       </span>
     </span>

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { AlertCircle, Info, Check } from 'lucide-react';
 import { api } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
@@ -24,7 +24,9 @@ export default function LoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [remember, setRemember] = useState(() => !!readRemembered());
   const [error, setError] = useState('');
-  const [info, setInfo] = useState('');
+  // e.g. "Your details are saved. Please sign in with your new password." after first login
+  const location = useLocation();
+  const [info, setInfo] = useState<string>(() => (location.state as any)?.message ?? '');
   const [loading, setLoading] = useState(false);
   const setAuth = useAuthStore((state) => state.setAuth);
   const navigate = useNavigate();
@@ -150,7 +152,7 @@ export default function LoginPage() {
                 autoComplete="username"
                 value={username}
                 onChange={(e) => setUsername(e.target.value)}
-                placeholder="User Name"
+                placeholder="Employee ID or username"
                 className={`${inputClass} animate-fade-in-up`}
                 style={delay(660)}
               />
@@ -195,7 +197,7 @@ export default function LoginPage() {
                   type="button"
                   onClick={() => {
                     setError('');
-                    setInfo('Please contact the system administrator to reset your password.');
+                    setInfo('Please contact the Quality Department to reset your password.');
                   }}
                   className="text-[#172033] hover:text-[#7A2430] transition cursor-pointer"
                 >
@@ -236,7 +238,7 @@ export default function LoginPage() {
             </div>
             <p style={delay(1060)} className="animate-fade-in-up mt-4 text-[12.5px] text-[#64748B]">
               Don&rsquo;t have an account?{' '}
-              <span className="font-semibold text-[#3D0F16]">Contact your administrator</span>
+              <span className="font-semibold text-[#3D0F16]">Contact the Quality Department.</span>
             </p>
           </div>
         </div>

@@ -31,3 +31,7 @@ uploads/
 !.vscode/settings.json
 .idea
 thumbs.db
+
+# HR employee exports and import reports (staff personal data, never commit)
+active_employees_*.csv
+*-import-report.csv

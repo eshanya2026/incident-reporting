@@ -37,6 +37,10 @@ api.interceptors.response.use(
         window.location.href = '/login';
       }
     }
+    // An account that still has to complete its first-login details can only use that screen
+    if (error.response?.data?.error?.code === 'PROFILE_INCOMPLETE' && window.location.pathname !== '/complete-profile') {
+      window.location.href = '/complete-profile';
+    }
     return Promise.reject(error.response?.data?.error || error);
   }
 );

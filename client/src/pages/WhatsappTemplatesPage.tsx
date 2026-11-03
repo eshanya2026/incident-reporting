@@ -1,33 +1,10 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import {
-  MessageCircle,
-  Plus,
-  X,
-  RotateCcw,
-  Check,
-  Loader2,
-  Send,
-  AlertTriangle,
-  Lock,
-  Info,
-  Users,
-  Clock,
-  CheckCheck,
-} from "lucide-react";
-import { api } from "../lib/api";
-import { toast } from "../store/useToastStore";
-import { errorMessage } from "../lib/useAction";
-import {
-  PageHeader,
-  Notice,
-  Button,
-  inputClass,
-} from "../components/ui/primitives";
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/react-query';
+import { MessageCircle, Plus, X, RotateCcw, Check, Loader2, Send, AlertTriangle, Lock, Info, Users, Clock, CheckCheck } from 'lucide-react';
+import { api } from '../lib/api';
+import { toast } from '../store/useToastStore';
+import { errorMessage } from '../lib/useAction';
+import { PageHeader, Notice, Button, inputClass } from '../components/ui/primitives';
 
 interface Variable {
   key: string;
@@ -82,17 +59,14 @@ interface Draft extends Content {
 }
 
 const sameDraft = (a: Draft, b: Draft) =>
-  a.enabled === b.enabled &&
-  a.title === b.title &&
-  a.message === b.message &&
-  a.details.join("\n") === b.details.join("\n");
+  a.enabled === b.enabled && a.title === b.title && a.message === b.message && a.details.join('\n') === b.details.join('\n');
 
-const TEST_NUMBER_KEY = "incidentReporting.whatsappTestNumber";
+const TEST_NUMBER_KEY = 'incidentReporting.whatsappTestNumber';
 const readStored = () => {
   try {
-    return localStorage.getItem(TEST_NUMBER_KEY) ?? "";
+    return localStorage.getItem(TEST_NUMBER_KEY) ?? '';
   } catch {
-    return "";
+    return '';
   }
 };
 
@@ -109,14 +83,13 @@ function useDebounced<T>(value: T, ms: number): T {
 export default function WhatsappTemplatesPage() {
   const queryClient = useQueryClient();
   const { data, isLoading, error } = useQuery({
-    queryKey: ["whatsapp-templates"],
-    queryFn: () => api.get("/whatsapp-templates"),
+    queryKey: ['whatsapp-templates'],
+    queryFn: () => api.get('/whatsapp-templates'),
   });
   const list = (data as any)?.data as ListResponse | undefined;
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
-  const selected =
-    list?.templates.find((t) => t.key === selectedKey) ?? list?.templates[0];
+  const selected = list?.templates.find((t) => t.key === selectedKey) ?? list?.templates[0];
 
   const saved: Draft | null = selected
     ? {
@@ -129,33 +102,26 @@ export default function WhatsappTemplatesPage() {
   const editing = draft ?? saved;
   const dirty = Boolean(draft && saved && !sameDraft(draft, saved));
 
-  const [busy, setBusy] = useState<"save" | "reset" | "test" | null>(null);
+  const [busy, setBusy] = useState<'save' | 'reset' | 'test' | null>(null);
   const [testNumber, setTestNumber] = useState(readStored);
 
   // Remembers which field and cursor position a placeholder chip should go into
   const lastField = useRef<{
-    field: "title" | "message" | number;
+    field: 'title' | 'message' | number;
     start: number;
     end: number;
-  }>({ field: "message", start: -1, end: -1 });
-  const inputRefs = useRef<
-    Record<string, HTMLInputElement | HTMLTextAreaElement | null>
-  >({});
+  }>({ field: 'message', start: -1, end: -1 });
+  const inputRefs = useRef<Record<string, HTMLInputElement | HTMLTextAreaElement | null>>({});
 
   const choose = (key: string) => {
     if (key === selected?.key) return;
-    if (
-      dirty &&
-      !window.confirm("You have unsaved changes to this message. Discard them?")
-    )
-      return;
+    if (dirty && !window.confirm('You have unsaved changes to this message. Discard them?')) return;
     setDraft(null);
     setSelectedKey(key);
-    lastField.current = { field: "message", start: -1, end: -1 };
+    lastField.current = { field: 'message', start: -1, end: -1 };
   };
 
-  const update = (patch: Partial<Draft>) =>
-    editing && setDraft({ ...editing, ...patch });
+  const update = (patch: Partial<Draft>) => editing && setDraft({ ...editing, ...patch });
 
   const debouncedContent = useDebounced(
     editing
@@ -165,46 +131,35 @@ export default function WhatsappTemplatesPage() {
           details: editing.details,
         }
       : null,
-    250,
+    250
   );
   const preview = useQuery({
-    queryKey: ["whatsapp-preview", selected?.key, debouncedContent],
-    queryFn: () =>
-      api.post(
-        `/whatsapp-templates/${selected!.key}/preview`,
-        debouncedContent,
-      ),
+    queryKey: ['whatsapp-preview', selected?.key, debouncedContent],
+    queryFn: () => api.post(`/whatsapp-templates/${selected!.key}/preview`, debouncedContent),
     enabled: Boolean(selected && debouncedContent),
     placeholderData: keepPreviousData,
   });
   const previewData = (preview.data as any)?.data as Preview | undefined;
 
-  const remember =
-    (field: "title" | "message" | number) =>
-    (e: React.SyntheticEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-      const el = e.currentTarget;
-      lastField.current = {
-        field,
-        start: el.selectionStart ?? el.value.length,
-        end: el.selectionEnd ?? el.value.length,
-      };
+  const remember = (field: 'title' | 'message' | number) => (e: React.SyntheticEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const el = e.currentTarget;
+    lastField.current = {
+      field,
+      start: el.selectionStart ?? el.value.length,
+      end: el.selectionEnd ?? el.value.length,
     };
+  };
 
   const insertPlaceholder = (key: string) => {
     if (!editing) return;
     const token = `{${key}}`;
     const { field, start, end } = lastField.current;
-    const current =
-      field === "title"
-        ? editing.title
-        : field === "message"
-          ? editing.message
-          : (editing.details[field] ?? "");
+    const current = field === 'title' ? editing.title : field === 'message' ? editing.message : (editing.details[field] ?? '');
     const s = start < 0 ? current.length : start;
     const e = end < 0 ? current.length : end;
     const next = current.slice(0, s) + token + current.slice(e);
-    if (field === "title") update({ title: next });
-    else if (field === "message") update({ message: next });
+    if (field === 'title') update({ title: next });
+    else if (field === 'message') update({ message: next });
     else
       update({
         details: editing.details.map((d, i) => (i === field ? next : d)),
@@ -220,19 +175,18 @@ export default function WhatsappTemplatesPage() {
     });
   };
 
-  const refresh = () =>
-    queryClient.invalidateQueries({ queryKey: ["whatsapp-templates"] });
+  const refresh = () => queryClient.invalidateQueries({ queryKey: ['whatsapp-templates'] });
 
   const save = async () => {
     if (!selected || !editing) return;
-    setBusy("save");
+    setBusy('save');
     try {
       await api.put(`/whatsapp-templates/${selected.key}`, editing);
       await refresh();
       setDraft(null);
       toast.success(`"${selected.name}" saved`);
     } catch (err) {
-      toast.error(errorMessage(err, "Could not save the message"));
+      toast.error(errorMessage(err, 'Could not save the message'));
     } finally {
       setBusy(null);
     }
@@ -240,20 +194,16 @@ export default function WhatsappTemplatesPage() {
 
   const reset = async () => {
     if (!selected) return;
-    if (
-      !window.confirm(
-        `Reset "${selected.name}" to the original wording? Your edits will be lost and the message will be switched on.`,
-      )
-    )
+    if (!window.confirm(`Reset "${selected.name}" to the original wording? Your edits will be lost and the message will be switched on.`))
       return;
-    setBusy("reset");
+    setBusy('reset');
     try {
       await api.post(`/whatsapp-templates/${selected.key}/reset`);
       await refresh();
       setDraft(null);
       toast.success(`"${selected.name}" reset to default`);
     } catch (err) {
-      toast.error(errorMessage(err, "Could not reset the message"));
+      toast.error(errorMessage(err, 'Could not reset the message'));
     } finally {
       setBusy(null);
     }
@@ -261,20 +211,17 @@ export default function WhatsappTemplatesPage() {
 
   const sendTest = async () => {
     if (!selected || !editing) return;
-    setBusy("test");
+    setBusy('test');
     try {
       try {
         localStorage.setItem(TEST_NUMBER_KEY, testNumber);
       } catch {
         /* storage unavailable */
       }
-      const res: any = await api.post(
-        `/whatsapp-templates/${selected.key}/test`,
-        { ...editing, whatsappNumber: testNumber },
-      );
-      toast.success(res?.message || "Test message sent");
+      const res: any = await api.post(`/whatsapp-templates/${selected.key}/test`, { ...editing, whatsappNumber: testNumber });
+      toast.success(res?.message || 'Test message sent');
     } catch (err) {
-      toast.error(errorMessage(err, "Could not send the test message"));
+      toast.error(errorMessage(err, 'Could not send the test message'));
     } finally {
       setBusy(null);
     }
@@ -291,38 +238,24 @@ export default function WhatsappTemplatesPage() {
         description="Edit what each WhatsApp notification says and preview it exactly as it will arrive. Changes apply to the next message sent."
       />
 
-      {isLoading && (
-        <div
-          className="h-[34rem] rounded-2xl bg-white border border-slate-200 animate-pulse"
-          aria-label="Loading"
-        />
-      )}
-      {error && (
-        <Notice tone="error">
-          {errorMessage(error, "Could not load WhatsApp messages")}
-        </Notice>
-      )}
+      {isLoading && <div className="h-[34rem] rounded-2xl bg-white border border-slate-200 animate-pulse" aria-label="Loading" />}
+      {error && <Notice tone="error">{errorMessage(error, 'Could not load WhatsApp messages')}</Notice>}
 
       {list && !list.delivery.enabled && (
         <Notice tone="warning">
-          WhatsApp sending is switched off on this server, so nothing is
-          actually sent. You can still edit and preview the messages.
+          WhatsApp sending is switched off on this server, so nothing is actually sent. You can still edit and preview the messages.
         </Notice>
       )}
       {list && list.delivery.enabled && !list.delivery.templateConfigured && (
         <Notice tone="warning">
-          No approved WATI template is configured (WATI_TEMPLATE_NAME), so
-          messages only reach people with an open WhatsApp chat.
+          No approved WATI template is configured (WATI_TEMPLATE_NAME), so messages only reach people with an open WhatsApp chat.
         </Notice>
       )}
 
       {list && selected && editing && limits && (
         <div className="grid gap-5 lg:grid-cols-[17rem_minmax(0,1fr)] items-start">
           {/* Message list */}
-          <nav
-            aria-label="WhatsApp messages"
-            className="bg-white rounded-2xl border border-slate-200 shadow-card p-2 lg:sticky lg:top-24"
-          >
+          <nav aria-label="WhatsApp messages" className="bg-white rounded-2xl border border-slate-200 shadow-card p-2 lg:sticky lg:top-24">
             {list.templates.map((t) => {
               const active = t.key === selected.key;
               return (
@@ -330,34 +263,21 @@ export default function WhatsappTemplatesPage() {
                   key={t.key}
                   type="button"
                   onClick={() => choose(t.key)}
-                  aria-current={active ? "true" : undefined}
+                  aria-current={active ? 'true' : undefined}
                   className={`w-full text-left rounded-xl px-3 py-2.5 transition cursor-pointer ${
-                    active
-                      ? "bg-[#FBF1EA] ring-1 ring-[#E3C2AE]"
-                      : "hover:bg-slate-50"
+                    active ? 'bg-[#FBF1EA] ring-1 ring-[#E3C2AE]' : 'hover:bg-slate-50'
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
-                    <span
-                      className={`font-semibold text-[13.5px] leading-snug ${active ? "text-[#5C1A22]" : "text-clinicalText-primary"}`}
-                    >
+                    <span className={`font-semibold text-[13.5px] leading-snug ${active ? 'text-[#5C1A22]' : 'text-clinicalText-primary'}`}>
                       {t.name}
                     </span>
-                    {active && dirty ? (
-                      <span
-                        className="mt-1 w-2 h-2 rounded-full bg-amber-500 shrink-0"
-                        title="Unsaved changes"
-                      />
-                    ) : null}
+                    {active && dirty ? <span className="mt-1 w-2 h-2 rounded-full bg-amber-500 shrink-0" title="Unsaved changes" /> : null}
                   </div>
-                  <div className="text-[12px] text-slate-500 mt-0.5 leading-snug">
-                    {t.sentTo}
-                  </div>
+                  <div className="text-[12px] text-slate-500 mt-0.5 leading-snug">{t.sentTo}</div>
                   <div className="flex gap-1.5 mt-1.5">
                     {!t.enabled && (
-                      <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10.5px] font-bold">
-                        Off
-                      </span>
+                      <span className="px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600 text-[10.5px] font-bold">Off</span>
                     )}
                     {t.customized && (
                       <span className="px-1.5 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-amber-800 text-[10.5px] font-bold">
@@ -372,16 +292,10 @@ export default function WhatsappTemplatesPage() {
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_23rem] items-start min-w-0">
             {/* Editor */}
-            <section
-              className="bg-white rounded-2xl border border-slate-200 shadow-card min-w-0"
-              aria-labelledby="wa-editor-title"
-            >
+            <section className="bg-white rounded-2xl border border-slate-200 shadow-card min-w-0" aria-labelledby="wa-editor-title">
               <div className="px-5 pt-5 pb-4 border-b border-slate-100 flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <h2
-                    id="wa-editor-title"
-                    className="text-[17px] font-bold text-clinicalText-primary"
-                  >
+                  <h2 id="wa-editor-title" className="text-[17px] font-bold text-clinicalText-primary">
                     {selected.name}
                   </h2>
                   <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12.5px] text-slate-500">
@@ -389,35 +303,33 @@ export default function WhatsappTemplatesPage() {
                       <Users className="w-3.5 h-3.5" /> {selected.sentTo}
                     </span>
                     <span className="inline-flex items-center gap-1">
-                      <Clock className="w-3.5 h-3.5" /> When{" "}
-                      {selected.sentWhen.charAt(0).toLowerCase() +
-                        selected.sentWhen.slice(1)}
+                      <Clock className="w-3.5 h-3.5" /> When {selected.sentWhen.charAt(0).toLowerCase() + selected.sentWhen.slice(1)}
                     </span>
                   </div>
                   {selected.updatedAt && (
                     <div className="mt-1 text-[11.5px] text-slate-400">
-                      Last edited{" "}
-                      {new Date(selected.updatedAt).toLocaleString("en-IN", {
-                        dateStyle: "medium",
-                        timeStyle: "short",
+                      Last edited{' '}
+                      {new Date(selected.updatedAt).toLocaleString('en-IN', {
+                        dateStyle: 'medium',
+                        timeStyle: 'short',
                       })}
-                      {selected.updatedBy ? ` by ${selected.updatedBy}` : ""}
+                      {selected.updatedBy ? ` by ${selected.updatedBy}` : ''}
                     </div>
                   )}
                 </div>
                 <label className="inline-flex items-center gap-2.5 cursor-pointer select-none">
                   <span className="text-[13px] font-semibold text-clinicalText-secondary">
-                    {editing.enabled ? "Sending on" : "Sending off"}
+                    {editing.enabled ? 'Sending on' : 'Sending off'}
                   </span>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={editing.enabled}
                     onClick={() => update({ enabled: !editing.enabled })}
-                    className={`relative w-11 h-6 rounded-full transition cursor-pointer ${editing.enabled ? "bg-[#25A244]" : "bg-slate-300"}`}
+                    className={`relative w-11 h-6 rounded-full transition cursor-pointer ${editing.enabled ? 'bg-[#25A244]' : 'bg-slate-300'}`}
                   >
                     <span
-                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editing.enabled ? "translate-x-5" : ""}`}
+                      className={`absolute top-0.5 left-0.5 w-5 h-5 rounded-full bg-white shadow transition-transform ${editing.enabled ? 'translate-x-5' : ''}`}
                     />
                   </button>
                 </label>
@@ -425,46 +337,34 @@ export default function WhatsappTemplatesPage() {
 
               {!editing.enabled && (
                 <div className="mx-5 mt-4">
-                  <Notice tone="info">
-                    While this is off, nobody gets this WhatsApp message. The
-                    in-app notification is still shown.
-                  </Notice>
+                  <Notice tone="info">While this is off, nobody gets this WhatsApp message. The in-app notification is still shown.</Notice>
                 </div>
               )}
 
               <div className="p-5 space-y-5">
-                <FieldBlock
-                  label="Title"
-                  hint="Shown in bold at the top"
-                  count={editing.title.length}
-                  max={limits.title}
-                >
+                <FieldBlock label="Title" hint="Shown in bold at the top" count={editing.title.length} max={limits.title}>
                   <input
                     ref={(el) => {
                       inputRefs.current.title = el;
                     }}
                     value={editing.title}
                     onChange={(e) => update({ title: e.target.value })}
-                    onSelect={remember("title")}
-                    onFocus={remember("title")}
+                    onSelect={remember('title')}
+                    onFocus={remember('title')}
                     className={`${inputClass} !text-[13px]`}
                     maxLength={limits.title + 20}
                   />
                 </FieldBlock>
 
-                <FieldBlock
-                  label="Message"
-                  count={editing.message.length}
-                  max={limits.message}
-                >
+                <FieldBlock label="Message" count={editing.message.length} max={limits.message}>
                   <textarea
                     ref={(el) => {
                       inputRefs.current.message = el;
                     }}
                     value={editing.message}
                     onChange={(e) => update({ message: e.target.value })}
-                    onSelect={remember("message")}
-                    onFocus={remember("message")}
+                    onSelect={remember('message')}
+                    onFocus={remember('message')}
                     rows={3}
                     className={`${inputClass} !text-[13px] resize-y`}
                   />
@@ -472,12 +372,8 @@ export default function WhatsappTemplatesPage() {
 
                 <div>
                   <div className="flex items-baseline justify-between gap-3 mb-1.5">
-                    <span className="text-[13px] font-semibold text-clinicalText-primary">
-                      Detail lines
-                    </span>
-                    <span className="text-[12px] text-slate-500">
-                      A line is skipped when its placeholder has no value
-                    </span>
+                    <span className="text-[13px] font-semibold text-clinicalText-primary">Detail lines</span>
+                    <span className="text-[12px] text-slate-500">A line is skipped when its placeholder has no value</span>
                   </div>
                   <div className="space-y-2">
                     {editing.details.map((line, i) => (
@@ -489,26 +385,22 @@ export default function WhatsappTemplatesPage() {
                           value={line}
                           onChange={(e) =>
                             update({
-                              details: editing.details.map((d, j) =>
-                                j === i ? e.target.value : d,
-                              ),
+                              details: editing.details.map((d, j) => (j === i ? e.target.value : d)),
                             })
                           }
                           onSelect={remember(i)}
                           onFocus={remember(i)}
                           aria-label={`Detail line ${i + 1}`}
-                          className={`${inputClass} !text-[13px] ${line.length > limits.detailLine ? "!border-red-400" : ""}`}
+                          className={`${inputClass} !text-[13px] ${line.length > limits.detailLine ? '!border-red-400' : ''}`}
                         />
                         <button
                           type="button"
                           onClick={() => {
                             update({
-                              details: editing.details.filter(
-                                (_, j) => j !== i,
-                              ),
+                              details: editing.details.filter((_, j) => j !== i),
                             });
                             lastField.current = {
-                              field: "message",
+                              field: 'message',
                               start: -1,
                               end: -1,
                             };
@@ -526,11 +418,9 @@ export default function WhatsappTemplatesPage() {
                       type="button"
                       onClick={() => {
                         const i = editing.details.length;
-                        update({ details: [...editing.details, ""] });
+                        update({ details: [...editing.details, ''] });
                         lastField.current = { field: i, start: 0, end: 0 };
-                        requestAnimationFrame(() =>
-                          inputRefs.current[String(i)]?.focus(),
-                        );
+                        requestAnimationFrame(() => inputRefs.current[String(i)]?.focus());
                       }}
                       className="mt-2 inline-flex items-center gap-1.5 text-[13px] font-semibold text-[#7A2430] hover:underline cursor-pointer"
                     >
@@ -540,9 +430,7 @@ export default function WhatsappTemplatesPage() {
                 </div>
 
                 <div className="rounded-xl bg-[#FBF6EE] border border-[#EEDCC8] p-3.5">
-                  <div className="text-[12.5px] font-semibold text-[#5C1A22] mb-2">
-                    Placeholders: click to insert where your cursor is
-                  </div>
+                  <div className="text-[12.5px] font-semibold text-[#5C1A22] mb-2">Placeholders: click to insert where your cursor is</div>
                   <div className="flex flex-wrap gap-1.5">
                     {selected.variables.map((v) => (
                       <button
@@ -559,10 +447,8 @@ export default function WhatsappTemplatesPage() {
                     ))}
                   </div>
                   <div className="text-[12px] text-slate-500 mt-2">
-                    Formatting: <code className="font-mono">*bold*</code>,{" "}
-                    <code className="font-mono">_italic_</code>. Line breaks are
-                    not allowed by WhatsApp here, so the parts are joined with "
-                    | ".
+                    Formatting: <code className="font-mono">*bold*</code>, <code className="font-mono">_italic_</code>. Line breaks are not
+                    allowed by WhatsApp here, so the parts are joined with " | ".
                   </div>
                 </div>
 
@@ -578,12 +464,8 @@ export default function WhatsappTemplatesPage() {
               </div>
 
               <div className="px-5 py-4 border-t border-slate-100 flex flex-wrap items-center gap-2">
-                <Button
-                  onClick={save}
-                  busy={busy === "save"}
-                  disabled={!dirty || busy !== null || problems.length > 0}
-                >
-                  {busy !== "save" && <Check className="w-4 h-4" />}
+                <Button onClick={save} busy={busy === 'save'} disabled={!dirty || busy !== null || problems.length > 0}>
+                  {busy !== 'save' && <Check className="w-4 h-4" />}
                   Save
                 </Button>
                 {dirty && (
@@ -603,11 +485,7 @@ export default function WhatsappTemplatesPage() {
                     disabled={busy !== null}
                     className="ml-auto inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-[13px] font-semibold text-[#7A2430] hover:bg-[#FBF1EA] cursor-pointer disabled:opacity-50"
                   >
-                    {busy === "reset" ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <RotateCcw className="w-4 h-4" />
-                    )}
+                    {busy === 'reset' ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />}
                     Reset to default
                   </button>
                 )}
@@ -615,32 +493,17 @@ export default function WhatsappTemplatesPage() {
             </section>
 
             {/* Preview */}
-            <section
-              aria-labelledby="wa-preview-title"
-              className="xl:sticky xl:top-24 space-y-3 min-w-0"
-            >
+            <section aria-labelledby="wa-preview-title" className="xl:sticky xl:top-24 space-y-3 min-w-0">
               <div className="flex items-center justify-between">
-                <h2
-                  id="wa-preview-title"
-                  className="text-[13px] font-bold uppercase tracking-wider text-[#5C1A22]"
-                >
+                <h2 id="wa-preview-title" className="text-[13px] font-bold uppercase tracking-wider text-[#5C1A22]">
                   Preview
                 </h2>
-                {preview.isFetching && (
-                  <Loader2
-                    className="w-4 h-4 animate-spin text-slate-400"
-                    aria-label="Updating preview"
-                  />
-                )}
+                {preview.isFetching && <Loader2 className="w-4 h-4 animate-spin text-slate-400" aria-label="Updating preview" />}
               </div>
-              <PhonePreview
-                approved={list.approvedTemplate}
-                preview={previewData}
-                off={!editing.enabled}
-              />
+              <PhonePreview approved={list.approvedTemplate} preview={previewData} off={!editing.enabled} />
               {previewData && (
                 <div
-                  className={`text-[12px] flex items-start gap-1.5 ${previewData.truncated ? "text-red-700 font-semibold" : "text-slate-500"}`}
+                  className={`text-[12px] flex items-start gap-1.5 ${previewData.truncated ? 'text-red-700 font-semibold' : 'text-slate-500'}`}
                 >
                   {previewData.truncated ? (
                     <AlertTriangle className="w-3.5 h-3.5 mt-0.5 shrink-0" />
@@ -657,26 +520,16 @@ export default function WhatsappTemplatesPage() {
               <p className="text-[12px] text-slate-500 flex items-start gap-1.5">
                 <Lock className="w-3.5 h-3.5 mt-0.5 shrink-0" />
                 <span>
-                  The greyed parts come from the WhatsApp template approved in
-                  WATI
-                  {list.approvedTemplate.name
-                    ? ` (${list.approvedTemplate.name})`
-                    : ""}{" "}
-                  and can only be changed there.
+                  The greyed parts come from the WhatsApp template approved in WATI
+                  {list.approvedTemplate.name ? ` (${list.approvedTemplate.name})` : ''} and can only be changed there.
                 </span>
               </p>
 
               <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-4">
-                <label
-                  htmlFor="wa-test-number"
-                  className="text-[13px] font-semibold text-clinicalText-primary"
-                >
+                <label htmlFor="wa-test-number" className="text-[13px] font-semibold text-clinicalText-primary">
                   Send a test to your phone
                 </label>
-                <p className="text-[12px] text-slate-500 mt-0.5 mb-2">
-                  Uses the wording above, even if not saved, with the sample
-                  values.
-                </p>
+                <p className="text-[12px] text-slate-500 mt-0.5 mb-2">Uses the wording above, even if not saved, with the sample values.</p>
                 <div className="flex gap-2">
                   <input
                     id="wa-test-number"
@@ -697,18 +550,13 @@ export default function WhatsappTemplatesPage() {
                       !list.delivery.templateConfigured
                     }
                     title={
-                      !list.delivery.enabled ||
-                      !list.delivery.templateConfigured
-                        ? "WhatsApp sending is not set up on this server"
+                      !list.delivery.enabled || !list.delivery.templateConfigured
+                        ? 'WhatsApp sending is not set up on this server'
                         : undefined
                     }
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#25A244] text-white text-[13px] font-bold hover:bg-[#1F8C3A] cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
                   >
-                    {busy === "test" ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <Send className="w-4 h-4" />
-                    )}
+                    {busy === 'test' ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
                     Send
                   </button>
                 </div>
@@ -739,15 +587,9 @@ function FieldBlock({
       <div className="flex items-baseline justify-between gap-3 mb-1.5">
         <span className="text-[13px] font-semibold text-clinicalText-primary">
           {label}
-          {hint && (
-            <span className="ml-2 font-normal text-[12px] text-slate-500">
-              {hint}
-            </span>
-          )}
+          {hint && <span className="ml-2 font-normal text-[12px] text-slate-500">{hint}</span>}
         </span>
-        <span
-          className={`text-[11.5px] tabular-nums ${count > max ? "text-red-600 font-bold" : "text-slate-400"}`}
-        >
+        <span className={`text-[11.5px] tabular-nums ${count > max ? 'text-red-600 font-bold' : 'text-slate-400'}`}>
           {count}/{max}
         </span>
       </div>
@@ -758,15 +600,11 @@ function FieldBlock({
 
 /** Renders WhatsApp's *bold*, _italic_ and ~strike~ markers. */
 function WaText({ text }: { text: string }) {
-  const parts = useMemo(
-    () => text.split(/(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|https?:\/\/\S+)/g),
-    [text],
-  );
+  const parts = useMemo(() => text.split(/(\*[^*\n]+\*|_[^_\n]+_|~[^~\n]+~|https?:\/\/\S+)/g), [text]);
   return (
     <>
       {parts.map((p, i) => {
-        if (/^\*[^*]+\*$/.test(p))
-          return <strong key={i}>{p.slice(1, -1)}</strong>;
+        if (/^\*[^*]+\*$/.test(p)) return <strong key={i}>{p.slice(1, -1)}</strong>;
         if (/^_[^_]+_$/.test(p)) return <em key={i}>{p.slice(1, -1)}</em>;
         if (/^~[^~]+~$/.test(p)) return <s key={i}>{p.slice(1, -1)}</s>;
         if (/^https?:\/\//.test(p))
@@ -781,44 +619,29 @@ function WaText({ text }: { text: string }) {
   );
 }
 
-function PhonePreview({
-  approved,
-  preview,
-  off,
-}: {
-  approved: ListResponse["approvedTemplate"];
-  preview?: Preview;
-  off: boolean;
-}) {
+function PhonePreview({ approved, preview, off }: { approved: ListResponse['approvedTemplate']; preview?: Preview; off: boolean }) {
   // Split the approved body around {{1}} {{2}} {{3}} so the fixed and editable parts can be told apart
   const segments = approved.body.split(/(\{\{[123]\}\})/g);
-  const now = new Date().toLocaleTimeString("en-IN", {
-    hour: "numeric",
-    minute: "2-digit",
+  const now = new Date().toLocaleTimeString('en-IN', {
+    hour: 'numeric',
+    minute: '2-digit',
   });
 
   return (
-    <div
-      className={`rounded-[1.6rem] border-[6px] border-[#1F2C34] bg-[#1F2C34] shadow-xl overflow-hidden ${off ? "opacity-60" : ""}`}
-    >
+    <div className={`rounded-[1.6rem] border-[6px] border-[#1F2C34] bg-[#1F2C34] shadow-xl overflow-hidden ${off ? 'opacity-60' : ''}`}>
       <div className="flex items-center gap-2.5 px-3 py-2.5 bg-[#075E54] text-white">
-        <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-[11px] font-bold">
-          AH
-        </span>
+        <span className="w-8 h-8 rounded-full bg-white/20 flex items-center justify-center text-[11px] font-bold">AH</span>
         <div className="min-w-0">
-          <div className="text-[13.5px] font-semibold leading-tight truncate">
-            Adhiparasakthi Hospitals
-          </div>
+          <div className="text-[13.5px] font-semibold leading-tight truncate">Adhiparasakthi Hospitals</div>
           <div className="text-[11px] text-white/70">Business account</div>
         </div>
       </div>
       <div
         className="px-3 py-4 min-h-[22rem]"
         style={{
-          backgroundColor: "#EFE7DE",
-          backgroundImage:
-            "radial-gradient(rgba(0,0,0,0.035) 1px, transparent 1px)",
-          backgroundSize: "14px 14px",
+          backgroundColor: '#EFE7DE',
+          backgroundImage: 'radial-gradient(rgba(0,0,0,0.035) 1px, transparent 1px)',
+          backgroundSize: '14px 14px',
         }}
       >
         {off && (
@@ -830,21 +653,17 @@ function PhonePreview({
           <div className="text-slate-400 font-bold mb-1">{approved.header}</div>
           <div className="whitespace-pre-wrap break-words">
             {segments.map((seg, i) => {
-              if (seg === "{{1}}")
-                return <span key={i}>{preview?.recipient ?? "Name"}</span>;
-              if (seg === "{{2}}")
+              if (seg === '{{1}}') return <span key={i}>{preview?.recipient ?? 'Name'}</span>;
+              if (seg === '{{2}}')
                 return (
-                  <span
-                    key={i}
-                    className="bg-[#FFF8E1] rounded-sm outline outline-1 outline-[#F2D589]"
-                  >
-                    {preview ? <WaText text={preview.content} /> : "…"}
+                  <span key={i} className="bg-[#FFF8E1] rounded-sm outline outline-1 outline-[#F2D589]">
+                    {preview ? <WaText text={preview.content} /> : '…'}
                   </span>
                 );
-              if (seg === "{{3}}")
+              if (seg === '{{3}}')
                 return (
                   <span key={i} className="text-[#027EB5] break-all">
-                    {preview?.link ?? "link"}
+                    {preview?.link ?? 'link'}
                   </span>
                 );
               return (
@@ -854,9 +673,7 @@ function PhonePreview({
               );
             })}
           </div>
-          <div className="mt-1.5 text-[12px] text-slate-400">
-            {approved.footer}
-          </div>
+          <div className="mt-1.5 text-[12px] text-slate-400">{approved.footer}</div>
           <div className="flex justify-end items-center gap-1 text-[10.5px] text-slate-400 -mt-0.5">
             {now} <CheckCheck className="w-3.5 h-3.5 text-[#53BDEB]" />
           </div>

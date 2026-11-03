@@ -1,22 +1,13 @@
-import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
-import dayjs from "dayjs";
-import {
-  Sparkles,
-  Send,
-  Loader2,
-  RotateCcw,
-  AlertTriangle,
-  MessageSquarePlus,
-  ShieldAlert,
-  X,
-} from "lucide-react";
-import { api } from "../../lib/api";
-import { errorMessage } from "../../lib/useAction";
+import { useEffect, useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import dayjs from 'dayjs';
+import { Sparkles, Send, Loader2, RotateCcw, AlertTriangle, MessageSquarePlus, ShieldAlert, X } from 'lucide-react';
+import { api } from '../../lib/api';
+import { errorMessage } from '../../lib/useAction';
 
 interface ChatMessage {
-  role: "user" | "assistant";
+  role: 'user' | 'assistant';
   content: string;
   /** Incident numbers in an answer that link to incidents the asker can open. */
   cited?: Array<{ number: string; id: string }>;
@@ -24,18 +15,18 @@ interface ChatMessage {
 }
 
 const HOSPITAL_SUGGESTIONS = [
-  "Which department needs the most attention right now?",
-  "What incident types keep repeating this year?",
-  "List the open sentinel and permanent-harm incidents.",
-  "Which incidents are past the HOD deadline?",
-  "Compare medication errors and patient falls.",
-  "What should Quality focus on this month?",
+  'Which department needs the most attention right now?',
+  'What incident types keep repeating this year?',
+  'List the open sentinel and permanent-harm incidents.',
+  'Which incidents are past the HOD deadline?',
+  'Compare medication errors and patient falls.',
+  'What should Quality focus on this month?',
 ];
 const DEPARTMENT_SUGGESTIONS = [
-  "Which of my open incidents should I deal with first?",
-  "What keeps repeating in my department?",
-  "Has anything come back after we closed it?",
-  "How quickly are we closing incidents?",
+  'Which of my open incidents should I deal with first?',
+  'What keeps repeating in my department?',
+  'Has anything come back after we closed it?',
+  'How quickly are we closing incidents?',
 ];
 
 const storageKey = (scopeKey: string) => `incidentReporting.askAi.${scopeKey}`;
@@ -49,13 +40,7 @@ const loadHistory = (scopeKey: string): ChatMessage[] => {
 };
 
 /** Renders an answer with in-scope incident numbers turned into links. */
-function AnswerText({
-  text,
-  cited = [],
-}: {
-  text: string;
-  cited?: ChatMessage["cited"];
-}) {
+function AnswerText({ text, cited = [] }: { text: string; cited?: ChatMessage['cited'] }) {
   const idByNumber = new Map(cited.map((c) => [c.number, c.id]));
   const parts = text.split(/(INC-\d{4}-\d{6})/g);
   return (
@@ -80,7 +65,7 @@ function AnswerText({
 
 interface ChatStatus {
   enabled: boolean;
-  scope: { kind: "HOSPITAL" | "DEPARTMENT"; key: string; label: string };
+  scope: { kind: 'HOSPITAL' | 'DEPARTMENT'; key: string; label: string };
   coverage: { incidents: number; since: string | null };
   dailyLimit: number;
   remainingToday: number;
@@ -92,8 +77,8 @@ interface ChatStatus {
  */
 export default function AskAiChat({ onClose }: { onClose?: () => void }) {
   const { data, error, isLoading } = useQuery({
-    queryKey: ["ask-ai-status"],
-    queryFn: () => api.get("/insights/chat"),
+    queryKey: ['ask-ai-status'],
+    queryFn: () => api.get('/insights/chat'),
   });
   const status = (data as any)?.data as ChatStatus | undefined;
 
@@ -107,12 +92,7 @@ export default function AskAiChat({ onClose }: { onClose?: () => void }) {
             </span>
             <h2 className="text-[14px] font-bold">Ask AI</h2>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            aria-label="Close Ask AI"
-            className="p-2 rounded-lg hover:bg-white/15 cursor-pointer"
-          >
+          <button type="button" onClick={onClose} aria-label="Close Ask AI" className="p-2 rounded-lg hover:bg-white/15 cursor-pointer">
             <X className="w-4 h-4" />
           </button>
         </div>
@@ -120,7 +100,7 @@ export default function AskAiChat({ onClose }: { onClose?: () => void }) {
           {isLoading ? (
             <Loader2 className="w-5 h-5 animate-spin" aria-label="Loading" />
           ) : (
-            errorMessage(error, "Ask AI is not available right now.")
+            errorMessage(error, 'Ask AI is not available right now.')
           )}
         </div>
       </section>
@@ -128,14 +108,14 @@ export default function AskAiChat({ onClose }: { onClose?: () => void }) {
   }
 
   const coverage = status.coverage.since
-    ? `all ${status.coverage.incidents} incidents since ${dayjs(status.coverage.since).format("MMM YYYY")}`
-    : "all incidents";
+    ? `all ${status.coverage.incidents} incidents since ${dayjs(status.coverage.since).format('MMM YYYY')}`
+    : 'all incidents';
   return (
     <ChatPanel
       scopeKey={status.scope.key}
       scopeLabel={status.scope.label}
       coverageLabel={coverage}
-      hospitalWide={status.scope.kind === "HOSPITAL"}
+      hospitalWide={status.scope.kind === 'HOSPITAL'}
       enabled={status.enabled}
       remainingToday={status.remainingToday}
       dailyLimit={status.dailyLimit}
@@ -164,15 +144,11 @@ function ChatPanel({
   dailyLimit?: number;
   onClose?: () => void;
 }) {
-  const [messages, setMessages] = useState<ChatMessage[]>(() =>
-    loadHistory(scopeKey),
-  );
-  const [draft, setDraft] = useState("");
+  const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(scopeKey));
+  const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  const [remaining, setRemaining] = useState<number | undefined>(
-    remainingToday,
-  );
+  const [remaining, setRemaining] = useState<number | undefined>(remainingToday);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -195,7 +171,7 @@ function ChatPanel({
   useEffect(() => {
     listRef.current?.scrollTo({
       top: listRef.current.scrollHeight,
-      behavior: "smooth",
+      behavior: 'smooth',
     });
   }, [messages, pending]);
 
@@ -206,10 +182,10 @@ function ChatPanel({
   useEffect(() => {
     inputRef.current?.focus();
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onCloseRef.current?.();
+      if (e.key === 'Escape') onCloseRef.current?.();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
   }, []);
 
   useEffect(() => {
@@ -222,28 +198,22 @@ function ChatPanel({
   const send = async (question: string, history: ChatMessage[] = messages) => {
     const text = question.trim();
     if (!text || pending) return;
-    const conversation = [
-      ...history.filter((m) => !m.error),
-      { role: "user" as const, content: text },
-    ];
+    const conversation = [...history.filter((m) => !m.error), { role: 'user' as const, content: text }];
     setMessages(conversation);
-    setDraft("");
+    setDraft('');
     setPending(true);
     try {
-      const res: any = await api.post("/insights/chat", {
+      const res: any = await api.post('/insights/chat', {
         messages: conversation.map(({ role, content }) => ({ role, content })),
       });
-      setMessages([
-        ...conversation,
-        { role: "assistant", content: res.data.answer, cited: res.data.cited },
-      ]);
+      setMessages([...conversation, { role: 'assistant', content: res.data.answer, cited: res.data.cited }]);
       setRemaining(res.data.remainingToday);
     } catch (err: any) {
       setMessages([
         ...conversation,
         {
-          role: "assistant",
-          content: errorMessage(err, "The AI could not answer right now."),
+          role: 'assistant',
+          content: errorMessage(err, 'The AI could not answer right now.'),
           error: true,
         },
       ]);
@@ -254,19 +224,14 @@ function ChatPanel({
   };
 
   const retry = () => {
-    const lastQuestionIndex = messages.map((m) => m.role).lastIndexOf("user");
+    const lastQuestionIndex = messages.map((m) => m.role).lastIndexOf('user');
     if (lastQuestionIndex === -1) return;
-    void send(
-      messages[lastQuestionIndex].content,
-      messages.slice(0, lastQuestionIndex),
-    );
+    void send(messages[lastQuestionIndex].content, messages.slice(0, lastQuestionIndex));
   };
 
   const outOfQuestions = remaining !== undefined && remaining <= 0;
   const canAsk = enabled && !pending && !outOfQuestions;
-  const suggestions = hospitalWide
-    ? HOSPITAL_SUGGESTIONS
-    : DEPARTMENT_SUGGESTIONS;
+  const suggestions = hospitalWide ? HOSPITAL_SUGGESTIONS : DEPARTMENT_SUGGESTIONS;
 
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-[0_24px_60px_-12px_rgba(15,23,42,0.4)] flex flex-col h-full overflow-hidden">
@@ -311,20 +276,13 @@ function ChatPanel({
       </div>
 
       {/* Conversation */}
-      <div
-        ref={listRef}
-        className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-gradient-to-b from-[#FFFCF8] to-white"
-        aria-live="polite"
-      >
+      <div ref={listRef} className="flex-1 overflow-y-auto px-4 py-4 space-y-4 bg-gradient-to-b from-[#FFFCF8] to-white" aria-live="polite">
         {messages.length === 0 && (
           <div className="min-h-full flex flex-col justify-center gap-4 py-2">
             <div className="space-y-1">
-              <h3 className="text-[15px] font-bold text-clinicalText-primary">
-                What would you like to know?
-              </h3>
+              <h3 className="text-[15px] font-bold text-clinicalText-primary">What would you like to know?</h3>
               <p className="text-[12.5px] text-clinicalText-secondary leading-relaxed">
-                Ask in plain words. The AI reads your incident records and links
-                the incidents behind each answer.
+                Ask in plain words. The AI reads your incident records and links the incidents behind each answer.
               </p>
             </div>
             {enabled ? (
@@ -343,15 +301,14 @@ function ChatPanel({
               </div>
             ) : (
               <p className="text-[13px] px-4 py-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-600">
-                AI isn't switched on for this server yet, so questions can't be
-                answered.
+                AI isn't switched on for this server yet, so questions can't be answered.
               </p>
             )}
           </div>
         )}
 
         {messages.map((m, i) =>
-          m.role === "user" ? (
+          m.role === 'user' ? (
             <div key={i} className="flex justify-end">
               <div className="max-w-[85%] px-3.5 py-2.5 rounded-2xl rounded-br-md bg-[#5C1A22] text-white text-[14px] leading-relaxed whitespace-pre-wrap break-words">
                 {m.content}
@@ -361,30 +318,18 @@ function ChatPanel({
             <div key={i} className="flex gap-3 items-start">
               <span
                 className={`w-8 h-8 shrink-0 rounded-xl flex items-center justify-center ${
-                  m.error
-                    ? "bg-red-50 border border-red-200"
-                    : "bg-[#FAF3EC] border border-[#E9D3BC]"
+                  m.error ? 'bg-red-50 border border-red-200' : 'bg-[#FAF3EC] border border-[#E9D3BC]'
                 }`}
               >
-                {m.error ? (
-                  <AlertTriangle className="w-4 h-4 text-red-600" />
-                ) : (
-                  <Sparkles className="w-4 h-4 text-[#7A2430]" />
-                )}
+                {m.error ? <AlertTriangle className="w-4 h-4 text-red-600" /> : <Sparkles className="w-4 h-4 text-[#7A2430]" />}
               </span>
               <div className="min-w-0 max-w-[92%] space-y-2">
                 <div
                   className={`px-4 py-3 rounded-2xl rounded-tl-md text-[14px] leading-relaxed whitespace-pre-wrap break-words ${
-                    m.error
-                      ? "bg-red-50 border border-red-200 text-red-800"
-                      : "bg-white border border-slate-200 text-clinicalText-primary"
+                    m.error ? 'bg-red-50 border border-red-200 text-red-800' : 'bg-white border border-slate-200 text-clinicalText-primary'
                   }`}
                 >
-                  {m.error ? (
-                    m.content
-                  ) : (
-                    <AnswerText text={m.content} cited={m.cited} />
-                  )}
+                  {m.error ? m.content : <AnswerText text={m.content} cited={m.cited} />}
                 </div>
                 {m.error && i === messages.length - 1 && (
                   <button
@@ -398,7 +343,7 @@ function ChatPanel({
                 )}
               </div>
             </div>
-          ),
+          )
         )}
 
         {pending && (
@@ -409,18 +354,9 @@ function ChatPanel({
             <div className="px-4 py-3 rounded-2xl rounded-tl-md bg-white border border-slate-200 text-[13px] text-clinicalText-secondary space-y-1">
               <div className="flex items-center gap-2">
                 <Loader2 className="w-4 h-4 animate-spin text-[#7A2430]" />
-                Reading your incidents…{" "}
-                {elapsed > 0 && (
-                  <span className="tabular-nums text-slate-400">
-                    {elapsed}s
-                  </span>
-                )}
+                Reading your incidents… {elapsed > 0 && <span className="tabular-nums text-slate-400">{elapsed}s</span>}
               </div>
-              {elapsed >= 12 && (
-                <p className="text-[12px] text-slate-400">
-                  The AI service is busy, so this can take up to a minute.
-                </p>
-              )}
+              {elapsed >= 12 && <p className="text-[12px] text-slate-400">The AI service is busy, so this can take up to a minute.</p>}
             </div>
           </div>
         )}
@@ -444,20 +380,20 @@ function ChatPanel({
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
+              if (e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
                 void send(draft);
               }
             }}
-            rows={Math.min(5, Math.max(1, draft.split("\n").length))}
+            rows={Math.min(5, Math.max(1, draft.split('\n').length))}
             maxLength={2000}
             disabled={!enabled || outOfQuestions}
             placeholder={
               !enabled
-                ? "AI is not switched on"
+                ? 'AI is not switched on'
                 : outOfQuestions
                   ? "You've used today's questions"
-                  : "Ask about incidents, departments, trends…"
+                  : 'Ask about incidents, departments, trends…'
             }
             className="flex-1 resize-none px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 focus:bg-white focus:border-[#7A2430] focus:ring-2 focus:ring-[#7A2430]/15 text-[14px] leading-relaxed outline-none transition disabled:opacity-60"
           />
@@ -467,17 +403,12 @@ function ChatPanel({
             aria-label="Send question"
             className="h-11 w-11 shrink-0 rounded-xl bg-gradient-to-br from-[#7A2430] to-[#5C1A22] text-white flex items-center justify-center shadow-button-red hover:brightness-110 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            {pending ? (
-              <Loader2 className="w-[18px] h-[18px] animate-spin" />
-            ) : (
-              <Send className="w-[18px] h-[18px]" />
-            )}
+            {pending ? <Loader2 className="w-[18px] h-[18px] animate-spin" /> : <Send className="w-[18px] h-[18px]" />}
           </button>
         </form>
         <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11.5px] text-slate-400">
           <span className="inline-flex items-center gap-1.5">
-            <ShieldAlert className="w-3.5 h-3.5" /> No patient names or UHIDs.
-            AI-written: check linked incidents.
+            <ShieldAlert className="w-3.5 h-3.5" /> No patient names or UHIDs. AI-written: check linked incidents.
           </span>
           {remaining !== undefined && dailyLimit !== undefined && (
             <span className="tabular-nums">

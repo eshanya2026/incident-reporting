@@ -3,6 +3,18 @@ import { AppError } from '../common/errors/appError.js';
 import { verifyAccessToken, JwtPayload } from '../modules/auth/auth.utils.js';
 import { User } from '../modules/users/user.model.js';
 
+// Until an imported staff member has confirmed their details and set their own password, their
+// account can only load its profile, the department list, and submit the first-login form.
+const FIRST_LOGIN_ALLOWED: Array<[string, RegExp]> = [
+  ['GET', /^\/api\/v1\/auth\/me\/?$/],
+  ['POST', /^\/api\/v1\/auth\/complete-profile\/?$/],
+  ['GET', /^\/api\/v1\/departments\/?$/],
+];
+const allowedBeforeProfileComplete = (req: Request): boolean => {
+  const path = req.originalUrl.split('?')[0];
+  return FIRST_LOGIN_ALLOWED.some(([method, re]) => req.method === method && re.test(path));
+};
+
 export const authenticate = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   const authHeader = req.headers.authorization;
   let token: string | undefined;
@@ -30,6 +42,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
     const user = await User.findById(payload.userId).populate('roles', 'code permissions');
     if (!user || user.status !== 'ACTIVE') {
       return next(AppError.unauthorized('Account is not active'));
+    }
+    if (user.mustCompleteProfile && !allowedBeforeProfileComplete(req)) {
+      return next(new AppError('Please complete your details and set your password first', 403, 'PROFILE_INCOMPLETE'));
     }
 
     const roles = (user.roles as unknown as Array<{ code: string; permissions: string[] }>) || [];

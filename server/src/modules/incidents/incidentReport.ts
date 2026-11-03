@@ -69,6 +69,8 @@ const PAGE_W = 595.28; // A4
 const PAGE_H = 841.89;
 const MARGIN = 50;
 const CONTENT_W = PAGE_W - MARGIN * 2;
+/** Width of the label column in label/value rows (values start here). */
+const LABEL_COL = 110;
 
 const INK = rgb(0.14, 0.12, 0.11);
 const MUTED = rgb(0.44, 0.4, 0.36);
@@ -143,7 +145,24 @@ class DocWriter {
   }
 
   wrap(text: string, font: PDFFont, size: number, maxWidth: number): string[] {
-    const words = pdfSafe(text).split(/\s+/).filter(Boolean);
+    // A word wider than the column (e.g. "CAPA-2026-000021" in a narrow cell) is split across lines
+    // instead of spilling into the next column.
+    const splitLong = (word: string): string[] => {
+      if (font.widthOfTextAtSize(word, size) <= maxWidth) return [word];
+      const parts: string[] = [];
+      let part = '';
+      for (const ch of word) {
+        if (part && font.widthOfTextAtSize(part + ch, size) > maxWidth) {
+          parts.push(part);
+          part = ch;
+        } else {
+          part += ch;
+        }
+      }
+      if (part) parts.push(part);
+      return parts;
+    };
+    const words = pdfSafe(text).split(/\s+/).filter(Boolean).flatMap(splitLong);
     const lines: string[] = [];
     let line = '';
     for (const word of words) {
@@ -181,7 +200,8 @@ class DocWriter {
   }
 
   h2(title: string): void {
-    this.ensureSpace(30);
+    // Keep the heading with the first few lines of its section rather than alone at a page bottom
+    this.ensureSpace(80);
     this.y -= 6;
     this.text(title.toUpperCase(), MARGIN, 12.5, this.bold, ACCENT);
     this.y -= 6;
@@ -197,7 +217,8 @@ class DocWriter {
 
   /** Label/value pair. Value wraps; label stays in a fixed-width left column. */
   field(label: string, value: string, opts: { labelWidth?: number } = {}): void {
-    const labelWidth = opts.labelWidth ?? 150;
+    // Same value column as fieldRow, so single and paired rows line up; widened only for a long label
+    const labelWidth = opts.labelWidth ?? Math.max(LABEL_COL, this.bold.widthOfTextAtSize(pdfSafe(label), 10) + 10);
     const valueX = MARGIN + labelWidth;
     const valueWidth = CONTENT_W - labelWidth;
     const lines = this.wrap(value || '—', this.regular, 10, valueWidth);
@@ -215,16 +236,22 @@ class DocWriter {
   /** Two fields side by side, each taking half the content width. */
   fieldRow(a: [string, string], b: [string, string]): void {
     const half = CONTENT_W / 2;
-    const linesA = this.wrap(a[1] || '—', this.regular, 10, half - 110);
-    const linesB = this.wrap(b[1] || '—', this.regular, 10, half - 110);
+    const linesA = this.wrap(a[1] || '—', this.regular, 10, half - LABEL_COL - 6);
+    const linesB = this.wrap(b[1] || '—', this.regular, 10, half - LABEL_COL - 6);
     const rows = Math.max(linesA.length, linesB.length);
     this.ensureSpace(rows * 13 + 4);
     const startY = this.y;
-    this.text(a[0], MARGIN, 10, this.bold, MUTED);
-    this.text(b[0], MARGIN + half, 10, this.bold, MUTED);
+    // A label too long for its column is drawn smaller rather than running into the value
+    const label = (text: string, x: number) => {
+      const width = this.bold.widthOfTextAtSize(pdfSafe(text), 10);
+      const size = width > LABEL_COL - 8 ? Math.max(7, (10 * (LABEL_COL - 8)) / width) : 10;
+      this.text(text, x, size, this.bold, MUTED);
+    };
+    label(a[0], MARGIN);
+    label(b[0], MARGIN + half);
     for (let i = 0; i < rows; i++) {
-      if (linesA[i]) this.page.drawText(linesA[i], { x: MARGIN + 110, y: startY - i * 13, size: 10, font: this.regular, color: INK });
-      if (linesB[i]) this.page.drawText(linesB[i], { x: MARGIN + half + 110, y: startY - i * 13, size: 10, font: this.regular, color: INK });
+      if (linesA[i]) this.page.drawText(linesA[i], { x: MARGIN + LABEL_COL, y: startY - i * 13, size: 10, font: this.regular, color: INK });
+      if (linesB[i]) this.page.drawText(linesB[i], { x: MARGIN + half + LABEL_COL, y: startY - i * 13, size: 10, font: this.regular, color: INK });
     }
     this.y = startY - rows * 13 - 3;
   }
@@ -545,7 +572,7 @@ const buildIncidentReportPdf = async (data: ReportData): Promise<Uint8Array> => 
         humanize(c.status),
         c.completedAt ? `${fmtDateTime(c.completedAt)}${c.completionRemarks ? ` – ${c.completionRemarks}` : ''}` : '—',
       ]),
-      [55, 62, 80, CONTENT_W - 55 - 62 - 80 - 55 - 90, 55, 90]
+      [90, 74, 76, CONTENT_W - 90 - 74 - 76 - 68 - 84, 68, 84]
     );
   }
 

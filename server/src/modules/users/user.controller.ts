@@ -7,6 +7,7 @@ import { Department } from '../departments/department.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { hashPassword } from '../auth/auth.utils.js';
+import { COMMON_STAFF_PASSWORD } from '../auth/auth.controller.js';
 import { PERMISSIONS, ROLE_CODES } from '../../common/enums/permissions.js';
 import { hasPermission } from '../../common/helpers/incidentAccess.js';
 
@@ -15,7 +16,7 @@ const objectId = z.string().refine((v) => mongoose.Types.ObjectId.isValid(v), 'I
 const createUserSchema = z.object({
   employeeId: z.string().trim().min(1, 'Employee ID is required'),
   name: z.string().trim().min(1, 'Name is required'),
-  email: z.string().email('Invalid email address'),
+  email: z.string().trim().email('Invalid email address').optional().or(z.literal('')),
   username: z.string().trim().min(3, 'Username must be at least 3 characters'),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   phone: z.string().optional(),
@@ -29,7 +30,7 @@ const createUserSchema = z.object({
 
 const updateUserSchema = z.object({
   name: z.string().trim().min(1).optional(),
-  email: z.string().email().optional(),
+  email: z.string().trim().email('Invalid email address').optional().or(z.literal('')),
   phone: z.string().optional(),
   whatsappNumber: z.string().optional(),
   departmentId: objectId.optional().nullable(),
@@ -203,8 +204,9 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
   try {
     const data = createUserSchema.parse(req.body);
 
+    const email = data.email ? data.email.toLowerCase() : undefined;
     const existingUser = await User.findOne({
-      $or: [{ username: data.username.toLowerCase() }, { email: data.email.toLowerCase() }, { employeeId: data.employeeId }],
+      $or: [{ username: data.username.toLowerCase() }, { employeeId: data.employeeId }, ...(email ? [{ email }] : [])],
     });
     if (existingUser) {
       throw AppError.conflict('User with this Username, Email or Employee ID already exists');
@@ -225,7 +227,7 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
     const user = await User.create({
       employeeId: data.employeeId,
       name: data.name,
-      email: data.email.toLowerCase(),
+      email,
       username: data.username.toLowerCase(),
       passwordHash: await hashPassword(data.password),
       phone: data.phone,
@@ -339,8 +341,9 @@ export const resetUserPassword = async (req: Request, res: Response, next: NextF
 const bulkUserItemSchema = z.object({
   employeeId: z.string().trim().min(1, 'Employee ID is required'),
   name: z.string().trim().min(1, 'Name is required'),
-  email: z.string().email('Invalid email address'),
-  username: z.string().trim().min(3, 'Username must be at least 3 characters'),
+  email: z.string().trim().email('Invalid email address').optional().or(z.literal('')),
+  // Defaults to the Employee ID
+  username: z.string().trim().optional(),
   departmentCode: z.string().trim().optional(),
   roleCode: z.string().trim().default('STAFF'),
   designation: z.string().trim().optional(),
@@ -351,7 +354,7 @@ const bulkUserItemSchema = z.object({
 const bulkImportUsersSchema = z.object({
   users: z.array(bulkUserItemSchema).min(1, 'At least one user is required'),
   updateExisting: z.boolean().optional().default(false),
-  defaultPassword: z.string().min(6).optional().default('Staff@123'),
+  defaultPassword: z.string().min(6).optional().default(COMMON_STAFF_PASSWORD),
 });
 
 export const bulkImportUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -371,7 +374,8 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
     const errors: Array<{ row: number; employeeId: string; error: string }> = [];
 
     for (let i = 0; i < userList.length; i++) {
-      const item = userList[i];
+      const raw = userList[i];
+      const item = { ...raw, username: (raw.username || raw.employeeId).toLowerCase(), email: raw.email ? raw.email.toLowerCase() : undefined };
       const rowNum = i + 1;
       const roleCodeUpper = (item.roleCode || 'STAFF').toUpperCase();
       const targetRole = roleMap.get(roleCodeUpper);
@@ -413,8 +417,8 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
         const existing = await User.findOne({
           $or: [
             { employeeId: item.employeeId },
-            { username: item.username.toLowerCase() },
-            { email: item.email.toLowerCase() },
+            { username: item.username },
+            ...(item.email ? [{ email: item.email }] : []),
           ],
         });
 
@@ -430,7 +434,7 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
 
           // Update existing user
           existing.name = item.name;
-          existing.email = item.email.toLowerCase();
+          if (item.email) existing.email = item.email;
           if (item.designation) existing.designation = item.designation;
           if (item.phone) existing.phone = item.phone;
           if (departmentDoc) existing.departmentId = departmentDoc._id;
@@ -449,9 +453,11 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
           const newUser = await User.create({
             employeeId: item.employeeId,
             name: item.name,
-            email: item.email.toLowerCase(),
-            username: item.username.toLowerCase(),
+            email: item.email,
+            username: item.username,
             passwordHash: await hashPassword(pwdToHash),
+            // Given the common starting password: they confirm their details and set their own on first login
+            mustCompleteProfile: !item.password,
             phone: item.phone,
             departmentId: departmentDoc?._id || null,
             designation: item.designation,

@@ -63,7 +63,7 @@ export const notifyUsers = async (params: NotifyParams): Promise<number> => {
     if (withEmail) {
       const link = params.link ?? (params.entityType === 'INCIDENT' && params.entityId ? `${env.APP_URL}/incidents/${params.entityId}` : env.APP_URL);
       void sendEmail(
-        recipients.map((u) => u.email).filter(Boolean),
+        recipients.map((u) => u.email).filter((e): e is string => Boolean(e)),
         params.title,
         `${params.message}\n\nOpen: ${link}\n\n— Adhiparasakthi Hospitals Incident Reporting`
       );
