@@ -530,7 +530,7 @@ export default function QualityReportsPage() {
               disabled={!isHospitalWide}
               options={[
                 ...(isHospitalWide ? [{ value: '', label: '-- All Departments --' }] : []),
-                ...departmentOptions(departments),
+                ...departmentOptions(departments, undefined, { includeInactive: true }),
               ]}
               searchPlaceholder="Search departments..."
               className={filterControlClass}

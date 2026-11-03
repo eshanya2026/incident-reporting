@@ -245,7 +245,7 @@ export default function ReportIncidentPage() {
   // belong to the handful of demo floor/zone room locations, not the real ward list). Sourced
   // from the Location collection, not a static list, so wards Admin adds show up immediately.
   const wardLocationOptions = locations
-    .filter((l: any) => l.type === 'WARD' && !l.floor)
+    .filter((l: any) => l.type === 'WARD' && !l.floor && l.active !== false)
     .sort((a: any, b: any) => a.name.localeCompare(b.name))
     .map((l: any) => ({ value: l.name, label: l.name }));
   const wardLocationMode = affectedPersonType === 'INPATIENT' && Boolean(inpatient.ward) && incidentInWard === 'Yes';

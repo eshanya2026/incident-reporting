@@ -98,6 +98,11 @@ const identityTokens = (question?: string): string[] =>
 const STOP_WORDS = new Set(
   'what when where which who whom whose why how did does the and for with from that this last week month year today yesterday happened happen incident incidents patient patients about show tell give list was were has have had any all are mr mrs ms dr miss shri smt ward bed uhid number'.split(' ')
 );
+// Words that describe roles or events rather than a person (titles are not used: they can contain names)
+const COMMON_HOSPITAL_WORDS = [
+  'staff nurse nursing doctor sister attendant technician pharmacist boy security housekeeping visitor relative family employee intern resident consultant',
+  'error errors human negligence fall falls fell medication injury near miss harm death delay delayed wrong missing late overdue open closed',
+];
 const normalise = (s?: string) => (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
 
 export interface ChatDatasetOptions {
@@ -390,8 +395,43 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
       .filter(Boolean)
   );
 
+  // The same type of incident in the same department happening again after an earlier one was closed
+  // (with its CAPA marked effective): the closest the records come to "recurred after CAPA".
+  const recurrenceAfterClosure = (() => {
+    const groups = new Map<string, any[]>();
+    for (const i of notRejected) {
+      if (!i.categoryId || !i.departmentId) continue;
+      const key = `${idOf(i.categoryId)}|${idOf(i.departmentId)}`;
+      groups.set(key, [...(groups.get(key) ?? []), i]);
+    }
+    const out: any[] = [];
+    for (const list of groups.values()) {
+      const closed = list.filter((i) => i.status === 'CLOSED' && i.closedAt).sort((a, b) => +new Date(a.closedAt) - +new Date(b.closedAt));
+      if (!closed.length) continue;
+      const firstClosedAt = new Date(closed[0].closedAt);
+      const after = list.filter((i) => i.incidentDateTime && new Date(i.incidentDateTime) > firstClosedAt);
+      if (!after.length) continue;
+      const earlierCapas = closed
+        .filter((c) => after.some((a) => new Date(a.incidentDateTime) > new Date(c.closedAt)))
+        .flatMap((c) => (capaByIncident.get(String(c._id)) ?? []).map((x: any) => ({ no: x.capaNumber, incident: c.incidentNumber, type: x.type, action: text(x.action, []) })))
+        .slice(0, 6);
+      out.push({
+        category: nameOf(list[0].categoryId),
+        department: nameOf(list[0].departmentId),
+        closedBefore: closed.filter((c) => after.some((a) => new Date(a.incidentDateTime) > new Date(c.closedAt))).map((c) => c.incidentNumber),
+        earlierActions: earlierCapas,
+        occurredAfterAClosure: after.map((a) => a.incidentNumber),
+      });
+    }
+    return out.sort((a, b) => b.occurredAfterAClosure.length - a.occurredAfterAClosure.length).slice(0, 30);
+  })();
+
   const aggregates = {
     note: 'Complete counts over every incident in scope (rejected reports excluded unless stated).',
+    recurrenceAfterClosure: {
+      note: 'Same category in the same responsible department occurring again after an earlier incident was closed (its CAPA marked effective). Use for questions about recurrence after action or repeated incidents.',
+      groups: recurrenceAfterClosure,
+    },
     coverage: {
       note: 'Every incident in scope since the system started, not a recent window.',
       firstReported: firstDay(src.incidents.map((i) => i.reportedAt)),
@@ -444,15 +484,31 @@ export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => 
 
   // Which incidents does the text refer to: by incident/CAPA number, or (with patient details
   // allowed) by a patient name or UHID.
+  // Ordinary words used anywhere in the incident data (titles, categories, departments, wards,
+  // designations...) are never treated as a person's name, so "staff error" can't match "Staff Nurse".
+  const vocabulary = new Set(
+    records
+      .flatMap((r: any) => [r.category, r.subcategory, r.location, r.responsibleDept, r.reportingDept, r.occurredInDept, r.hod, r.assignedBy, r.affected])
+      .concat(COMMON_HOSPITAL_WORDS)
+      .join(' ')
+      .toLowerCase()
+      .split(/[^a-z0-9]+/)
+      .filter((w) => w.length >= 3)
+  );
   const referencedBy = (textIn?: string) => {
     const nums = referencedNumbers(textIn);
-    const tokens = identify ? identityTokens(textIn) : [];
+    const tokens = identify ? identityTokens(textIn).filter((t) => !vocabulary.has(t) || /\d/.test(t)) : [];
     const byPatient = (r: any) => {
       if (!tokens.length) return false;
-      const nameWords = `${r.patient?.name ?? ''} ${r.affectedPersonName ?? ''}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+      const nameWords = `${r.patient?.name ?? ''} ${r.affectedPersonName ?? ''}`
+        .toLowerCase()
+        .split(/[^a-z0-9]+/)
+        .filter((w) => w.length >= 3 && !STOP_WORDS.has(w) && !vocabulary.has(w));
       const ids = [r.patient?.uhid, r.patient?.ipNumber].map(normalise).filter(Boolean);
       return tokens.some(
-        (t) => nameWords.some((w) => w.length >= 3 && (w.startsWith(t) || t.startsWith(w))) || ids.some((id) => normalise(t).length >= 4 && id.includes(normalise(t)))
+        (t) =>
+          nameWords.some((w) => w === t || (t.length >= 4 && w.startsWith(t)) || (w.length >= 4 && t.startsWith(w))) ||
+          ids.some((id) => normalise(t).length >= 4 && /\d/.test(t) && id.includes(normalise(t)))
       );
     };
     return records.filter((r: any) => nums.incidents.has(r.no) || (r.capas || []).some((c: any) => nums.capas.has(c.no)) || byPatient(r));
@@ -569,7 +625,9 @@ export const loadChatDataset = async (scope: InsightScope, opts: { identify?: bo
       capas,
       allDepartments: (departments as any[]).map((d) => ({ id: String(d._id), name: d.name })),
     },
-    { now, shareCaseText: env.AI_SHARE_CASE_TEXT, scope, identify: opts.identify, question: opts.question, followUp: opts.followUp }
+    // Written case details (findings, root causes, CAPA wording, remarks) go to anyone allowed patient
+    // details, or to everyone when AI_SHARE_CASE_TEXT is on
+    { now, shareCaseText: env.AI_SHARE_CASE_TEXT || Boolean(opts.identify), scope, identify: opts.identify, question: opts.question, followUp: opts.followUp }
   );
   return { dataset, idByNumber };
 };

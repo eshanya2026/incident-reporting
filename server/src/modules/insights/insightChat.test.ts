@@ -150,6 +150,15 @@ describe('focused and compact modes', () => {
     expect(d.caseList.records.map((r: any) => r.no)).toEqual(['INC-2026-000003']);
   });
 
+  it('does not mistake ordinary words for a name', () => {
+    const withStaff = [...many.slice(0, 29), incident(30, { affectedPersonType: 'EMPLOYEE', affectedPersonDetail: { name: 'Staff Nurse Kavitha' } })];
+    const general = buildChatDataset(src(withStaff), opts('How many investigations recorded human error or staff negligence?'));
+    expect(general.caseList.mode).toBe('ALL');
+    const named = buildChatDataset(src(withStaff), opts('What happened to Kavitha?'));
+    expect(named.caseList.mode).toBe('FOCUSED');
+    expect(named.caseList.records.map((r: any) => r.no)).toEqual(['INC-2026-000030']);
+  });
+
   it('sends every incident in compact form for general questions', () => {
     const d = buildChatDataset(src(many), opts('Which departments report the most?'));
     expect(d.caseList.mode).toBe('ALL');

@@ -99,7 +99,7 @@ export default function IncidentRegisterPage() {
               setPage(1);
             }}
             containerClassName="block w-full"
-            options={[{ value: '', label: 'Responsible department (all)' }, ...departmentOptions(departments)]}
+            options={[{ value: '', label: 'Responsible department (all)' }, ...departmentOptions(departments, undefined, { includeInactive: true })]}
             searchPlaceholder="Search departments..."
             className={filterControlClass}
           />

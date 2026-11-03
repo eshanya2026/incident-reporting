@@ -1817,7 +1817,8 @@ export async function seedDummyOperationalData(params: {
     const reportedAt =
       def.reportDelayHours != null
         ? new Date(incidentDateTime.getTime() + def.reportDelayHours * 3600 * 1000)
-        : daysAgo(Math.max(def.daysAgo - 0, 0), 11 + (def.seq % 6));
+        : // never before it happened
+          new Date(Math.max(daysAgo(Math.max(def.daysAgo - 0, 0), 11 + (def.seq % 6)).getTime(), incidentDateTime.getTime() + 90 * 60 * 1000));
 
     const patient = def.patient
       ? {
@@ -1830,7 +1831,8 @@ export async function seedDummyOperationalData(params: {
     // In these statuses Quality has not assigned a responsible department yet
     const assigned = !['SUBMITTED', 'INFO_REQUESTED', 'REJECTED'].includes(def.status);
     const qualityId = requireId(userMap, 'quality.anita', 'user');
-    // Never before the report (a late report pushes the assignment later)
+    // Quality's steps never come before the report (a late report pushes them later)
+    const afterReport = (d: Date, minHours = 2) => new Date(Math.max(d.getTime(), reportedAt.getTime() + minHours * 3600 * 1000));
     const assignedAt = new Date(Math.max(daysAgo(Math.max(def.daysAgo - 1, 0), 12).getTime(), reportedAt.getTime() + 3 * 3600 * 1000));
     const submittedForReview = ['PENDING_QUALITY_REVIEW', 'CLOSED'].includes(def.status);
     const closedAt = def.closedDaysAgo != null ? daysAgo(def.closedDaysAgo, 16) : undefined;
@@ -1846,7 +1848,7 @@ export async function seedDummyOperationalData(params: {
           severity: a.severity ?? def.severity,
           remarks: a.remarks,
           by: qualityId,
-          at: daysAgo(a.daysAgo ?? Math.max(def.daysAgo - 1, 0), 12),
+          at: afterReport(daysAgo(a.daysAgo ?? Math.max(def.daysAgo - 1, 0), 12)),
         };
       });
     } else if (assigned) {
@@ -1873,10 +1875,11 @@ export async function seedDummyOperationalData(params: {
       ? def.infoRequests.map((ir) => ({
           question: ir.question,
           askedBy: qualityId,
-          askedAt: daysAgo(ir.askedDaysAgo, 12),
+          askedAt: afterReport(daysAgo(ir.askedDaysAgo, 12)),
           response: ir.response,
           respondedBy: ir.response ? reportedBy : undefined,
-          respondedAt: ir.response && ir.respondedDaysAgo != null ? daysAgo(ir.respondedDaysAgo, 14) : undefined,
+          respondedAt:
+            ir.response && ir.respondedDaysAgo != null ? afterReport(daysAgo(ir.respondedDaysAgo, 14), 5) : undefined,
         }))
       : def.status === 'INFO_REQUESTED'
       ? [{ question: 'Please confirm the exact time and who else was present.', askedBy: qualityId, askedAt: assignedAt }]
@@ -1887,7 +1890,7 @@ export async function seedDummyOperationalData(params: {
         ? {
             reason: def.rejection?.reason || 'Duplicate of an earlier report.',
             by: qualityId,
-            at: daysAgo(def.rejection?.daysAgo ?? Math.max(def.daysAgo - 1, 0), 12),
+            at: afterReport(daysAgo(def.rejection?.daysAgo ?? Math.max(def.daysAgo - 1, 0), 12)),
           }
         : undefined;
 

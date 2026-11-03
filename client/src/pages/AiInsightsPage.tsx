@@ -168,7 +168,7 @@ export default function AiInsightsPage() {
             <SearchableSelect
               value={departmentId}
               onChange={setDepartmentId}
-              options={[{ value: '', label: 'Whole hospital' }, ...departmentOptions(departments)]}
+              options={[{ value: '', label: 'Whole hospital' }, ...departmentOptions(departments, undefined, { includeInactive: true })]}
               searchPlaceholder="Search departments..."
               className={`${filterControlClass} min-w-[15rem]`}
             />

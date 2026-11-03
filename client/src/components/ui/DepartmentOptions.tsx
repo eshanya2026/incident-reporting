@@ -51,8 +51,16 @@ export function groupDepartments(departments: any[]): Array<{ category: string; 
  * A single group (e.g. only the 8 demo departments before the taxonomy is seeded) gets no group
  * header, matching how `DepartmentOptions` used to skip `<optgroup>` in that case.
  */
-export function departmentOptions(departments: any[], label?: (department: any) => string): SearchableSelectOption[] {
-  const groups = groupDepartments(departments);
+/**
+ * Grouped department options. Inactive departments are left out, so nothing new is assigned to them;
+ * filters over past incidents pass includeInactive.
+ */
+export function departmentOptions(
+  departments: any[],
+  label?: (department: any) => string,
+  opts: { includeInactive?: boolean } = {}
+): SearchableSelectOption[] {
+  const groups = groupDepartments(opts.includeInactive ? departments : departments.filter((d) => d.active !== false));
   const noHeader = groups.length <= 1;
   return groups.flatMap(({ category, items }) =>
     items.map((d) => ({

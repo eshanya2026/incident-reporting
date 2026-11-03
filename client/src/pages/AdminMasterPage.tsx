@@ -143,12 +143,16 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
 
   // Ward form state
   const [showWardModal, setShowWardModal] = useState(false);
+  const [editingWard, setEditingWard] = useState<any>(null);
+  const [wardActive, setWardActive] = useState(true);
   const [wardCode, setWardCode] = useState('');
   const [wardName, setWardName] = useState('');
   const [wardSearch, setWardSearch] = useState('');
 
   // Department form state
   const [showDeptModal, setShowDeptModal] = useState(false);
+  const [editingDept, setEditingDept] = useState<any>(null);
+  const [deptActive, setDeptActive] = useState(true);
   const [deptCode, setDeptCode] = useState('');
   const [deptName, setDeptName] = useState('');
   const [deptCategory, setDeptCategory] = useState('');
@@ -384,40 +388,89 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
     }
   };
 
+  const openCreateWard = () => {
+    setEditingWard(null);
+    setWardCode('');
+    setWardName('');
+    setWardActive(true);
+    setShowWardModal(true);
+  };
+  const openEditWard = (w: any) => {
+    setEditingWard(w);
+    setWardCode(w.code);
+    setWardName(w.name);
+    setWardActive(w.active !== false);
+    setShowWardModal(true);
+  };
+
   const handleCreateWard = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/locations', {
-        code: wardCode.toUpperCase(),
-        name: wardName,
-        type: 'WARD',
-      });
+      if (editingWard) {
+        await api.patch(`/locations/${editingWard._id}`, { name: wardName.trim(), active: wardActive });
+      } else {
+        await api.post('/locations', {
+          code: wardCode.toUpperCase(),
+          name: wardName,
+          type: 'WARD',
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['locations'] });
       setShowWardModal(false);
+      toast.success(editingWard ? 'Ward updated' : 'Ward created successfully');
+      setEditingWard(null);
       setWardCode('');
       setWardName('');
-      toast.success('Ward created successfully');
     } catch (err: any) {
-      toast.error(errorMessage(err, 'Ward creation failed'));
+      toast.error(errorMessage(err, editingWard ? 'Ward update failed' : 'Ward creation failed'));
     }
   };
+
+  const openCreateDept = () => {
+    setEditingDept(null);
+    setDeptName('');
+    setDeptCategory('');
+    setDeptActive(true);
+    setShowDeptModal(true);
+  };
+  const openEditDept = (d: any) => {
+    setEditingDept(d);
+    setDeptName(d.name);
+    setDeptCategory(d.category || '');
+    setDeptActive(d.active !== false);
+    setShowDeptModal(true);
+  };
+
+  /** Internal code for a new department, made from its name (codes are not shown to users). */
+  const codeFromName = (name: string) =>
+    'DEPT_' +
+    name
+      .toUpperCase()
+      .replace(/&/g, ' AND ')
+      .replace(/[^A-Z0-9]+/g, '_')
+      .replace(/^_+|_+$/g, '')
+      .slice(0, 50);
 
   const handleCreateDepartment = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await api.post('/departments', {
-        code: deptCode.toUpperCase(),
-        name: deptName,
-        category: deptCategory || undefined,
-      });
+      if (editingDept) {
+        await api.patch(`/departments/${editingDept._id}`, { name: deptName.trim(), category: deptCategory || null, active: deptActive });
+      } else {
+        await api.post('/departments', {
+          code: codeFromName(deptName),
+          name: deptName.trim(),
+          category: deptCategory || undefined,
+        });
+      }
       queryClient.invalidateQueries({ queryKey: ['departments'] });
       setShowDeptModal(false);
-      setDeptCode('');
+      toast.success(editingDept ? 'Department updated' : 'Department created successfully');
+      setEditingDept(null);
       setDeptName('');
       setDeptCategory('');
-      toast.success('Department created successfully');
     } catch (err: any) {
-      toast.error(errorMessage(err, 'Department creation failed'));
+      toast.error(errorMessage(err, editingDept ? 'Department update failed' : 'Department creation failed'));
     }
   };
 
@@ -695,7 +748,7 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
               />
             </div>
             <button
-              onClick={() => setShowDeptModal(true)}
+              onClick={openCreateDept}
               className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer"
             >
               <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
@@ -711,11 +764,11 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
             <table className="data-table">
               <thead className="bg-slate-50/80 border-b border-clinicalBorder font-bold uppercase text-[12.5px] tracking-wider text-clinicalText-secondary">
                 <tr>
-                  <th className="py-3 px-4">Code</th>
                   <th className="py-3 px-4">Department Name</th>
                   <th className="py-3 px-4">Category</th>
                   <th className="py-3 px-4">Assigned HOD</th>
                   <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -726,7 +779,6 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                 )}
                 {filteredDepartments.map((d: any) => (
                   <tr key={d._id} className="hover:bg-slate-50/80 transition">
-                    <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{d.code}</span></td>
                     <td className="py-3 px-4 font-semibold text-clinicalText-primary">{d.name}</td>
                     <td className="py-3 px-4 text-clinicalText-secondary">{d.category || '—'}</td>
                     <td className="py-3 px-4">
@@ -744,9 +796,22 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                       />
                     </td>
                     <td className="py-3 px-4">
-                      <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 font-bold text-[11.5px]">
-                        {d.active ? 'ACTIVE' : 'INACTIVE'}
+                      <span
+                        className={`px-2.5 py-1 rounded-full border font-bold text-[11.5px] ${
+                          d.active !== false ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                        }`}
+                      >
+                        {d.active !== false ? 'ACTIVE' : 'INACTIVE'}
                       </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openEditDept(d)}
+                        className="px-3 py-1.5 bg-white hover:bg-slate-50 text-clinicalText-primary border border-clinicalBorder font-semibold text-xs rounded-lg transition cursor-pointer"
+                      >
+                        Edit
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -770,7 +835,7 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
               </p>
             </div>
             <button
-              onClick={() => setShowWardModal(true)}
+              onClick={openCreateWard}
               className="group relative overflow-hidden px-5 py-2.5 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] hover:from-[#431219] hover:via-[#5C1A22] hover:to-[#4F161C] active:scale-[0.99] text-white font-semibold text-xs rounded-xl shadow-button-red hover:shadow-lg flex items-center space-x-2 transition-all duration-200 cursor-pointer self-start sm:self-auto"
             >
               <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
@@ -807,6 +872,8 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                 <tr>
                   <th className="py-3 px-4 w-36">Code</th>
                   <th className="py-3 px-4">Ward Name</th>
+                  <th className="py-3 px-4">Status</th>
+                  <th className="py-3 px-4 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -814,11 +881,29 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                   <tr key={w._id} className="hover:bg-slate-50/80 transition">
                     <td><span className="inline-block px-2.5 py-1 rounded-lg bg-[#FAF3EC] border border-[#E9D3BC] font-mono font-bold text-[#5C1A22] text-xs whitespace-nowrap">{w.code}</span></td>
                     <td className="py-3 px-4 font-semibold text-clinicalText-primary">{w.name}</td>
+                    <td className="py-3 px-4">
+                      <span
+                        className={`px-2.5 py-1 rounded-full border font-bold text-[11.5px] ${
+                          w.active !== false ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'
+                        }`}
+                      >
+                        {w.active !== false ? 'ACTIVE' : 'INACTIVE'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-right">
+                      <button
+                        type="button"
+                        onClick={() => openEditWard(w)}
+                        className="px-3 py-1.5 bg-white hover:bg-slate-50 text-clinicalText-primary border border-clinicalBorder font-semibold text-xs rounded-lg transition cursor-pointer"
+                      >
+                        Edit
+                      </button>
+                    </td>
                   </tr>
                 ))}
                 {filteredWards.length === 0 && (
                   <tr>
-                    <td colSpan={2} className="!p-0"><EmptyState message="No wards found matching your search." /></td>
+                    <td colSpan={4} className="!p-0"><EmptyState message="No wards found matching your search." /></td>
                   </tr>
                 )}
               </tbody>
@@ -1135,18 +1220,25 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
       {showWardModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <form onSubmit={handleCreateWard} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-3 shadow-2xl border border-clinicalBorder">
-            <h3 className="font-bold text-clinicalText-primary">Add New Ward</h3>
+            <h3 className="font-bold text-clinicalText-primary">{editingWard ? 'Edit Ward' : 'Add New Ward'}</h3>
             <div>
-              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Ward Code *</label>
-              <input type="text" required placeholder="e.g. MMW" value={wardCode} onChange={(e) => setWardCode(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
+              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Ward Code {editingWard ? '' : '*'}</label>
+              <input type="text" required={!editingWard} disabled={Boolean(editingWard)} placeholder="e.g. MMW" value={wardCode} onChange={(e) => setWardCode(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition disabled:opacity-60" />
+              {editingWard && <p className="mt-1 text-[11.5px] text-clinicalText-muted">The code cannot be changed.</p>}
             </div>
             <div>
               <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Ward Name *</label>
               <input type="text" required placeholder="e.g. MALE MEDICAL WARD" value={wardName} onChange={(e) => setWardName(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
             </div>
+            {editingWard && (
+              <label className="flex items-center gap-2 text-xs font-semibold text-clinicalText-secondary cursor-pointer select-none">
+                <input type="checkbox" checked={wardActive} onChange={(e) => setWardActive(e.target.checked)} className="accent-[#7A2430]" />
+                Active (inactive wards are hidden when reporting new incidents)
+              </label>
+            )}
             <div className="flex justify-end space-x-2 pt-2">
               <button type="button" onClick={() => setShowWardModal(false)} className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer">Cancel</button>
-              <button type="submit" className="px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] text-white font-semibold text-xs rounded-xl shadow-button-red transition cursor-pointer">Create Ward</button>
+              <button type="submit" className="px-5 py-2 bg-gradient-to-r from-[#5C1A22] via-[#6B1F29] to-[#7A2430] text-white font-semibold text-xs rounded-xl shadow-button-red transition cursor-pointer">{editingWard ? 'Save Ward' : 'Create Ward'}</button>
             </div>
           </form>
         </div>
@@ -1156,11 +1248,7 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
       {showDeptModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <form onSubmit={handleCreateDepartment} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-3 shadow-2xl border border-clinicalBorder">
-            <h3 className="font-bold text-clinicalText-primary">Add New Department</h3>
-            <div>
-              <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Department Code *</label>
-              <input type="text" required placeholder="e.g. ICU" value={deptCode} onChange={(e) => setDeptCode(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
-            </div>
+            <h3 className="font-bold text-clinicalText-primary">{editingDept ? 'Edit Department' : 'Add New Department'}</h3>
             <div>
               <label className="block text-xs font-semibold text-clinicalText-secondary mb-1">Department Name *</label>
               <input type="text" required placeholder="e.g. Intensive Care Unit" value={deptName} onChange={(e) => setDeptName(e.target.value)} className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition" />
@@ -1175,6 +1263,12 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                 className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
               />
             </div>
+            {editingDept && (
+              <label className="flex items-center gap-2 text-xs font-semibold text-clinicalText-secondary cursor-pointer select-none">
+                <input type="checkbox" checked={deptActive} onChange={(e) => setDeptActive(e.target.checked)} className="accent-[#7A2430]" />
+                Active (inactive departments cannot be chosen for new incidents or users)
+              </label>
+            )}
             <div className="flex justify-end space-x-2 pt-2">
               <button type="button" onClick={() => setShowDeptModal(false)} className="px-4 py-2 bg-white hover:bg-slate-50 text-clinicalText-secondary hover:text-clinicalText-primary border border-clinicalBorder font-medium text-xs rounded-xl transition cursor-pointer">Cancel</button>
               <button
@@ -1183,7 +1277,7 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
               >
                 <span className="absolute inset-x-0 top-0 h-1/2 bg-gradient-to-b from-white/20 to-transparent pointer-events-none rounded-t-xl" />
                 <span className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/25 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700 pointer-events-none" />
-                <span className="relative z-10">Create Dept</span>
+                <span className="relative z-10">{editingDept ? 'Save Department' : 'Create Dept'}</span>
               </button>
             </div>
           </form>
