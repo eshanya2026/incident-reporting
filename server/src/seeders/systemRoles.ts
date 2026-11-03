@@ -74,6 +74,7 @@ export const SYSTEM_ROLES = [
       PERMISSIONS.REPORT_VIEW_ALL,
       // AI Insights is an Admin screen by default; Super Admin can grant it to other roles
       PERMISSIONS.INSIGHTS_VIEW_ALL,
+      PERMISSIONS.INSIGHTS_PATIENT_DETAILS,
       PERMISSIONS.ADMIN_USER_MANAGE,
       PERMISSIONS.ADMIN_ROLE_MANAGE,
       PERMISSIONS.ADMIN_DEPARTMENT_MANAGE,

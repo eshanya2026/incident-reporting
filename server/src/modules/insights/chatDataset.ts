@@ -89,10 +89,31 @@ export interface ChatSources {
 }
 
 /** Builds the dataset from already-loaded documents. Pure, so it can be tested without a database. */
-export const buildChatDataset = (src: ChatSources, opts: { now: Date; shareCaseText: boolean; scope: InsightScope }) => {
-  const { now, shareCaseText } = opts;
+/** Words in the question that could be part of a patient name or a UHID / IP number. */
+const identityTokens = (question?: string): string[] =>
+  (question ?? '')
+    .toLowerCase()
+    .split(/[^a-z0-9-]+/)
+    .filter((t) => t.length >= 3 && !STOP_WORDS.has(t));
+const STOP_WORDS = new Set(
+  'what when where which who whom whose why how did does the and for with from that this last week month year today yesterday happened happen incident incidents patient patients about show tell give list was were has have had any all are mr mrs ms dr miss shri smt ward bed uhid number'.split(' ')
+);
+const normalise = (s?: string) => (s ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+
+export interface ChatDatasetOptions {
+  now: Date;
+  shareCaseText: boolean;
+  scope: InsightScope;
+  /** The asker may see patient names, UHIDs and the incident description (insights.patient_details). */
+  identify?: boolean;
+  /** Latest question: with `identify`, incidents whose patient matches a name or UHID in it are always included. */
+  question?: string;
+}
+
+export const buildChatDataset = (src: ChatSources, opts: ChatDatasetOptions) => {
+  const { now, shareCaseText, identify = false } = opts;
   const text = (value: unknown, privateNames: string[]) =>
-    shareCaseText && typeof value === 'string' && value.trim() ? deidentify(value.trim(), privateNames).slice(0, 600) : undefined;
+    shareCaseText && typeof value === 'string' && value.trim() ? (identify ? value.trim() : deidentify(value.trim(), privateNames)).slice(0, 600) : undefined;
 
   const group = <T>(rows: T[], key: (r: T) => string | undefined) => {
     const m = new Map<string, T[]>();
@@ -108,7 +129,8 @@ export const buildChatDataset = (src: ChatSources, opts: { now: Date; shareCaseT
   const meetingByIncident = new Map(src.rcaMeetings.map((r) => [idOf(r.incidentId)!, r]));
 
   const records = src.incidents.map((i) => {
-    const privateNames = [i.patient?.name, i.affectedPersonDetail?.name].filter(Boolean);
+    // With patient details allowed nothing is masked; otherwise names are removed from free text
+    const privateNames = identify ? [] : [i.patient?.name, i.affectedPersonDetail?.name].filter(Boolean);
     const occurred = i.incidentDateTime ? new Date(i.incidentDateTime) : undefined;
     const local = occurred ? localParts(occurred) : undefined;
     const subcategory = i.categoryId?.subcategories?.find((s: any) => s.code === i.subcategoryCode)?.name;
@@ -139,7 +161,7 @@ export const buildChatDataset = (src: ChatSources, opts: { now: Date; shareCaseT
 
     return {
       no: i.incidentNumber,
-      title: deidentify(i.title || '', privateNames),
+      title: identify ? i.title || '' : deidentify(i.title || '', privateNames),
       status: i.status,
       occurred: occurred ? iso(occurred) : undefined,
       weekday: local?.weekday,
@@ -156,6 +178,24 @@ export const buildChatDataset = (src: ChatSources, opts: { now: Date; shareCaseT
       category: nameOf(i.categoryId),
       subcategory,
       affected: i.affectedPersonType,
+      ...(identify
+        ? {
+            patient: i.patient?.name || i.patient?.uhid
+              ? {
+                  name: i.patient?.name,
+                  uhid: i.patient?.uhid,
+                  ipNumber: i.patient?.ipNumber,
+                  age: i.patient?.age,
+                  gender: i.patient?.gender,
+                  ward: i.patient?.ward,
+                  bed: i.patient?.bed,
+                }
+              : undefined,
+            affectedPersonName: i.affectedPersonDetail?.name,
+            description: (i.description || '').trim().slice(0, 1200) || undefined,
+            immediateAction: (i.immediateAction || '').trim().slice(0, 600) || undefined,
+          }
+        : {}),
       severityReported: i.initialSeverity ?? i.severity,
       severityFinal: i.severity,
       severityChangedBy: i.initialSeverity && i.initialSeverity !== i.severity ? nameOf(i.assignedBy) : undefined,
@@ -325,9 +365,23 @@ export const buildChatDataset = (src: ChatSources, opts: { now: Date; shareCaseT
     }
   }
 
+  // With patient details allowed, incidents whose patient matches a name or UHID in the question are
+  // always included, even if they are older than the most recent CHAT_MAX_RECORDS.
+  const tokens = identify ? identityTokens(opts.question) : [];
+  const matchesQuestion = (r: any) => {
+    if (!tokens.length) return false;
+    const nameWords = `${r.patient?.name ?? ''} ${r.affectedPersonName ?? ''}`.toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
+    const ids = [r.patient?.uhid, r.patient?.ipNumber].map(normalise).filter(Boolean);
+    return tokens.some((t) => nameWords.some((w) => w.length >= 3 && (w.startsWith(t) || t.startsWith(w))) || ids.some((id) => id.includes(normalise(t)) && normalise(t).length >= 4));
+  };
+  const recent = records.slice(0, CHAT_MAX_RECORDS);
+  const older = records.slice(CHAT_MAX_RECORDS).filter(matchesQuestion);
+  const caseRecords = [...recent, ...older];
+
   return {
     today: isoDay(now),
     caseTextShared: shareCaseText,
+    patientDetailsShared: identify,
     policy: POLICY,
     notRecordedInSystem: NOT_RECORDED,
     aggregates,
@@ -335,9 +389,9 @@ export const buildChatDataset = (src: ChatSources, opts: { now: Date; shareCaseT
     caseList: {
       note:
         records.length > CHAT_MAX_RECORDS
-          ? `Showing full details for the ${CHAT_MAX_RECORDS} most recently reported of ${records.length} incidents. Older incidents are counted in "aggregates" but their individual details are not included; say so if a question needs them.`
+          ? `Showing full details for the ${CHAT_MAX_RECORDS} most recently reported of ${records.length} incidents${older.length ? `, plus ${older.length} older incident(s) matching a patient named in the question` : ''}. Other older incidents are counted in "aggregates" but their individual details are not included; say so if a question needs them.`
           : `All ${records.length} incidents in scope.`,
-      records: records.slice(0, CHAT_MAX_RECORDS),
+      records: caseRecords,
     },
   };
 };
@@ -361,10 +415,16 @@ export const chatCoverage = async (scope: InsightScope): Promise<{ incidents: nu
 };
 
 /** Every incident in scope since the beginning, newest first. Independent of the Insights page period. */
-export const loadChatDataset = async (scope: InsightScope, now = new Date()) => {
+export const loadChatDataset = async (scope: InsightScope, opts: { identify?: boolean; question?: string; now?: Date } = {}) => {
+  const now = opts.now ?? new Date();
   const incidents = await Incident.find(scopeFilterOf(scope))
-    // description is loaded only so its length can flag thin reports; it is never put in the dataset
-    .select('-witness -remarks -patient.uhid -patient.ipNumber -patient.bed -patient.consultant -affectedPersonDetail.contactNumber -affectedPersonDetail.employeeId -attachments')
+    // Without patient-details permission, identifiers are never loaded; the description is loaded only
+    // so its length can flag thin reports and is not put in the dataset
+    .select(
+      opts.identify
+        ? '-witness -remarks -patient.consultant -affectedPersonDetail.contactNumber -affectedPersonDetail.employeeId -attachments'
+        : '-witness -remarks -patient.uhid -patient.ipNumber -patient.bed -patient.consultant -affectedPersonDetail.contactNumber -affectedPersonDetail.employeeId -attachments'
+    )
     .populate('categoryId', 'name subcategories')
     .populate('locationId', 'name')
     .populate('departmentId', 'name')
@@ -404,7 +464,7 @@ export const loadChatDataset = async (scope: InsightScope, now = new Date()) => 
       capas,
       allDepartments: (departments as any[]).map((d) => ({ id: String(d._id), name: d.name })),
     },
-    { now, shareCaseText: env.AI_SHARE_CASE_TEXT, scope }
+    { now, shareCaseText: env.AI_SHARE_CASE_TEXT, scope, identify: opts.identify, question: opts.question }
   );
   return { dataset, idByNumber };
 };

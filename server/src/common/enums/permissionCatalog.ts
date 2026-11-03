@@ -32,6 +32,7 @@ export const PERMISSION_CATALOG: PermissionInfo[] = [
   { key: PERMISSIONS.REPORT_VIEW_ALL, group: 'Screens', configurable: true, label: 'Reports: whole hospital', description: 'Incident and CAPA registers for every department, with exports.' },
   { key: PERMISSIONS.REPORT_VIEW_DEPARTMENT, group: 'Screens', configurable: true, label: 'Reports: own department', description: "Incident and CAPA registers for the user's own department." },
   { key: PERMISSIONS.INSIGHTS_VIEW_ALL, group: 'Screens', configurable: true, label: 'AI Insights: whole hospital', description: 'AI analysis and Ask AI for every department.' },
+  { key: PERMISSIONS.INSIGHTS_PATIENT_DETAILS, group: 'Incident details', configurable: true, label: 'Ask AI: patient names & case details', description: 'Ask AI receives patient names, UHIDs and the incident description, so questions like "what happened to Sharma last week?" can be answered. These details are sent to the AI provider.' },
   { key: PERMISSIONS.INSIGHTS_VIEW_DEPARTMENT, group: 'Screens', configurable: true, label: 'AI Insights: own department', description: "AI analysis and Ask AI for the user's own department." },
   { key: PERMISSIONS.ADMIN_WHATSAPP_TEMPLATES, group: 'Screens', configurable: true, label: 'WhatsApp Messages', description: 'Edit and preview the wording of WhatsApp notifications, and send a test message.' },
   { key: PERMISSIONS.ADMIN_USER_MANAGE, group: 'Screens', configurable: true, label: 'Administration', description: 'Administration screen: user accounts (create, edit, reset passwords, bulk import).' },

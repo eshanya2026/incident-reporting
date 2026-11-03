@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { buildChatDataset, shiftOf } from './chatDataset.js';
-import { citedIncidents } from './insightChat.js';
+import { citedIncidents, fixIncidentNumbers } from './insightChat.js';
 
 const now = new Date('2026-11-15T06:00:00Z');
 const dept = (name: string, id = name) => ({ _id: id, name });
@@ -79,6 +79,39 @@ describe('buildChatDataset', () => {
     expect(d.caseList.records).toHaveLength(3);
   });
 
+  it('keeps patient names, UHIDs and descriptions out unless the asker may see them', () => {
+    const withPatient = incident(1, { title: 'Mr. Sharma fell near bed', patient: { name: 'Mr. Ramesh Sharma', uhid: 'UH-778899' } });
+    const hidden = build([withPatient]);
+    const r0 = hidden.caseList.records[0] as any;
+    expect(hidden.patientDetailsShared).toBe(false);
+    expect(r0.patient).toBeUndefined();
+    expect(r0.description).toBeUndefined();
+    expect(JSON.stringify(hidden)).not.toMatch(/Sharma|UH-778899/);
+
+    const shown = buildChatDataset(
+      { incidents: [withPatient], investigations: [], rcas: [], rcaMeetings: [], capas: [], allDepartments: [] },
+      { now, shareCaseText: false, scope: { kind: 'HOSPITAL' }, identify: true }
+    );
+    const r1 = shown.caseList.records[0] as any;
+    expect(shown.patientDetailsShared).toBe(true);
+    expect(r1.patient).toMatchObject({ name: 'Mr. Ramesh Sharma', uhid: 'UH-778899' });
+    expect(r1.title).toBe('Mr. Sharma fell near bed');
+    expect(r1.description).toContain('detailed description');
+  });
+
+  it('adds older incidents whose patient is named in the question, beyond the recent-records cap', () => {
+    const many = Array.from({ length: 405 }, (_, k) => incident(k + 1, { patient: { name: `Patient ${k + 1}`, uhid: `UH-${100000 + k}` } }));
+    many[404] = incident(405, { patient: { name: 'Mrs. Kamala Sharma', uhid: 'UH-555123' } });
+    const ask = (question: string) =>
+      buildChatDataset(
+        { incidents: many, investigations: [], rcas: [], rcaMeetings: [], capas: [], allDepartments: [] },
+        { now, shareCaseText: false, scope: { kind: 'HOSPITAL' }, identify: true, question }
+      ).caseList.records.map((r: any) => r.no);
+    expect(ask('What happened to Sharma last week?')).toContain('INC-2026-000405');
+    expect(ask('Show the incident for UHID 555123')).toContain('INC-2026-000405');
+    expect(ask('What happened last week?')).not.toContain('INC-2026-000405');
+  });
+
   it('lists departments with no reports in the last six months (hospital scope)', () => {
     const d = build([incident(1)], { allDepartments: [{ id: 'ICU', name: 'ICU' }, { id: 'OT', name: 'Operation Theatre' }] });
     expect(d.aggregates.departmentsWithNoReportsInLast6Months).toEqual(['Operation Theatre']);
@@ -95,5 +128,11 @@ describe('citedIncidents', () => {
   it("links only incident numbers that are in the asker's scope", () => {
     const answer = 'See INC-2026-000001 and INC-2026-000001 again, plus INC-2026-999999 from elsewhere.';
     expect(citedIncidents(answer, new Map([['INC-2026-000001', 'id1']]))).toEqual([{ number: 'INC-2026-000001', id: 'id1' }]);
+  });
+});
+
+describe('fixIncidentNumbers', () => {
+  it('restores dropped leading zeros so incident links work, and leaves correct numbers alone', () => {
+    expect(fixIncidentNumbers('See INC-2026-00002 and INC-2026-000045, CAPA-2026-15.')).toBe('See INC-2026-000002 and INC-2026-000045, CAPA-2026-000015.');
   });
 });

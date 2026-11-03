@@ -160,8 +160,11 @@ export const getInsights = async (req: Request, res: Response, next: NextFunctio
   }
 };
 
-const chatRemainingToday = async (userId: string): Promise<number> =>
-  Math.max(0, CHAT_DAILY_LIMIT - (await AiChatLog.countDocuments({ userId, dayKey: dayKeyOf(new Date()), ok: true })));
+/** Questions left today, or null when there is no daily limit. */
+const chatRemainingToday = async (userId: string): Promise<number | null> =>
+  CHAT_DAILY_LIMIT > 0
+    ? Math.max(0, CHAT_DAILY_LIMIT - (await AiChatLog.countDocuments({ userId, dayKey: dayKeyOf(new Date()), ok: true })))
+    : null;
 
 const chatSchema = z.object({
   messages: z
@@ -183,7 +186,8 @@ export const getChatStatus = async (req: Request, res: Response, next: NextFunct
       enabled: aiEnabled(),
       scope: { kind: scope.kind, key: scopeKeyOf(scope), label: scopeLabelOf(scope) },
       coverage: await chatCoverage(scope),
-      dailyLimit: CHAT_DAILY_LIMIT,
+      dailyLimit: CHAT_DAILY_LIMIT > 0 ? CHAT_DAILY_LIMIT : null,
+      patientDetails: hasPermission(req.user, PERMISSIONS.INSIGHTS_PATIENT_DETAILS),
       remainingToday: await chatRemainingToday(req.user!.userId),
     });
   } catch (error) {
@@ -203,7 +207,7 @@ export const chatWithInsights = async (req: Request, res: Response, next: NextFu
 
     const userId = req.user!.userId;
     const remaining = await chatRemainingToday(userId);
-    if (remaining <= 0) {
+    if (remaining !== null && remaining <= 0) {
       throw new AppError(`You've reached today's limit of ${CHAT_DAILY_LIMIT} questions. It resets tomorrow.`, 429, 'CHAT_LIMIT');
     }
 
@@ -213,11 +217,14 @@ export const chatWithInsights = async (req: Request, res: Response, next: NextFu
     const question = messages[messages.length - 1].content;
     const log = { userId, scopeKey: scopeKeyOf(scope), dayKey: dayKeyOf(new Date()), question: question.slice(0, CHAT_MAX_CHARS) };
 
-    const { dataset, idByNumber } = await loadChatDataset(scope);
+    const { dataset, idByNumber } = await loadChatDataset(scope, {
+      identify: hasPermission(req.user, PERMISSIONS.INSIGHTS_PATIENT_DETAILS),
+      question,
+    });
     try {
       const result = await answerQuestion({ scope, dataset, idByNumber, messages });
       await AiChatLog.create({ ...log, ok: true, aiModel: result.model });
-      sendSuccess(res, { ...result, remainingToday: remaining - 1 }, 'Answered');
+      sendSuccess(res, { ...result, remainingToday: remaining === null ? null : remaining - 1 }, 'Answered');
     } catch (err: any) {
       logger.error({ err, scopeKey: log.scopeKey }, '❌ AI chat failed');
       await AiChatLog.create({ ...log, ok: false, error: String(err?.message || 'Unknown error').slice(0, 500) });

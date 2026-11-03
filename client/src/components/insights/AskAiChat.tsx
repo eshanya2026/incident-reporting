@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
-import { Sparkles, Send, Loader2, RotateCcw, AlertTriangle, MessageSquarePlus, ShieldAlert, X } from 'lucide-react';
+import { Sparkles, Send, Loader2, RotateCcw, AlertTriangle, MessageSquarePlus, X } from 'lucide-react';
 import { api } from '../../lib/api';
 import { errorMessage } from '../../lib/useAction';
 
@@ -67,8 +67,11 @@ interface ChatStatus {
   enabled: boolean;
   scope: { kind: 'HOSPITAL' | 'DEPARTMENT'; key: string; label: string };
   coverage: { incidents: number; since: string | null };
-  dailyLimit: number;
-  remainingToday: number;
+  /** null when there is no daily limit */
+  dailyLimit: number | null;
+  remainingToday: number | null;
+  /** The asker may ask about patients by name or UHID. */
+  patientDetails?: boolean;
 }
 
 /**
@@ -117,8 +120,9 @@ export default function AskAiChat({ onClose }: { onClose?: () => void }) {
       coverageLabel={coverage}
       hospitalWide={status.scope.kind === 'HOSPITAL'}
       enabled={status.enabled}
-      remainingToday={status.remainingToday}
-      dailyLimit={status.dailyLimit}
+      remainingToday={status.remainingToday ?? undefined}
+      dailyLimit={status.dailyLimit ?? undefined}
+      patientDetails={Boolean(status.patientDetails)}
       onClose={onClose}
     />
   );
@@ -132,6 +136,7 @@ function ChatPanel({
   enabled,
   remainingToday,
   dailyLimit,
+  patientDetails,
   onClose,
 }: {
   /** Changes when the asker switches scope, which starts a fresh conversation. */
@@ -142,6 +147,7 @@ function ChatPanel({
   enabled: boolean;
   remainingToday?: number;
   dailyLimit?: number;
+  patientDetails: boolean;
   onClose?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(scopeKey));
@@ -207,7 +213,7 @@ function ChatPanel({
         messages: conversation.map(({ role, content }) => ({ role, content })),
       });
       setMessages([...conversation, { role: 'assistant', content: res.data.answer, cited: res.data.cited }]);
-      setRemaining(res.data.remainingToday);
+      setRemaining(res.data.remainingToday ?? undefined);
     } catch (err: any) {
       setMessages([
         ...conversation,
@@ -231,7 +237,10 @@ function ChatPanel({
 
   const outOfQuestions = remaining !== undefined && remaining <= 0;
   const canAsk = enabled && !pending && !outOfQuestions;
-  const suggestions = hospitalWide ? HOSPITAL_SUGGESTIONS : DEPARTMENT_SUGGESTIONS;
+  const suggestions = [
+    ...(patientDetails ? ['What happened to patient Murugan last month?'] : []),
+    ...(hospitalWide ? HOSPITAL_SUGGESTIONS : DEPARTMENT_SUGGESTIONS),
+  ];
 
   return (
     <section className="bg-white rounded-2xl border border-slate-200 shadow-[0_24px_60px_-12px_rgba(15,23,42,0.4)] flex flex-col h-full overflow-hidden">
@@ -406,16 +415,6 @@ function ChatPanel({
             {pending ? <Loader2 className="w-[18px] h-[18px] animate-spin" /> : <Send className="w-[18px] h-[18px]" />}
           </button>
         </form>
-        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11.5px] text-slate-400">
-          <span className="inline-flex items-center gap-1.5">
-            <ShieldAlert className="w-3.5 h-3.5" /> No patient names or UHIDs. AI-written: check linked incidents.
-          </span>
-          {remaining !== undefined && dailyLimit !== undefined && (
-            <span className="tabular-nums">
-              {remaining} of {dailyLimit} questions left today
-            </span>
-          )}
-        </div>
       </div>
     </section>
   );

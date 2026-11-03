@@ -29,6 +29,7 @@ export const PERMISSIONS = {
   REVIEW_QUEUE_VIEW: 'review_queue.view', // Review & RCA Queue
   INSIGHTS_VIEW_ALL: 'insights.view_all', // AI Insights for the whole hospital
   INSIGHTS_VIEW_DEPARTMENT: 'insights.view_department', // AI Insights for the user's own department
+  INSIGHTS_PATIENT_DETAILS: 'insights.patient_details', // Ask AI sees patient names, UHIDs and incident descriptions
 
   // Administration (Admin only)
   ADMIN_USER_MANAGE: 'admin.user_manage',

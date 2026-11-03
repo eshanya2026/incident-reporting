@@ -57,6 +57,8 @@ const envSchema = z.object({
   OPENROUTER_FALLBACK_MODELS: z.string().optional().default(''),
   // Also send the AI the written case details (investigation findings, root causes, CAPA wording,
   // review/return remarks, rejection reasons), de-identified. Off by default: only titles are sent.
+  // Ask AI questions per user per day; 0 (default) means no limit
+  AI_CHAT_DAILY_LIMIT: z.coerce.number().int().min(0).optional().default(0),
   AI_SHARE_CASE_TEXT: z
     .string()
     .optional()
