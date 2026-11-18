@@ -11,6 +11,9 @@ export const PERMISSIONS = {
   INCIDENT_RETURN_TO_QUALITY: 'incident.return_to_quality', // HOD returns a wrongly assigned incident
   INCIDENT_SUBMIT_CLOSURE: 'incident.submit_closure', // HOD submits for Quality review
   INCIDENT_REVIEW: 'incident.review', // Quality reviews CAPA and completes or sends back
+  // Who reported an incident (name, employee ID, contact). Only Quality, Admin and Super Admin;
+  // everyone else (HODs, RCA Heads, Intimation members, other staff) sees it as confidential.
+  INCIDENT_REPORTER_VIEW: 'incident.reporter_view',
 
   // Investigation, RCA and CAPA
   INVESTIGATION_READ: 'investigation.read',

@@ -10,6 +10,7 @@ import { sendSuccess } from '../../common/helpers/response.js';
 import { AppError } from '../../common/errors/appError.js';
 import { hasPermission } from '../../common/helpers/incidentAccess.js';
 import { PERMISSIONS } from '../../common/enums/permissions.js';
+import { canSeeReporter } from '../../common/helpers/reporterPrivacy.js';
 
 // Dashboard for the Staff → Quality → HOD → Quality workflow (docs/FLOW_REWORK_PLAN.md, Phase 6).
 // Quality and Admin see the whole hospital; an HOD sees incidents assigned to their department.
@@ -135,7 +136,8 @@ export const getDashboardOverview = async (req: Request, res: Response, next: Ne
       const u = hodUsers.find((x) => x._id.toString() === String(h._id));
       return { name: u?.name ?? 'Unknown', employeeId: u?.employeeId ?? '—', count: h.count };
     });
-    const topReporters = topReportersAgg.map((r) => {
+    // Reporter confidentiality: only Quality, Admin and Super Admin see who reports
+    const topReporters = (canSeeReporter(user) ? topReportersAgg : []).map((r) => {
       const u: any = reporterUsers.find((x) => x._id.toString() === String(r._id));
       return {
         name: u?.name ?? 'Unknown',

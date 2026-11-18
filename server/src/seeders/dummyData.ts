@@ -2025,6 +2025,9 @@ export async function seedDummyOperationalData(params: {
         },
         $unset: {
           investigatorId: '',
+          // Demo incidents keep the reporter's category; clear any correction made while testing
+          reportedCategoryId: '',
+          reportedSubcategoryCode: '',
           ...(assigned ? {} : { departmentId: '', assignedHod: '', assignedBy: '', assignedAt: '' }),
           ...(assigned && def.priority ? {} : { actionDueAt: '' }),
           ...(def.status === 'REJECTED' ? {} : { rejection: '' }),

@@ -292,6 +292,8 @@ export default function DashboardPage() {
   const [period, setPeriod] = useState<'3m' | '6m' | '12m' | 'all'>('12m');
 
   const isHospitalWide = hasPermission(user, 'incident.read_all');
+  // Reporter confidentiality: only Quality, Admin and Super Admin see who reports
+  const canSeeReporters = hasPermission(user, 'incident.reporter_view');
   const isHod = hasPermission(user, 'incident.read_assigned') && !isHospitalWide;
   const canReport = hasPermission(user, 'incident.create');
 
@@ -1358,7 +1360,8 @@ export default function DashboardPage() {
               </div>
             </div>
 
-            {/* Top 10 Incident Reporters */}
+            {/* Top 10 Incident Reporters — names are confidential outside Quality / Admin / Super Admin */}
+            {canSeeReporters && (
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="font-bold text-[#172033] text-sm flex items-center space-x-2">
@@ -1404,6 +1407,7 @@ export default function DashboardPage() {
                 )}
               </div>
             </div>
+            )}
 
             {/* HODs With Most Pending CAPA */}
             <div className="bg-white p-6 rounded-2xl border border-[#E2E8F0] shadow-card flex flex-col justify-between">

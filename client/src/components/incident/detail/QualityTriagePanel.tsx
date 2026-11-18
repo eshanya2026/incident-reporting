@@ -37,6 +37,11 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
     (incident.intimatedUserIds || []).map((u: any) => idOf(u)).filter(Boolean)
   );
   const [severity, setSeverity] = useState<number>(incident.initialSeverity || incident.severity || 1);
+  // The reporter may have picked the wrong category; Quality can correct it here (like severity)
+  const reportedCategoryId = idOf(incident.reportedCategoryId) || idOf(incident.categoryId) || '';
+  const reportedSubcategoryCode = incident.reportedCategoryId ? incident.reportedSubcategoryCode || '' : incident.subcategoryCode || '';
+  const [categoryId, setCategoryId] = useState<string>(idOf(incident.categoryId) || '');
+  const [subcategoryCode, setSubcategoryCode] = useState<string>(incident.subcategoryCode || '');
   const [priority, setPriority] = useState<string>(incident.priority || 'MEDIUM');
   const [remarks, setRemarks] = useState('');
   const [question, setQuestion] = useState('');
@@ -51,6 +56,23 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
       : closeReasonType === 'OTHER'
         ? reason
         : `${closeReasonLabel}. ${reason}`.trim();
+
+  const { data: categoriesData } = useQuery({ queryKey: ['categories'], queryFn: () => api.get('/categories') });
+  const categories: any[] = ((categoriesData as any)?.data || []).filter(
+    (c: any) => c.active !== false || c._id === categoryId
+  );
+  const selectedCategory = categories.find((c) => c._id === categoryId);
+  const subcategories: any[] = selectedCategory?.subcategories || [];
+  const multipleDomains = new Set(categories.map((c) => c.domain || 'General Categories')).size > 1;
+  const categoryChanged =
+    categoryId !== reportedCategoryId || (subcategoryCode || '') !== (reportedSubcategoryCode || '');
+  const reportedCategory = incident.reportedCategoryId || incident.categoryId;
+  const reportedLabel = [
+    reportedCategory?.name,
+    reportedCategory?.subcategories?.find((sc: any) => sc.code === reportedSubcategoryCode)?.name,
+  ]
+    .filter(Boolean)
+    .join(' — ');
 
   const { data } = useQuery({ queryKey: ['departments'], queryFn: () => api.get('/departments') });
   const departments: any[] = (data as any)?.data || [];
@@ -107,6 +129,56 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
 
       {mode === 'assign' && (
         <div className="space-y-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-3.5">
+            <div>
+              <label className={labelClass}>Incident category *</label>
+              <SearchableSelect
+                containerClassName="block w-full"
+                value={categoryId}
+                onChange={(v) => {
+                  setCategoryId(v);
+                  // Keep the reporter's subcategory only when going back to their category
+                  setSubcategoryCode(v === reportedCategoryId ? reportedSubcategoryCode : '');
+                }}
+                options={categories.map((c) => ({
+                  value: c._id,
+                  label: `${c.name}${c._id === reportedCategoryId ? ' (as reported)' : ''}`,
+                  group: multipleDomains ? c.domain || 'General Categories' : undefined,
+                }))}
+                searchPlaceholder="Search categories..."
+                className={inputClass}
+              />
+              {selectedCategory?.domain && (
+                <p className="mt-1 text-[12.5px] text-clinicalText-secondary">
+                  Domain: <span className="font-semibold">{selectedCategory.domain}</span>
+                </p>
+              )}
+            </div>
+            <div>
+              <label className={labelClass}>Subcategory</label>
+              <SearchableSelect
+                containerClassName="block w-full"
+                value={subcategoryCode}
+                onChange={setSubcategoryCode}
+                disabled={!categoryId}
+                options={[
+                  { value: '', label: subcategories.length ? '-- Choose subcategory --' : 'No subcategories' },
+                  ...subcategories
+                    .filter((sc) => sc.active !== false || sc.code === subcategoryCode)
+                    .map((sc) => ({
+                      value: sc.code,
+                      label: `${sc.name}${categoryId === reportedCategoryId && sc.code === reportedSubcategoryCode ? ' (as reported)' : ''}`,
+                    })),
+                ]}
+                searchPlaceholder="Search subcategories..."
+                className={inputClass}
+              />
+              {categoryChanged && reportedLabel && (
+                <p className="mt-1 text-[12.5px] text-amber-700 font-semibold">Changing from: {reportedLabel}</p>
+              )}
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-3.5">
             <div>
               <label className={labelClass}>Lead / Responsible Department *</label>
@@ -287,7 +359,7 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
           </div>
           <Button
             busy={busy}
-            disabled={!departmentId || !hod}
+            disabled={!departmentId || !hod || !categoryId}
             onClick={() =>
               run(() =>
                 api.post(`/incidents/${incident._id}/assign`, {
@@ -296,6 +368,8 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
                   intimatedUserIds,
                   severity,
                   priority,
+                  categoryId: categoryId || undefined,
+                  subcategoryCode: subcategoryCode || null,
                   remarks: remarks || undefined,
                 })
               )

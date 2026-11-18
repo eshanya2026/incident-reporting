@@ -10,7 +10,7 @@ import { hasPermission, homePath, isWorkingDepartment } from '../lib/rbac';
 import { PRIORITY_COLOR, PRIORITY_META, SEVERITY_META, WORKFLOW_STEPS } from '../lib/incidentMeta';
 import { errorMessage } from '../lib/useAction';
 import { Card, Field, Notice } from '../components/ui/primitives';
-import { SeverityBadge, StatusBadge } from '../components/incident/Badges';
+import { ConfidentialReporter, SeverityBadge, StatusBadge } from '../components/incident/Badges';
 import WorkflowStepper from '../components/incident/WorkflowStepper';
 import QualityTriagePanel from '../components/incident/detail/QualityTriagePanel';
 import QualityReviewPanel from '../components/incident/detail/QualityReviewPanel';
@@ -205,9 +205,10 @@ export default function IncidentDetailPage() {
               </span>
             </span>
           )}
-          {incident.reportedBy?.name && (
+          {(incident.reportedBy?.name || incident.reporterHidden) && (
             <span className="flex items-center gap-1">
-              <UserCheck className="w-3.5 h-3.5 text-[#D4A954]" /> Reported by {isStaff ? 'you' : incident.reportedBy.name}
+              <UserCheck className="w-3.5 h-3.5 text-[#D4A954]" /> Reported by{' '}
+              {incident.reporterHidden ? <ConfidentialReporter /> : isStaff ? 'you' : incident.reportedBy.name}
             </span>
           )}
         </div>
@@ -218,7 +219,7 @@ export default function IncidentDetailPage() {
       <Card title="People" icon={Users}>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-x-6 gap-y-3">
           <Field label="Reported by">
-            {isStaff ? 'You' : incident.reportedBy?.name}
+            {incident.reporterHidden ? <ConfidentialReporter /> : isStaff ? 'You' : incident.reportedBy?.name}
             {incident.reportingDepartmentId?.name ? ` — ${incident.reportingDepartmentId.name}` : ''}
           </Field>
           <Field label="Responsible department">

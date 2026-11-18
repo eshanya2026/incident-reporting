@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import { ArrowRight, MapPin, Clock, FileSearch, AlarmClock } from 'lucide-react';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
-import { SeverityBadge, StatusBadge } from './Badges';
+import { ConfidentialReporter, SeverityBadge, StatusBadge } from './Badges';
 import { SEVERITY_COLOR, PRIORITY_META, PRIORITY_DEADLINE_LABEL, IncidentPriority } from '../../lib/incidentMeta';
 import { EmptyState, TableSkeleton } from '../ui/listKit';
 
@@ -161,6 +161,7 @@ export default function IncidentTable({
           <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">Not assigned</span>
         );
       case 'reporter':
+        if (inc.reporterHidden) return <ConfidentialReporter />;
         return (
           <div className="flex items-center gap-2.5">
             <span className="w-8 h-8 rounded-full bg-gradient-to-br from-[#5C1A22] to-[#9C3A42] text-white text-[11px] font-bold flex items-center justify-center shrink-0">

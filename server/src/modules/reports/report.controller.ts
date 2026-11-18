@@ -8,6 +8,7 @@ import '../locations/location.model.js';
 import '../categories/category.model.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { hasPermission, incidentScopeFilter } from '../../common/helpers/incidentAccess.js';
+import { canSeeReporterOf, REPORTER_CONFIDENTIAL_LABEL } from '../../common/helpers/reporterPrivacy.js';
 import { PERMISSIONS } from '../../common/enums/permissions.js';
 
 // Registers for audits (NABH/JCI) and export. Rows are flat and include turnaround days,
@@ -105,7 +106,8 @@ export const getIncidentRegisterReport = async (req: Request, res: Response, nex
         title: i.title,
         category: i.categoryId?.name,
         subcategory: i.categoryId?.subcategories?.find((s: any) => s.code === i.subcategoryCode)?.name,
-        reportedBy: i.reportedBy?.name,
+        // Reporter confidentiality (only Quality / Admin / Super Admin, or the reporter themselves)
+        reportedBy: canSeeReporterOf(req.user, i) ? i.reportedBy?.name : REPORTER_CONFIDENTIAL_LABEL,
         reportingDepartment: i.reportingDepartmentId?.name,
         occurredInDepartment: i.occurredInDepartmentId?.name,
         location: i.locationId?.name,

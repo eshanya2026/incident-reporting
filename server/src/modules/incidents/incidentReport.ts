@@ -10,6 +10,7 @@ import { RcaMeeting } from '../rca/rcaMeeting.model.js';
 import { Capa } from '../capa/capa.model.js';
 import { Attachment, IAttachment } from '../attachments/attachment.model.js';
 import { canViewIncident } from '../../common/helpers/incidentAccess.js';
+import { canSeeReporterOf, REPORTER_CONFIDENTIAL_LABEL } from '../../common/helpers/reporterPrivacy.js';
 import { AppError } from '../../common/errors/appError.js';
 import { env } from '../../config/env.js';
 import { User } from '../users/user.model.js';
@@ -402,6 +403,8 @@ interface ReportData {
   capas: any[];
   attachmentMap: Map<string, IAttachment>;
   generatedBy: string;
+  /** Reporter confidentiality: false prints the reporter as "Confidential". */
+  showReporter: boolean;
 }
 
 /** Everything attached anywhere on this incident, tagged with where it came from. */
@@ -421,7 +424,7 @@ const collectAttachmentRefs = (data: ReportData): Array<{ attachment: IAttachmen
 };
 
 const buildIncidentReportPdf = async (data: ReportData): Promise<Uint8Array> => {
-  const { incident, investigations, rca, rcaMeeting, capas } = data;
+  const { incident, investigations, rca, rcaMeeting, capas, showReporter } = data;
   const w = await DocWriter.create();
 
   // ---- Cover / letterhead ----
@@ -483,7 +486,7 @@ const buildIncidentReportPdf = async (data: ReportData): Promise<Uint8Array> => 
   w.divider();
 
   w.h2('Incident Details');
-  w.fieldRow(['Reported by', personName(incident.reportedBy)], ['Reported at', fmtDateTime(incident.reportedAt)]);
+  w.fieldRow(['Reported by', showReporter ? personName(incident.reportedBy) : REPORTER_CONFIDENTIAL_LABEL], ['Reported at', fmtDateTime(incident.reportedAt)]);
   w.fieldRow(['Occurred in', incident.occurredInDepartmentId?.name || '—'], ['Subcategory', incident.subcategoryCode ? humanize(incident.subcategoryCode) : '—']);
   w.fieldRow(['Location', incident.locationId?.name || '—'], ['Floor / Zone', [incident.floor, incident.zone].filter(Boolean).join(' – ') || '—']);
   if (incident.specificLocation) w.field('Specific spot', incident.specificLocation);
@@ -731,6 +734,7 @@ export const downloadIncidentReport = async (req: Request, res: Response, next: 
       capas: capas.map((c) => (c as any).toObject()),
       attachmentMap,
       generatedBy: generatedByUser ? personName(generatedByUser) : req.user!.username,
+      showReporter: canSeeReporterOf(req.user, incident),
     });
 
     res.setHeader('Content-Type', 'application/pdf');

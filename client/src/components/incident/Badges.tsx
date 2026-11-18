@@ -1,3 +1,4 @@
+import { Lock } from 'lucide-react';
 import { CAPA_STATUS_META, SEVERITY_COLOR, SEVERITY_META, statusMeta } from '../../lib/incidentMeta';
 
 export function StatusBadge({ status }: { status: string }) {
@@ -32,6 +33,21 @@ export function CapaStatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-block px-3 py-1 rounded-full text-xs font-bold border whitespace-nowrap ${meta.classes}`}>
       {meta.label}
+    </span>
+  );
+}
+
+/**
+ * Shown in place of the reporter's name to everyone except Quality, Admin and Super Admin
+ * (the API sends `reporterHidden: true` and no reporter details).
+ */
+export function ConfidentialReporter() {
+  return (
+    <span
+      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold border border-slate-200 bg-slate-50 text-slate-600 whitespace-nowrap"
+      title="The reporter's identity is visible only to Quality and Admin"
+    >
+      <Lock className="w-3 h-3" /> Confidential
     </span>
   );
 }

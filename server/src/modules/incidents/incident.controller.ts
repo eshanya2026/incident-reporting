@@ -31,6 +31,7 @@ import {
 import { PERMISSIONS, ROLE_CODES } from '../../common/enums/permissions.js';
 import { JwtPayload } from '../auth/auth.utils.js';
 import { assertAttachmentsUsable, linkAttachments } from '../attachments/attachmentAccess.js';
+import { canSeeReporterOf, redactReporter, REPORTER_TIMELINE_ACTIONS } from '../../common/helpers/reporterPrivacy.js';
 
 const objectId = (what: string) =>
   z.string().refine((v) => mongoose.Types.ObjectId.isValid(v), `${what} is not a valid ID`);
@@ -94,7 +95,8 @@ export const populateDetail = (query: any) =>
     .populate('occurredInDepartmentId', 'name code')
     .populate('affectedPersonDetail.departmentId', 'name code')
     .populate('locationId', 'name code type floor zone')
-    .populate('categoryId', 'name code subcategories')
+    .populate('categoryId', 'name code domain subcategories')
+    .populate('reportedCategoryId', 'name code domain subcategories')
     .populate('assignedHod', 'name email designation')
     .populate('assignedBy', 'name designation')
     .populate('assignments.departmentId', 'name code')
@@ -185,11 +187,15 @@ const incidentDetail = async (id: string, user: JwtPayload): Promise<any> => {
     throw AppError.forbidden('You do not have access to this incident');
   }
   const detail = { ...incident.toObject(), availableActions: IncidentWorkflowService.availableActions(incident, user) };
-  return isStaffView(user) ? toStaffView(detail) : detail;
+  return redactReporter(isStaffView(user) ? toStaffView(detail) : detail, user);
 };
 
+/** Every incident list goes through here: staff view (D6) and reporter confidentiality. */
 const shapeList = (incidents: any[], user: JwtPayload | undefined) =>
-  isStaffView(user) ? incidents.map((i) => toStaffView(i.toObject())) : incidents;
+  incidents.map((i) => {
+    const obj = typeof i.toObject === 'function' ? i.toObject() : i;
+    return redactReporter(isStaffView(user) ? toStaffView(obj) : obj, user);
+  });
 
 // ---------- Reporting and reading ----------
 
@@ -331,6 +337,11 @@ export const getIncidentTimeline = async (req: Request, res: Response, next: Nex
         }));
     }
 
+    // Reporter confidentiality: hide who submitted / answered Quality's questions
+    if (!canSeeReporterOf(req.user, incident)) {
+      timeline = timeline.map((t) => (REPORTER_TIMELINE_ACTIONS.includes(t.action) ? { ...t, by: undefined, byHidden: true } : t));
+    }
+
     sendSuccess(res, timeline, 'Incident timeline retrieved');
   } catch (error) {
     next(error);
@@ -346,7 +357,7 @@ export const getTriageQueue = async (req: Request, res: Response, next: NextFunc
   try {
     const status = req.query.status === 'INFO_REQUESTED' ? 'INFO_REQUESTED' : 'SUBMITTED';
     const incidents = await populateList(Incident.find({ status })).sort({ reportedAt: 1 }).limit(QUEUE_LIMIT);
-    sendSuccess(res, incidents, 'Triage queue retrieved', 200, { total: incidents.length });
+    sendSuccess(res, shapeList(incidents, req.user), 'Triage queue retrieved', 200, { total: incidents.length });
   } catch (error) {
     next(error);
   }
@@ -368,7 +379,7 @@ export const getReviewQueue = async (req: Request, res: Response, next: NextFunc
       const overdue = await populateList(Incident.find({ status: { $in: HOD_WORK_STATUSES }, actionDueAt: { $lt: new Date() } }))
         .sort({ actionDueAt: 1 })
         .limit(QUEUE_LIMIT);
-      sendSuccess(res, overdue, 'Overdue incidents retrieved', 200, { total: overdue.length });
+      sendSuccess(res, shapeList(overdue, req.user), 'Overdue incidents retrieved', 200, { total: overdue.length });
       return;
     }
     const status = req.query.status === 'RCA_REQUESTED' ? 'RCA_REQUESTED' : 'PENDING_QUALITY_REVIEW';
@@ -376,7 +387,7 @@ export const getReviewQueue = async (req: Request, res: Response, next: NextFunc
     const incidents = await populateList(Incident.find({ status }))
       .sort(sortField as any)
       .limit(QUEUE_LIMIT);
-    sendSuccess(res, incidents, 'Review queue retrieved', 200, { total: incidents.length });
+    sendSuccess(res, shapeList(incidents, req.user), 'Review queue retrieved', 200, { total: incidents.length });
   } catch (error) {
     next(error);
   }
@@ -412,7 +423,7 @@ export const getMyDepartmentIncidents = async (req: Request, res: Response, next
       query.status = status;
     }
     const incidents = await populateList(Incident.find(query)).sort({ assignedAt: 1 }).limit(QUEUE_LIMIT);
-    sendSuccess(res, incidents, 'Department incidents retrieved', 200, { total: incidents.length });
+    sendSuccess(res, shapeList(incidents, req.user), 'Department incidents retrieved', 200, { total: incidents.length });
   } catch (error) {
     next(error);
   }
@@ -474,6 +485,9 @@ export const assignIncident = workflowEndpoint(
     severity: z.number().int().min(1).max(5),
     priority: z.enum(INCIDENT_PRIORITIES).optional(),
     remarks: z.string().trim().max(5000).optional(),
+    // Quality may correct the category the reporter chose
+    categoryId: objectId('Incident category').optional(),
+    subcategoryCode: z.string().trim().optional().nullable(),
   }),
   (b) => ({
     action: 'ASSIGN',
@@ -483,6 +497,8 @@ export const assignIncident = workflowEndpoint(
       intimatedUserIds: b.intimatedUserIds,
       severity: b.severity,
       priority: b.priority,
+      categoryId: b.categoryId,
+      subcategoryCode: b.subcategoryCode,
       text: b.remarks,
     },
   }),

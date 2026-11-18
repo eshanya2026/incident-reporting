@@ -123,6 +123,12 @@ export interface IIncident extends Document {
   specificLocation?: string;
   categoryId: mongoose.Types.ObjectId;
   subcategoryCode?: string;
+  /**
+   * The category / subcategory the reporter chose, kept when Quality corrects it at triage
+   * (categoryId / subcategoryCode then hold Quality's correction). Unset = never corrected.
+   */
+  reportedCategoryId?: mongoose.Types.ObjectId;
+  reportedSubcategoryCode?: string;
   /** Who was affected (inpatient, outpatient, visitor/family, employee, other). See AFFECTED_PERSON_TYPES. */
   affectedPersonType: AffectedPersonType;
   /** Free text when "Other" is selected as affectedPersonType. */
@@ -378,6 +384,8 @@ const IncidentSchema: Schema = new Schema(
     specificLocation: { type: String, trim: true, maxlength: 200 },
     categoryId: { type: Schema.Types.ObjectId, ref: 'IncidentCategory', required: true, index: true },
     subcategoryCode: { type: String },
+    reportedCategoryId: { type: Schema.Types.ObjectId, ref: 'IncidentCategory' },
+    reportedSubcategoryCode: { type: String },
     affectedPersonType: { type: String, enum: AFFECTED_PERSON_TYPES, required: true },
     affectedOtherDetail: { type: String, trim: true },
     patientInvolved: { type: Boolean, default: false },

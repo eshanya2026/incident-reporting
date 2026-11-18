@@ -37,6 +37,15 @@ export function ReportDetails({ incident }: { incident: any }) {
                 {incident.categoryId.domain}
               </span>
             )}
+            {incident.reportedCategoryId && (
+              <span className="block text-[12.5px] text-amber-700 mt-0.5 font-normal">
+                Corrected by Quality. Reported as: {incident.reportedCategoryId.name}
+                {(() => {
+                  const sc = incident.reportedCategoryId.subcategories?.find((x: any) => x.code === incident.reportedSubcategoryCode)?.name;
+                  return sc ? ` — ${sc}` : '';
+                })()}
+              </span>
+            )}
           </div>
         </Field>
         <Field label="Where it occurred">

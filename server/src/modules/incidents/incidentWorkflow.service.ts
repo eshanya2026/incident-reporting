@@ -14,6 +14,7 @@ import { RootCauseAnalysis } from '../rca/rca.model.js';
 import { RcaMeeting } from '../rca/rcaMeeting.model.js';
 import { Capa } from '../capa/capa.model.js';
 import { Department } from '../departments/department.model.js';
+import { IncidentCategory } from '../categories/category.model.js';
 import { User } from '../users/user.model.js';
 import { AuditLog } from '../audit/audit.model.js';
 import { recordAuditLog } from '../audit/audit.service.js';
@@ -37,6 +38,9 @@ export interface WorkflowInput {
   intimatedUserIds?: string[];
   severity?: number;
   priority?: IncidentPriority;
+  /** ASSIGN: Quality's corrected category / subcategory (the reporter may have picked the wrong one). */
+  categoryId?: string;
+  subcategoryCode?: string | null;
   /** REQUEST_RCA: optional assigned RCA Head */
   rcaHeadId?: string;
   /** REQUEST_RCA: Quality's suggested meeting date/time and location, offered to the RCA Head when scheduling. */
@@ -70,6 +74,14 @@ const loadContext = async (incident: IIncident, user: JwtPayload, input: Workflo
     RcaMeeting.findOne({ incidentId: incident._id }),
     Capa.find({ incidentId: incident._id }),
   ]);
+
+  if (input.categoryId) {
+    const category = await IncidentCategory.findById(input.categoryId).select('active subcategories');
+    if (!category || category.active === false) throw AppError.badRequest('Selected incident category does not exist');
+    if (input.subcategoryCode && !category.subcategories.some((sc) => sc.code === input.subcategoryCode)) {
+      throw AppError.badRequest('Selected subcategory does not belong to that category');
+    }
+  }
 
   let assignHodId: mongoose.Types.ObjectId | undefined;
   if (input.departmentId) {
@@ -171,6 +183,20 @@ export class IncidentWorkflowService {
         const actionDueAt = input.priority
           ? new Date(now.getTime() + PRIORITY_DEADLINE_HOURS[input.priority] * 60 * 60 * 1000)
           : undefined;
+        // Quality corrects a wrongly chosen category; the reporter's original choice is kept once
+        if (input.categoryId) {
+          const subcategoryCode = input.subcategoryCode || undefined;
+          const changed =
+            String(incident.categoryId) !== input.categoryId || (incident.subcategoryCode || undefined) !== subcategoryCode;
+          if (changed) {
+            if (!incident.reportedCategoryId) {
+              incident.reportedCategoryId = incident.categoryId;
+              incident.reportedSubcategoryCode = incident.subcategoryCode;
+            }
+            incident.categoryId = new mongoose.Types.ObjectId(input.categoryId);
+            incident.subcategoryCode = subcategoryCode;
+          }
+        }
         Object.assign(incident, severityRequirements(severity), {
           severity,
           departmentId,
@@ -338,6 +364,8 @@ export class IncidentWorkflowService {
               intimatedUserIds: input.intimatedUserIds,
               severity: input.severity,
               priority: input.priority,
+              categoryId: input.categoryId,
+              subcategoryCode: input.subcategoryCode,
             }
           : {}),
       },
