@@ -10,6 +10,7 @@ import { hashPassword } from '../auth/auth.utils.js';
 import { COMMON_STAFF_PASSWORD, normaliseWhatsapp } from '../auth/auth.controller.js';
 import { PERMISSIONS, ROLE_CODES } from '../../common/enums/permissions.js';
 import { hasPermission } from '../../common/helpers/incidentAccess.js';
+import { handOverOpenIncidents, stepDownFormerHod } from '../departments/departmentHod.service.js';
 
 const objectId = z.string().refine((v) => mongoose.Types.ObjectId.isValid(v), 'Invalid ID');
 
@@ -136,7 +137,18 @@ const syncDepartmentHod = async (user: IUser, roleCodes: string[]): Promise<void
 
   if (!isActiveHod) return;
 
-  await Department.updateOne({ _id: user.departmentId }, { $set: { hodUserId: user._id } });
+  // Taking over a department: the previous HOD steps down to Staff and the open incidents move to
+  // this user; closed reports keep the previous HOD's name (same rule as the Departments screen).
+  const previous = await Department.findOneAndUpdate(
+    { _id: user.departmentId },
+    { $set: { hodUserId: user._id } },
+    { new: false }
+  ).select('hodUserId');
+  const previousHodId = previous?.hodUserId?.toString();
+  if (previousHodId !== user._id.toString()) {
+    await handOverOpenIncidents(user.departmentId!, user._id);
+    if (previousHodId) await stepDownFormerHod(previousHodId);
+  }
 };
 
 export const getUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {

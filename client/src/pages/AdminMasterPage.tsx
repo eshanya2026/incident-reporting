@@ -9,6 +9,7 @@ import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { PageHeader } from '../components/ui/primitives';
 import { EmptyState, FilterBar, Pagination, SearchInput, TabBar, filterControlClass } from '../components/ui/listKit';
 import { WhatsappInput, isValidMobile, toLocalMobile } from '../components/ui/WhatsappInput';
+import { DepartmentHodDialog } from '../components/admin/DepartmentHodDialog';
 
 
 export default function AdminMasterPage() {
@@ -151,6 +152,7 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
 
   // Department form state
   const [showDeptModal, setShowDeptModal] = useState(false);
+  const [hodDialog, setHodDialog] = useState<{ dept: any; mode: 'change' | 'remove' } | null>(null);
   const [editingDept, setEditingDept] = useState<any>(null);
   const [deptActive, setDeptActive] = useState(true);
   const [deptCode, setDeptCode] = useState('');
@@ -199,12 +201,6 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
       }),
     placeholderData: keepPreviousData,
   });
-  // HODs for the Departments tab, fetched separately so they are never cut off by paging
-  const { data: hodUsersData } = useQuery({
-    queryKey: ['users', 'hods'],
-    queryFn: () => api.get('/users', { params: { role: 'HOD', status: 'ACTIVE', limit: 200 } }),
-  });
-
   const { data: rolesData } = useQuery({
     queryKey: ['roles'],
     queryFn: () => api.get('/roles'),
@@ -263,7 +259,6 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
   });
   const users = (usersData as any)?.data || [];
   const usersMeta = (usersData as any)?.meta || { total: users.length, page: 1, totalPages: 1 };
-  const hodUsers = (hodUsersData as any)?.data || [];
   const roles = (rolesData as any)?.data || [];
   const roleById = (id: string) => roles.find((r: any) => r._id === id);
   const selectedRoleCode = roleById(roleId)?.code;
@@ -286,14 +281,6 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
     currentDeptHod._id !== editingUser?._id;
 
   const filteredUsers = users;
-
-  const hodsFor = (departmentId: string) =>
-    hodUsers.filter(
-      (u: any) =>
-        u.status === 'ACTIVE' &&
-        u.departmentId?._id === departmentId &&
-        u.roles?.some((r: any) => r.code === 'HOD')
-    );
 
   const openCreateUser = () => {
     setEditingUser(null);
@@ -379,14 +366,6 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
     }
   };
 
-  const handleChangeDepartmentHod = async (departmentId: string, hodUserId: string) => {
-    try {
-      await api.patch(`/departments/${departmentId}`, { hodUserId: hodUserId || null });
-      queryClient.invalidateQueries({ queryKey: ['departments'] });
-    } catch (err: any) {
-      toast.error(errorMessage(err, 'Changing HOD failed'));
-    }
-  };
 
   const openCreateWard = () => {
     setEditingWard(null);
@@ -782,18 +761,39 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                     <td className="py-3 px-4 font-semibold text-clinicalText-primary">{d.name}</td>
                     <td className="py-3 px-4 text-clinicalText-secondary">{d.category || '—'}</td>
                     <td className="py-3 px-4">
-                      <SearchableSelect
-                        value={d.hodUserId?._id || ''}
-                        onChange={(v) => handleChangeDepartmentHod(d._id, v)}
-                        options={[
-                          { value: '', label: '— No HOD (incidents cannot be assigned) —' },
-                          ...hodsFor(d._id).map((u: any) => ({ value: u._id, label: u.name })),
-                        ]}
-                        searchPlaceholder="Search HODs..."
-                        className={`px-2 py-1 border rounded-lg text-xs ${
-                          d.hodUserId ? 'bg-white border-clinicalBorder' : 'bg-amber-50 border-amber-300 text-amber-800'
-                        }`}
-                      />
+                      {d.hodUserId ? (
+                        <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <div className="min-w-0">
+                            <div className="text-sm font-semibold text-clinicalText-primary truncate">{d.hodUserId.name}</div>
+                            {d.hodUserId.employeeId && <div className="text-xs text-clinicalText-muted">{d.hodUserId.employeeId}</div>}
+                          </div>
+                          <div className="flex gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setHodDialog({ dept: d, mode: 'change' })}
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-clinicalBorder bg-white hover:bg-slate-50 text-clinicalText-primary transition cursor-pointer"
+                            >
+                              Change
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setHodDialog({ dept: d, mode: 'remove' })}
+                              className="px-2.5 py-1 text-xs font-semibold rounded-lg border border-red-200 bg-white hover:bg-red-50 text-red-700 transition cursor-pointer"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => setHodDialog({ dept: d, mode: 'change' })}
+                          className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-800 transition cursor-pointer"
+                          title="Incidents cannot be assigned to this department until it has an HOD"
+                        >
+                          + Assign HOD
+                        </button>
+                      )}
                     </td>
                     <td className="py-3 px-4">
                       <span
@@ -1245,6 +1245,10 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
       )}
 
       {/* Dept Create Modal */}
+      {hodDialog && (
+        <DepartmentHodDialog department={hodDialog.dept} mode={hodDialog.mode} onClose={() => setHodDialog(null)} />
+      )}
+
       {showDeptModal && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <form onSubmit={handleCreateDepartment} className="bg-white rounded-2xl p-6 max-w-md w-full space-y-3 shadow-2xl border border-clinicalBorder">
