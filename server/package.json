@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "seed": "tsx src/seeders/index.ts",
     "reset:operational": "tsx src/scripts/resetOperationalData.ts",
+    "remove:dummy": "tsx src/scripts/removeDummyData.ts",
     "import:staff": "tsx src/scripts/importStaffCsv.ts",
     "test": "vitest run"
   },

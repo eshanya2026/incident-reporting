@@ -56,26 +56,6 @@ export default function LoginPage() {
     }
   };
 
-  const quickLogins: Record<string, [string, string]> = {
-    staff: ['nurse.mary', 'Staff@123'],
-    quality: ['quality.anita', 'Quality@123'],
-    hod: ['hod.emergency', 'Hod@123'],
-    admin: ['admin', 'Admin@123'],
-  };
-
-  const handleQuickLogin = (userType: string) => {
-    const [u, pw] = quickLogins[userType];
-    setUsername(u);
-    setPassword(pw);
-  };
-
-  const presets = [
-    { key: 'staff', label: 'Staff' },
-    { key: 'quality', label: 'Quality' },
-    { key: 'hod', label: 'Dept HOD' },
-    { key: 'admin', label: 'Admin' },
-  ];
-
   const inputClass =
     'w-full px-4 py-3.5 bg-white border border-[#E2E8F0] rounded-xl text-sm text-[#172033] placeholder-[#94A3B8] focus:outline-none focus:ring-2 focus:ring-[#5C1A22]/20 focus:border-[#5C1A22] transition';
 
@@ -220,23 +200,7 @@ export default function LoginPage() {
               </button>
             </form>
 
-            <div
-              style={delay(980)}
-              className="animate-fade-in-up mt-8 flex flex-wrap items-center gap-x-2 gap-y-2 text-[12.5px] text-[#64748B]"
-            >
-              <span>Demo login:</span>
-              {presets.map((p) => (
-                <button
-                  key={p.key}
-                  type="button"
-                  onClick={() => handleQuickLogin(p.key)}
-                  className="px-2.5 py-1 rounded-full border border-[#E2E8F0] bg-[#F8FAFC] hover:bg-[#F4E6D7] hover:border-[#DDBD9A] hover:text-[#3D0F16] font-semibold transition cursor-pointer"
-                >
-                  {p.label}
-                </button>
-              ))}
-            </div>
-            <p style={delay(1060)} className="animate-fade-in-up mt-4 text-[12.5px] text-[#64748B]">
+            <p style={delay(980)} className="animate-fade-in-up mt-8 text-[12.5px] text-[#64748B]">
               Don&rsquo;t have an account?{' '}
               <span className="font-semibold text-[#3D0F16]">Contact the Quality Department.</span>
             </p>
