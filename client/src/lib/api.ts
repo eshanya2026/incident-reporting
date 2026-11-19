@@ -41,6 +41,17 @@ api.interceptors.response.use(
     if (error.response?.data?.error?.code === 'PROFILE_INCOMPLETE' && window.location.pathname !== '/complete-profile') {
       window.location.href = '/complete-profile';
     }
-    return Promise.reject(error.response?.data?.error || error);
+    // Prefer the server's own message; fall back to a readable one rather than axios's
+    // "Request failed with status code ..."
+    const serverError = error.response?.data?.error;
+    if (serverError?.message) return Promise.reject(serverError);
+    const status = error.response?.status;
+    const fallback =
+      status === 401 && isAuthCall
+        ? 'Invalid username or password'
+        : status === 429
+          ? 'Too many attempts. Please wait a few minutes and try again.'
+          : error.response?.data?.message || error.message;
+    return Promise.reject({ ...(serverError || {}), message: fallback, status });
   }
 );

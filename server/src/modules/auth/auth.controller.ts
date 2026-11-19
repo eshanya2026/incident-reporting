@@ -53,9 +53,15 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
   try {
     const { username, password } = loginSchema.parse(req.body);
 
-    const user = await User.findOne({
-      $or: [{ username: username.toLowerCase() }, { email: username.toLowerCase() }],
-    }).populate('roles');
+    // Sign in with username, employee ID or email (the sign-in page offers username or employee ID).
+    // Looked up in that order so an employee ID that happens to equal someone's username can't
+    // pick the wrong account.
+    const loginId = username.trim();
+    const user =
+      (await User.findOne({ username: loginId.toLowerCase() }).populate('roles')) ??
+      (await User.findOne({ employeeId: loginId }).populate('roles')) ??
+      (await User.findOne({ employeeId: { $regex: `^${loginId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, $options: 'i' } }).populate('roles')) ??
+      (await User.findOne({ email: loginId.toLowerCase() }).populate('roles'));
 
     if (!user) {
       throw AppError.unauthorized('Invalid username or password');
