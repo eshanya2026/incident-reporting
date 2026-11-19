@@ -170,7 +170,10 @@ export const sendTestTemplate = async (req: Request, res: Response, next: NextFu
     const me = await User.findById(req.user!.userId).select('name');
     const name = me?.name ?? def.sampleRecipient;
     const rendered = renderMessage(content, sampleValues(def));
-    const result = await sendWhatsappTemplateChecked(digits, env.WATI_TEMPLATE_NAME, [name, rendered.content, sampleLink()]);
+    const result = await sendWhatsappTemplateChecked(digits, env.WATI_TEMPLATE_NAME, [name, rendered.content, sampleLink()], {
+      notificationKey: 'TEST',
+      recipientName: `Test send: ${def.name}`,
+    });
     if (!result.ok) throw AppError.badRequest(`WATI did not accept the message: ${result.error}`);
 
     await recordAuditLog({

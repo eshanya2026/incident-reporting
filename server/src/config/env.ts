@@ -44,6 +44,13 @@ const envSchema = z.object({
   // deliverable while the recipient has an open WhatsApp session with the business number —
   // testing only).
   WATI_TEMPLATE_NAME: z.string().optional().default(''),
+  // Secret part of the webhook URL WATI calls with delivered / read / failed updates (WATI does not
+  // sign webhooks). At least 16 characters; blank turns the webhook off. See docs/whatsapp-template.md.
+  WATI_WEBHOOK_SECRET: z
+    .string()
+    .optional()
+    .default('')
+    .refine((v) => !v || v.length >= 16, 'WATI_WEBHOOK_SECRET must be at least 16 characters'),
   // AI for the AI Insights page's written analysis: Google Gemini directly, or any model through
   // OpenRouter (https://openrouter.ai). Only the chosen provider's key is needed; without it the
   // page still shows every computed figure, just no AI narrative. Models are configurable so they

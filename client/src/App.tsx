@@ -18,6 +18,7 @@ import AccessControlPage from './pages/AccessControlPage';
 import CompleteProfilePage from './pages/CompleteProfilePage';
 import WhatsappTemplatesPage from './pages/WhatsappTemplatesPage';
 import AuditLogPage from './pages/AuditLogPage';
+import WhatsappDeliveryPage from './pages/WhatsappDeliveryPage';
 import { useAuthStore } from './store/useAuthStore';
 import { api } from './lib/api';
 import { hasAnyPermission, homePath } from './lib/rbac';
@@ -179,6 +180,14 @@ export default function App() {
             element={
               <RequirePermission anyOf={['admin.whatsapp_templates']}>
                 <WhatsappTemplatesPage />
+              </RequirePermission>
+            }
+          />
+          <Route
+            path="whatsapp-delivery"
+            element={
+              <RequirePermission anyOf={['admin.access_control']}>
+                <WhatsappDeliveryPage />
               </RequirePermission>
             }
           />

@@ -145,3 +145,22 @@ once `WATI_TEMPLATE_NAME` is set — no further code changes needed.
 If `WATI_TEMPLATE_NAME` is left blank, the app falls back to free-form text via WATI's
 session-message endpoint — only deliverable while the recipient has an open 24h WhatsApp session
 with your business number (e.g. they messaged it recently), useful for local testing only.
+
+## Delivery tracking (delivered / read / failed)
+
+Super Admin > **WhatsApp Delivery** shows every message: recipient, role, department, notification,
+incident, and whether it was sent, delivered, read or failed (with WhatsApp's reason). Messages to
+people with no WhatsApp number on their profile are listed as *Not sent*.
+
+WATI reports delivered / read / failed through a webhook:
+
+1. In the server's `.env`, set `WATI_WEBHOOK_SECRET` to a random value of 16+ characters
+   (`openssl rand -hex 24`) and redeploy.
+2. Open Super Admin > WhatsApp Delivery and copy the webhook URL it shows
+   (`<APP_URL>/api/v1/whatsapp/webhook/<secret>`).
+3. In WATI: **Connector > Webhooks > Add Webhook**, paste the URL, set it to **Enabled**, and tick
+   **Template Message Sent**, **Delivered**, **Read**, **Replied** and **Failed**.
+
+WATI must be able to reach that URL from the internet. Until the webhook is set up, messages show
+only as *Sent* (accepted by WATI) or *Failed* (refused by WATI).
+

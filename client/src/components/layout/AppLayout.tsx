@@ -15,6 +15,7 @@ import {
   ShieldCheck,
   MessageCircle,
   History,
+  MessageSquareText,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Inbox, ClipboardCheck, Building2 } from 'lucide-react';
@@ -147,6 +148,7 @@ export default function AppLayout() {
     { label: 'Administration', path: '/admin', icon: Settings, permission: 'admin.user_manage' },
     { label: 'Access Control', path: '/access-control', icon: ShieldCheck, permission: 'admin.access_control' },
     { label: 'WhatsApp Messages', path: '/whatsapp-messages', icon: MessageCircle, permission: 'admin.whatsapp_templates' },
+    { label: 'WhatsApp Delivery', path: '/whatsapp-delivery', icon: MessageSquareText, permission: 'admin.access_control' },
     { label: 'Audit Log', path: '/audit-log', icon: History, permission: 'admin.access_control' },
   ];
 

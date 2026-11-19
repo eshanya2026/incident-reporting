@@ -70,6 +70,7 @@ const SCREENS: Array<[RegExp, string]> = [
   [/^\/admin/, 'Administration'],
   [/^\/access-control/, 'Access Control'],
   [/^\/whatsapp-messages/, 'WhatsApp Messages'],
+  [/^\/whatsapp-delivery/, 'WhatsApp Delivery'],
   [/^\/audit-log/, 'Audit Log'],
   [/^\/profile|^\/change-password/, 'Profile'],
 ];

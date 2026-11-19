@@ -100,6 +100,8 @@ services:
       WATI_API_ENDPOINT: ${WATI_API_ENDPOINT:-}
       WATI_ACCESS_TOKEN: ${WATI_ACCESS_TOKEN:-}
       WATI_TEMPLATE_NAME: ${WATI_TEMPLATE_NAME:-}
+      # Secret part of the WATI delivery webhook URL (Super Admin > WhatsApp Delivery)
+      WATI_WEBHOOK_SECRET: ${WATI_WEBHOOK_SECRET:-}
 
       # AI Insights (optional; without a key the page shows computed figures only).
       # AI_PROVIDER is gemini or openrouter; only that provider's key is needed.

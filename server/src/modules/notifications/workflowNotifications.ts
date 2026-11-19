@@ -3,7 +3,7 @@ import { IIncident, SEVERITY_LABELS } from '../incidents/incident.model.js';
 import type { WorkflowAction } from '../incidents/incidentWorkflow.rules.js';
 import type { JwtPayload } from '../auth/auth.utils.js';
 import { notifyUsers, qualityUserIds, rcaHeadUserIds } from './notification.service.js';
-import { sendWhatsapp, sendWhatsappTemplate, whatsappEnabled } from './whatsapp.js';
+import { recordSkippedWhatsapp, sendWhatsapp, sendWhatsappTemplate, SendMeta, whatsappEnabled } from './whatsapp.js';
 import { renderMessage, sessionMessageText, singleLine, TemplateValues, WhatsappTemplateKey } from './whatsappTemplates.js';
 import { loadTemplate } from './whatsappTemplate.service.js';
 import { User } from '../users/user.model.js';
@@ -153,13 +153,13 @@ export const notifyWorkflowEvent = async (
  * is configured; otherwise falls back to a free-form session message (only deliverable within an
  * open 24h WhatsApp session — testing only).
  */
-const sendWithTemplate = async (number: string, name: string, content: string, link: string, fallback: string): Promise<void> => {
+const sendWithTemplate = async (number: string, name: string, content: string, link: string, fallback: string, meta: SendMeta): Promise<void> => {
   if (env.WATI_TEMPLATE_NAME) {
     // {{1}} name, {{2}} content block, {{3}} link — see docs/whatsapp-template.md.
-    await sendWhatsappTemplate(number, env.WATI_TEMPLATE_NAME, [singleLine(name), content, singleLine(link)]);
+    await sendWhatsappTemplate(number, env.WATI_TEMPLATE_NAME, [singleLine(name), content, singleLine(link)], meta);
     return;
   }
-  await sendWhatsapp(number, fallback);
+  await sendWhatsapp(number, fallback, meta);
 };
 
 const incidentValues = (incident: IIncident): TemplateValues => ({
@@ -170,7 +170,9 @@ const incidentValues = (incident: IIncident): TemplateValues => ({
 });
 
 interface WhatsappRecipient {
-  whatsappNumber: string;
+  userId: mongoose.Types.ObjectId | string;
+  /** Empty when the person has no WhatsApp number: recorded as not sent on the delivery dashboard. */
+  whatsappNumber?: string;
   name: string;
   /** Values that differ per recipient (e.g. their own department). */
   values?: TemplateValues;
@@ -192,8 +194,19 @@ const sendTemplated = async (
 
   const link = `${env.APP_URL}/incidents/${incident._id}`;
   for (const r of recipients) {
+    const meta: SendMeta = {
+      recipientUserId: r.userId,
+      recipientName: r.name,
+      notificationKey: key,
+      incidentId: incident._id as mongoose.Types.ObjectId,
+      incidentNumber: incident.incidentNumber,
+    };
+    if (!r.whatsappNumber) {
+      await recordSkippedWhatsapp(meta, 'No WhatsApp number on their profile');
+      continue;
+    }
     const rendered = renderMessage(template, { ...incidentValues(incident), ...values, ...r.values });
-    await sendWithTemplate(r.whatsappNumber, r.name, rendered.content, link, sessionMessageText(rendered, link));
+    await sendWithTemplate(r.whatsappNumber, r.name, rendered.content, link, sessionMessageText(rendered, link), meta);
   }
 };
 
@@ -205,10 +218,10 @@ const notifyHodByWhatsapp = async (incident: IIncident, text?: string): Promise<
   if (!hodId) return;
 
   const hod = await User.findById(hodId).select('name whatsappNumber status');
-  if (hod?.status !== 'ACTIVE' || !hod.whatsappNumber) return;
+  if (hod?.status !== 'ACTIVE') return;
 
   const dept = incident.departmentId ? await Department.findById(incident.departmentId).select('name') : null;
-  await sendTemplated('HOD_ASSIGNED', incident, [{ whatsappNumber: hod.whatsappNumber, name: hod.name }], {
+  await sendTemplated('HOD_ASSIGNED', incident, [{ userId: hod._id, whatsappNumber: hod.whatsappNumber, name: hod.name }], {
     department: dept?.name,
     remarks: text?.trim(),
   });
@@ -219,9 +232,9 @@ const notifyReporterByWhatsapp = async (incident: IIncident, text?: string): Pro
   if (!whatsappEnabled()) return;
 
   const reporter = await User.findById(incident.reportedBy).select('name whatsappNumber status');
-  if (reporter?.status !== 'ACTIVE' || !reporter.whatsappNumber) return;
+  if (reporter?.status !== 'ACTIVE') return;
 
-  await sendTemplated('REPORTER_INFO_REQUEST', incident, [{ whatsappNumber: reporter.whatsappNumber, name: reporter.name }], {
+  await sendTemplated('REPORTER_INFO_REQUEST', incident, [{ userId: reporter._id, whatsappNumber: reporter.whatsappNumber, name: reporter.name }], {
     question: text?.trim() || 'Please check the incident for details.',
   });
 };
@@ -241,14 +254,14 @@ const notifyInvolvedHodsByWhatsapp = async (
   const hods = await User.find({
     _id: { $in: hodIds, $ne: actorUserId },
     status: 'ACTIVE',
-    whatsappNumber: { $exists: true, $ne: '' },
   }).select('name whatsappNumber');
 
   await sendTemplated(
     'INVOLVED_DEPARTMENT',
     incident,
     hods.map((hod) => ({
-      whatsappNumber: hod.whatsappNumber!,
+      userId: hod._id,
+      whatsappNumber: hod.whatsappNumber,
       name: hod.name,
       values: { department: involvedDepts.find((d) => String(d.hodUserId) === String(hod._id))?.name || 'your department' },
     })),
@@ -267,13 +280,12 @@ const notifyIntimatedUsersByWhatsapp = async (
   const members = await User.find({
     _id: { $in: incident.intimatedUserIds, $ne: actorUserId },
     status: 'ACTIVE',
-    whatsappNumber: { $exists: true, $ne: '' },
   }).select('name whatsappNumber');
 
   await sendTemplated(
     'INTIMATED',
     incident,
-    members.map((m) => ({ whatsappNumber: m.whatsappNumber!, name: m.name })),
+    members.map((m) => ({ userId: m._id, whatsappNumber: m.whatsappNumber, name: m.name })),
     { leadDepartment: leadDeptName }
   );
 };
@@ -310,13 +322,12 @@ export const notifyRcaMeetingScheduled = async (
     const attendees = await User.find({
       _id: { $in: meeting.attendeeIds, $ne: actorUserId },
       status: 'ACTIVE',
-      whatsappNumber: { $exists: true, $ne: '' },
     }).select('name whatsappNumber');
 
     await sendTemplated(
       'RCA_MEETING_SCHEDULED',
       incident,
-      attendees.map((a) => ({ whatsappNumber: a.whatsappNumber!, name: a.name })),
+      attendees.map((a) => ({ userId: a._id, whatsappNumber: a.whatsappNumber, name: a.name })),
       { meetingTime: when, meetingPlace: meeting.location }
     );
   } catch (error) {
