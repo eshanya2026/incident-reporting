@@ -1,5 +1,6 @@
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
+import { logActivity } from '../audit/audit.service.js';
 
 // Optional WhatsApp delivery via WATI (https://wati.io), a WhatsApp Business API provider.
 // Off unless WHATSAPP_NOTIFICATIONS=true and WATI_API_ENDPOINT / WATI_ACCESS_TOKEN are set.
@@ -15,6 +16,19 @@ interface SendResult {
   ok: boolean;
   error?: string;
 }
+
+const INCIDENT_REF = /(INC|CAPA)-\d{4}-\d{6}/;
+
+/** Audit log entry for every WhatsApp message (who triggered it comes from the request context). */
+const auditSend = async (to: string, kind: 'template' | 'session', text: string, result: SendResult, recipientName?: string) => {
+  const ref = text.match(INCIDENT_REF)?.[0];
+  const who = recipientName ? `${recipientName} (+${to})` : `+${to}`;
+  await logActivity(
+    result.ok ? 'WHATSAPP_SENT' : 'WHATSAPP_FAILED',
+    result.ok ? `Sent WhatsApp${ref ? ` about ${ref}` : ''} to ${who}` : `WhatsApp to ${who} failed: ${result.error || 'unknown error'}`,
+    { meta: { to: `+${to}`, recipientName, kind, incidentNumber: ref, preview: text.slice(0, 300), error: result.error } }
+  );
+};
 
 const post = async (path: string, payload: Record<string, unknown>): Promise<SendResult> => {
   try {
@@ -56,7 +70,8 @@ export const sendWhatsapp = async (rawNumber: string, message: string): Promise<
   const to = toWhatsappId(rawNumber);
   if (!to) return;
 
-  await post(`/api/v1/sendSessionMessage/${to}`, { messageText: message });
+  const result = await post(`/api/v1/sendSessionMessage/${to}`, { messageText: message });
+  await auditSend(to, 'session', message, result);
 };
 
 /**
@@ -76,9 +91,12 @@ export const sendWhatsappTemplateChecked = async (rawNumber: string, templateNam
   const to = toWhatsappId(rawNumber);
   if (!to) return { ok: false, error: 'No WhatsApp number' };
 
-  return post(`/api/v1/sendTemplateMessage?whatsappNumber=${to}`, {
+  const result = await post(`/api/v1/sendTemplateMessage?whatsappNumber=${to}`, {
     template_name: templateName,
     broadcast_name: templateName,
     parameters: bodyParams.map((value, i) => ({ name: String(i + 1), value })),
   });
+  // The generic template's first parameter is the recipient's name (see docs/whatsapp-template.md)
+  await auditSend(to, 'template', bodyParams.join(' | '), result, bodyParams[0]);
+  return result;
 };

@@ -23,6 +23,16 @@ export interface IAiChatLog extends Document {
   error?: string;
   /** The model that answered (the main one or a fallback). */
   aiModel?: string;
+  /** True when a fallback model answered because the main one failed. */
+  usedFallback?: boolean;
+  /** One chat conversation in the Ask AI panel (sent by the app; turns share it). */
+  threadId?: string;
+  /** Question number within the conversation (1 = opening question). */
+  turn?: number;
+  /** The AI's complete answer (audit log: AI Chats). */
+  answer?: string;
+  /** What the assistant looked up to answer: specific incidents or the whole list, and which sections. */
+  lookups?: string[];
   askedAt: Date;
 }
 
@@ -34,7 +44,12 @@ const AiChatLogSchema = new Schema<IAiChatLog>({
   ok: { type: Boolean, required: true },
   error: { type: String },
   aiModel: { type: String },
-  askedAt: { type: Date, required: true, default: Date.now },
+  usedFallback: { type: Boolean },
+  threadId: { type: String, index: true },
+  turn: { type: Number },
+  answer: { type: String },
+  lookups: [{ type: String }],
+  askedAt: { type: Date, required: true, default: Date.now, index: true },
 });
 AiChatLogSchema.index({ userId: 1, dayKey: 1 });
 

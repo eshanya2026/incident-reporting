@@ -8,6 +8,7 @@ import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { env } from '../../config/env.js';
 import { canReadAttachment } from './attachmentAccess.js';
+import { logActivity } from '../audit/audit.service.js';
 
 const ENTITY_TYPES: EntityType[] = ['INCIDENT', 'INVESTIGATION', 'RCA', 'CAPA'];
 
@@ -119,6 +120,13 @@ export const downloadAttachment = async (req: Request, res: Response, next: Next
     res.setHeader('Content-Type', attachment.mimeType);
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(attachment.originalName)}"`);
+    const att: any = attachment;
+    await logActivity('ATTACHMENT_OPENED', `Opened attachment "${attachment.originalName}"`, {
+      req,
+      entityType: att.entityType === 'INCIDENT' && att.entityId ? 'INCIDENT' : undefined,
+      entityId: att.entityType === 'INCIDENT' && att.entityId ? String(att.entityId) : undefined,
+      meta: { fileName: attachment.originalName, mimeType: attachment.mimeType, size: att.size, attachedTo: att.entityType, pdf: /pdf/i.test(attachment.mimeType) },
+    });
     fs.createReadStream(filePath).on('error', next).pipe(res);
   } catch (error) {
     next(error);

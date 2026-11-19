@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
 import { ArrowLeft, Building, Calendar, Download, Loader2, MapPin, Tag, UserCheck, Users } from 'lucide-react';
 import { api } from '../lib/api';
+import { trackActivity } from '../lib/activityTracker';
 import { useAuthStore } from '../store/useAuthStore';
 import { toast } from '../store/useToastStore';
 import { hasPermission, homePath, isWorkingDepartment } from '../lib/rbac';
@@ -44,6 +45,17 @@ export default function IncidentDetailPage() {
   const incidentQuery = useQuery({ queryKey: ['incident', id], queryFn: () => api.get(`/incidents/${id}`), retry: false });
   const incident = (incidentQuery.data as any)?.data;
   const status: string = incident?.status;
+
+  // Audit log: who opened which incident (once per visit, not on every refresh)
+  const openedRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!incident?._id || openedRef.current === incident._id) return;
+    openedRef.current = incident._id;
+    trackActivity('INCIDENT_OPENED', `Opened ${incident.incidentNumber}${incident.title ? ` "${incident.title}"` : ''}`, {
+      incidentId: incident._id,
+      incidentNumber: incident.incidentNumber,
+    });
+  }, [incident?._id]);
 
   const timelineQuery = useQuery({ queryKey: ['timeline', id], queryFn: () => api.get(`/incidents/${id}/timeline`), enabled: Boolean(incident) });
   const investigationQuery = useQuery({

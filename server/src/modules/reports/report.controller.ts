@@ -10,6 +10,7 @@ import { sendSuccess } from '../../common/helpers/response.js';
 import { hasPermission, incidentScopeFilter } from '../../common/helpers/incidentAccess.js';
 import { canSeeReporterOf, REPORTER_CONFIDENTIAL_LABEL } from '../../common/helpers/reporterPrivacy.js';
 import { PERMISSIONS } from '../../common/enums/permissions.js';
+import { logActivity } from '../audit/audit.service.js';
 
 // Registers for audits (NABH/JCI) and export. Rows are flat and include turnaround days,
 // so the on-screen table and the CSV export show exactly the same figures.
@@ -191,10 +192,12 @@ export const getIncidentRegisterReport = async (req: Request, res: Response, nex
       const csv = '\uFEFF' + buildCsv(headers, csvRows);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="incident_register.csv"');
+      await logActivity('EXPORT_INCIDENT_REGISTER_CSV', `Downloaded the incident register (CSV, ${rows.length} rows)`, { req, meta: { rows: rows.length, filters: q, format: 'CSV' } });
       res.status(200).send(csv);
       return;
     }
 
+    await logActivity('REPORT_INCIDENT_REGISTER_VIEWED', `Viewed the incident register (${rows.length} rows)`, { req, meta: { rows: rows.length, filters: q } });
     sendSuccess(res, rows, 'Incident register fetched');
   } catch (error) {
     next(error);
@@ -293,10 +296,12 @@ export const getCapaRegisterReport = async (req: Request, res: Response, next: N
       const csv = '\uFEFF' + buildCsv(headers, csvRows);
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', 'attachment; filename="capa_register.csv"');
+      await logActivity('EXPORT_CAPA_REGISTER_CSV', `Downloaded the CAPA register (CSV, ${rows.length} rows)`, { req, meta: { rows: rows.length, filters: q, format: 'CSV' } });
       res.status(200).send(csv);
       return;
     }
 
+    await logActivity('REPORT_CAPA_REGISTER_VIEWED', `Viewed the CAPA register (${rows.length} rows)`, { req, meta: { rows: rows.length, filters: q } });
     sendSuccess(res, rows, 'CAPA register fetched');
   } catch (error) {
     next(error);

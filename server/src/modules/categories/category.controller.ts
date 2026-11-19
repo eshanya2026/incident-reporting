@@ -5,6 +5,7 @@ import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { hasPermission } from '../../common/helpers/incidentAccess.js';
 import { PERMISSIONS } from '../../common/enums/permissions.js';
+import { logActivity } from '../audit/audit.service.js';
 
 const createCategorySchema = z.object({
   code: z.string().min(1, 'Category code is required'),
@@ -63,6 +64,7 @@ export const createCategory = async (req: Request, res: Response, next: NextFunc
       subcategories: data.subcategories || [],
     });
 
+    await logActivity('CATEGORY_CREATED', `Created incident category ${category.name}`, { req, entityType: 'CATEGORY', entityId: String(category._id) });
     sendSuccess(res, category, 'Incident category created successfully', 201);
   } catch (error) {
     next(error);
@@ -91,6 +93,7 @@ export const addSubcategory = async (req: Request, res: Response, next: NextFunc
     category.subcategories.push({ code: subCode, name, active: true });
     await category.save();
 
+    await logActivity('CATEGORY_SUBCATEGORY_ADDED', `Added a subcategory to ${category?.name ?? 'a category'}`, { req, entityType: 'CATEGORY', entityId: String(category?._id), newValue: req.body });
     sendSuccess(res, category, 'Subcategory added successfully', 201);
   } catch (error) {
     next(error);
@@ -107,6 +110,7 @@ export const setCategoryActive = async (req: Request, res: Response, next: NextF
     if (!category) {
       throw AppError.notFound('Category not found');
     }
+    await logActivity('CATEGORY_UPDATED', `${active ? 'Enabled' : 'Disabled'} category ${category?.name ?? ''}`, { req, entityType: 'CATEGORY', entityId: String(category?._id) });
     sendSuccess(res, category, `Category ${active ? 'enabled' : 'disabled'} successfully`);
   } catch (error) {
     next(error);
@@ -124,6 +128,7 @@ export const setSubcategoryActive = async (req: Request, res: Response, next: Ne
     const sub = category.subcategories.find((sc) => sc.code === req.params.code)!;
     sub.active = active;
     await category.save();
+    await logActivity('CATEGORY_UPDATED', `${active ? 'Enabled' : 'Disabled'} a subcategory of ${category?.name ?? ''}`, { req, entityType: 'CATEGORY', entityId: String(category?._id), newValue: req.params });
     sendSuccess(res, category, `Subcategory ${active ? 'enabled' : 'disabled'} successfully`);
   } catch (error) {
     next(error);

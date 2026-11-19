@@ -8,6 +8,7 @@ import { getNextSequence } from '../../common/models/counter.model.js';
 import { hasPermission, loadIncidentForView, loadIncidentForWork } from '../../common/helpers/incidentAccess.js';
 import { PERMISSIONS } from '../../common/enums/permissions.js';
 import { assertAttachmentsUsable, linkAttachments } from '../attachments/attachmentAccess.js';
+import { logActivity } from '../audit/audit.service.js';
 
 const startOfToday = () => {
   const d = new Date();
@@ -166,6 +167,7 @@ export const createCapa = async (req: Request, res: Response, next: NextFunction
       }
 
       const allCapas = await Capa.find({ incidentId }).populate('evidence');
+      await logActivity('CAPA_SAVED', `Saved ${updatedOrCreated.length} CAPA action(s)`, { req, entityType: 'INCIDENT', entityId: String(incidentId), meta: { count: updatedOrCreated.length } });
       sendSuccess(res, allCapas, 'CAPA saved successfully', 200);
       return;
     }
@@ -285,6 +287,7 @@ export const updateCapa = async (req: Request, res: Response, next: NextFunction
     }
     Object.assign(capa, data);
     await capa.save();
+    await logActivity('CAPA_UPDATED', `Updated CAPA ${capa.capaNumber}`, { req, entityType: 'INCIDENT', entityId: String(capa.incidentId), meta: { capaNumber: capa.capaNumber, changed: Object.keys(data) } });
     sendSuccess(res, capa, 'CAPA action updated');
   } catch (error) {
     next(error);
@@ -307,6 +310,7 @@ export const markCapaDone = async (req: Request, res: Response, next: NextFuncti
     await capa.save();
     await linkAttachments(evidenceIds, 'CAPA', capa._id);
 
+    await logActivity('CAPA_DONE', `Marked CAPA ${capa.capaNumber} done`, { req, entityType: 'INCIDENT', entityId: String(capa.incidentId), meta: { capaNumber: capa.capaNumber } });
     sendSuccess(res, capa, 'CAPA marked done');
   } catch (error) {
     next(error);

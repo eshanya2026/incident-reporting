@@ -14,6 +14,7 @@ import { canSeeReporterOf, REPORTER_CONFIDENTIAL_LABEL } from '../../common/help
 import { AppError } from '../../common/errors/appError.js';
 import { env } from '../../config/env.js';
 import { User } from '../users/user.model.js';
+import { logActivity } from '../audit/audit.service.js';
 
 // ---------- Text safety ----------
 
@@ -737,6 +738,9 @@ export const downloadIncidentReport = async (req: Request, res: Response, next: 
       showReporter: canSeeReporterOf(req.user, incident),
     });
 
+    await logActivity('INCIDENT_REPORT_PDF_DOWNLOADED', `Downloaded the final report PDF of ${(incident as any).incidentNumber}`, {
+      req, entityType: 'INCIDENT', entityId: String((incident as any)._id), meta: { incidentNumber: (incident as any).incidentNumber, pdf: true, format: 'PDF' },
+    });
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `attachment; filename="${(incident as any).incidentNumber}-final-report.pdf"`);
     res.setHeader('Content-Length', String(pdfBytes.byteLength));

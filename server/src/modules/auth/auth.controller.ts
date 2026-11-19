@@ -2,7 +2,9 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import mongoose from 'mongoose';
 import { Department } from '../departments/department.model.js';
-import { recordAuditLog } from '../audit/audit.service.js';
+import { recordAuditLog, logActivity } from '../audit/audit.service.js';
+import { startSession, endSession } from '../audit/session.service.js';
+import { UserSession } from '../audit/session.model.js';
 import { User } from '../users/user.model.js';
 import { Role } from '../roles/role.model.js';
 import { AppError } from '../../common/errors/appError.js';
@@ -64,10 +66,19 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
       (await User.findOne({ email: loginId.toLowerCase() }).populate('roles'));
 
     if (!user) {
+      await logActivity('LOGIN_FAILED', `Failed sign-in: unknown username "${loginId.slice(0, 60)}"`, {
+        req,
+        meta: { triedUsername: loginId.slice(0, 60), reason: 'unknown_user' },
+      });
       throw AppError.unauthorized('Invalid username or password');
     }
 
     if (user.status !== 'ACTIVE') {
+      await logActivity('LOGIN_FAILED', `Failed sign-in: account is ${user.status.toLowerCase()}`, {
+        req,
+        userId: String(user._id),
+        meta: { triedUsername: loginId.slice(0, 60), reason: `account_${user.status.toLowerCase()}` },
+      });
       throw AppError.forbidden(`Account is ${user.status.toLowerCase()}. Please contact administrator.`);
     }
 
@@ -79,6 +90,14 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
         user.status = 'LOCKED';
       }
       await user.save();
+      await logActivity('LOGIN_FAILED', `Failed sign-in: wrong password (attempt ${user.failedLoginAttempts})`, {
+        req,
+        userId: String(user._id),
+        meta: { triedUsername: loginId.slice(0, 60), reason: 'wrong_password', attempt: user.failedLoginAttempts },
+      });
+      if (user.status === 'LOCKED') {
+        await logActivity('ACCOUNT_LOCKED', 'Account locked after 5 wrong passwords', { req, userId: String(user._id) });
+      }
       throw AppError.unauthorized('Invalid username or password');
     }
 
@@ -98,13 +117,16 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
     });
     const permissions = Array.from(permissionsSet);
 
+    const sid = await startSession(req, user._id as mongoose.Types.ObjectId);
     const jwtPayload = {
       userId: user._id.toString(),
       username: user.username,
       roles: roleCodes,
       permissions,
       departmentId: user.departmentId ? user.departmentId.toString() : undefined,
+      sid,
     };
+    await logActivity('LOGIN_SUCCESS', 'Signed in', { req, userId: user._id.toString(), sessionId: sid });
 
     const accessToken = generateAccessToken(jwtPayload);
     const refreshToken = generateRefreshToken(jwtPayload);
@@ -157,6 +179,19 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
       throw AppError.unauthorized('User not active or found');
     }
 
+    // A session that was signed out (or ended by a Super Admin) cannot be refreshed
+    let sid = payload.sid;
+    if (sid) {
+      const session = await UserSession.findById(sid).select('endedAt endReason revoked');
+      if (!session || session.revoked || (session.endedAt && session.endReason !== 'expired')) {
+        res.clearCookie('refreshToken');
+        throw AppError.unauthorized(
+          session?.endReason === 'forced' ? 'Your session was ended by an administrator. Please sign in again.' : 'Your session has ended. Please sign in again.'
+        );
+      }
+      await UserSession.updateOne({ _id: sid }, { $set: { lastSeenAt: new Date() }, $unset: { endedAt: 1, endReason: 1 } });
+    }
+
     const populatedRoles = user.roles as unknown as Array<{ code: string; permissions: string[] }>;
     const roleCodes = populatedRoles.map((r) => r.code);
     const permissionsSet = new Set<string>();
@@ -172,7 +207,19 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
       roles: roleCodes,
       permissions: Array.from(permissionsSet),
       departmentId: user.departmentId ? user.departmentId.toString() : undefined,
+      sid,
     };
+
+    // Signed in before sessions were tracked: start one now and reissue the refresh cookie with it
+    if (!sid) {
+      newPayload.sid = sid = await startSession(req, user._id as mongoose.Types.ObjectId);
+      res.cookie('refreshToken', generateRefreshToken(newPayload), {
+        httpOnly: true,
+        secure: env.NODE_ENV === 'production' && env.APP_URL.startsWith('https://'),
+        sameSite: 'lax',
+        maxAge: 12 * 60 * 60 * 1000,
+      });
+    }
 
     const accessToken = generateAccessToken(newPayload);
     sendSuccess(res, { accessToken }, 'Token refreshed successfully');
@@ -182,6 +229,18 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
 };
 
 export const logout = async (req: Request, res: Response): Promise<void> => {
+  // The logout call is not authenticated (the access token may already be expired); the refresh
+  // cookie says whose session is ending
+  try {
+    const token = req.cookies?.refreshToken;
+    if (token) {
+      const payload = verifyRefreshToken(token);
+      await endSession(payload.sid, 'logout');
+      await logActivity('LOGOUT', 'Signed out', { req, userId: payload.userId, sessionId: payload.sid });
+    }
+  } catch {
+    /* expired or invalid cookie: nothing to end */
+  }
   res.clearCookie('refreshToken');
   sendSuccess(res, null, 'Logged out successfully');
 };
@@ -279,6 +338,7 @@ export const completeProfile = async (req: Request, res: Response, next: NextFun
     });
 
     // The session ends here: the client signs out and the user logs in with their new password
+    await endSession(req.user?.sid, 'profile_completed');
     res.clearCookie('refreshToken');
     sendSuccess(res, null, 'Your details are saved. Please sign in with your new password.');
   } catch (error) {
@@ -306,6 +366,7 @@ export const changePassword = async (req: Request, res: Response, next: NextFunc
 
     user.passwordHash = await hashPassword(newPassword);
     await user.save();
+    await logActivity('PASSWORD_CHANGED', 'Changed own password', { req });
 
     sendSuccess(res, null, 'Password updated successfully');
   } catch (error) {

@@ -9,6 +9,7 @@ import { sendSuccess } from '../../common/helpers/response.js';
 import { loadIncidentForView, loadIncidentForWork } from '../../common/helpers/incidentAccess.js';
 import { IIncident } from '../incidents/incident.model.js';
 import { assertAttachmentsUsable, linkAttachments } from '../attachments/attachmentAccess.js';
+import { logActivity } from '../audit/audit.service.js';
 
 const saveInvestigationSchema = z.object({
   facts: z.string().optional(),
@@ -166,6 +167,7 @@ export const updateInvestigation = async (req: Request, res: Response, next: Nex
     await investigation.save();
     await linkAttachments(evidenceIds, 'INVESTIGATION', investigation._id);
 
+    await logActivity('INVESTIGATION_DRAFT_SAVED', 'Saved investigation draft', { req, entityType: 'INCIDENT', entityId: String((investigation as any)?.incidentId) });
     sendSuccess(res, investigation, 'Investigation draft saved successfully');
   } catch (error) {
     next(error);

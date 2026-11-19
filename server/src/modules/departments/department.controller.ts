@@ -5,6 +5,7 @@ import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { changeDepartmentHod } from './departmentHod.service.js';
 import { recordAuditLog } from '../audit/audit.service.js';
+import { logActivity } from '../audit/audit.service.js';
 
 const HOD_POPULATE = 'name email employeeId status designation';
 
@@ -64,6 +65,7 @@ export const createDepartment = async (req: Request, res: Response, next: NextFu
       active: true,
     });
     if (data.hodUserId) await applyHodChange(req, dept._id.toString(), data.hodUserId);
+    await logActivity('DEPARTMENT_CREATED', `Created department ${dept.name}`, { req, entityType: 'DEPARTMENT', entityId: dept._id.toString() });
 
     sendSuccess(res, await Department.findById(dept._id).populate('hodUserId', HOD_POPULATE), 'Department created successfully', 201);
   } catch (error) {
@@ -86,6 +88,12 @@ export const updateDepartment = async (req: Request, res: Response, next: NextFu
     await dept.save();
 
     if (data.hodUserId !== undefined) await applyHodChange(req, dept._id.toString(), data.hodUserId || null);
+    const deptChanges = Object.keys(data).filter((k) => k !== 'hodUserId');
+    if (deptChanges.length) {
+      await logActivity('DEPARTMENT_UPDATED', `Updated department ${dept.name} (${deptChanges.join(', ')})`, {
+        req, entityType: 'DEPARTMENT', entityId: dept._id.toString(), newValue: data,
+      });
+    }
 
     const updated = await Department.findById(dept._id).populate('hodUserId', HOD_POPULATE);
     sendSuccess(res, updated, 'Department updated successfully');

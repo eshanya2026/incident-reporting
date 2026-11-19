@@ -8,6 +8,8 @@ export interface JwtPayload {
   roles: string[];
   permissions: string[];
   departmentId?: string;
+  /** Sign-in session (audit log); absent on tokens issued before sessions existed. */
+  sid?: string;
 }
 
 export const hashPassword = async (password: string): Promise<string> => {

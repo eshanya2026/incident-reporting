@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../common/errors/appError.js';
 import { verifyAccessToken, JwtPayload } from '../modules/auth/auth.utils.js';
 import { User } from '../modules/users/user.model.js';
+import { isSessionRevoked } from '../modules/audit/session.service.js';
+import { clientInfo, runWithContext } from '../common/context/requestContext.js';
 
 // Until an imported staff member has confirmed their details and set their own password, their
 // account can only load its profile, the department list, and submit the first-login form.
@@ -37,6 +39,11 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
   }
 
   try {
+    // A Super Admin can end a session from the audit log; its tokens stop working at once
+    if (await isSessionRevoked(payload.sid)) {
+      return next(AppError.unauthorized('Your session was ended by an administrator. Please sign in again.'));
+    }
+
     // Resolve roles and permissions from the database on every request so that role changes,
     // removed roles and deactivated accounts take effect immediately instead of at next login.
     const user = await User.findById(payload.userId).populate('roles', 'code permissions');
@@ -57,8 +64,10 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
       roles: roles.map((r) => r.code),
       permissions: Array.from(permissions),
       departmentId: user.departmentId ? user.departmentId.toString() : undefined,
+      sid: payload.sid,
     };
-    next();
+    // Everything this request does (audit entries, WhatsApp sends...) knows who and which session
+    runWithContext({ userId: req.user.userId, sessionId: payload.sid, ...clientInfo(req) }, () => next());
   } catch (error) {
     next(error);
   }

@@ -11,6 +11,7 @@ import { COMMON_STAFF_PASSWORD, normaliseWhatsapp } from '../auth/auth.controlle
 import { PERMISSIONS, ROLE_CODES } from '../../common/enums/permissions.js';
 import { hasPermission } from '../../common/helpers/incidentAccess.js';
 import { handOverOpenIncidents, stepDownFormerHod } from '../departments/departmentHod.service.js';
+import { logActivity } from '../audit/audit.service.js';
 
 const objectId = z.string().refine((v) => mongoose.Types.ObjectId.isValid(v), 'Invalid ID');
 
@@ -276,6 +277,9 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
 
     await syncDepartmentHod(user, roleCodes);
 
+    await logActivity('USER_CREATED', `Created user ${user.name} (${user.employeeId}) as ${roleCodes.join(', ')}`, {
+      req, entityType: 'USER', entityId: String(user._id), meta: { targetUserId: String(user._id), employeeId: user.employeeId, roles: roleCodes },
+    });
     sendSuccess(res, await populateUser(user._id), 'User created successfully', 201);
   } catch (error) {
     next(error);
@@ -345,6 +349,13 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     await user.save();
     await syncDepartmentHod(user, roleCodes);
 
+    const changed = Object.keys(data).filter((k) => k !== 'replaceDepartmentHod');
+    const deactivated = Boolean(data.status && data.status !== 'ACTIVE');
+    await logActivity(
+      deactivated ? 'USER_DEACTIVATED' : 'USER_UPDATED',
+      `${deactivated ? `Set ${user.name} to ${String(data.status).toLowerCase()}` : `Updated user ${user.name}`} (${changed.join(', ') || 'no changes'})`,
+      { req, entityType: 'USER', entityId: String(user._id), previousValue: { roles: existingRoleCodes }, newValue: { ...data, roles: roleCodes }, meta: { targetUserId: String(user._id), changed } }
+    );
     sendSuccess(res, await populateUser(user._id), 'User updated successfully');
   } catch (error) {
     next(error);
@@ -368,6 +379,9 @@ export const resetUserPassword = async (req: Request, res: Response, next: NextF
     }
     await user.save();
 
+    await logActivity('USER_PASSWORD_RESET', `Reset the password of ${user.name} (${user.employeeId})`, {
+      req, entityType: 'USER', entityId: String(user._id), meta: { targetUserId: String(user._id) },
+    });
     sendSuccess(res, null, 'Password reset successfully');
   } catch (error) {
     next(error);
@@ -516,6 +530,9 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
       }
     }
 
+    await logActivity('USERS_BULK_IMPORTED', `Bulk import: ${imported} imported, ${updated} updated, ${skipped} skipped, ${errors.length} failed`, {
+      req, meta: { imported, updated, skipped, failed: errors.length },
+    });
     sendSuccess(
       res,
       {

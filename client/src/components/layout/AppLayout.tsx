@@ -14,6 +14,7 @@ import {
   Sparkles,
   ShieldCheck,
   MessageCircle,
+  History,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Inbox, ClipboardCheck, Building2 } from 'lucide-react';
@@ -23,6 +24,7 @@ import { useAuthStore } from '../../store/useAuthStore';
 import { api } from '../../lib/api';
 import { hasAnyPermission, hasPermission } from '../../lib/rbac';
 import BrandLogo from '../ui/BrandLogo';
+import { useActivityTracker } from '../../lib/activityTracker';
 
 dayjs.extend(relativeTime);
 
@@ -30,6 +32,8 @@ export default function AppLayout() {
   const { user, logout } = useAuthStore();
   const location = useLocation();
   const navigate = useNavigate();
+  // Screens opened and active / idle / away time, for the Super Admin audit log
+  useActivityTracker();
 
   const [notifications, setNotifications] = useState<any[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
@@ -143,6 +147,7 @@ export default function AppLayout() {
     { label: 'Administration', path: '/admin', icon: Settings, permission: 'admin.user_manage' },
     { label: 'Access Control', path: '/access-control', icon: ShieldCheck, permission: 'admin.access_control' },
     { label: 'WhatsApp Messages', path: '/whatsapp-messages', icon: MessageCircle, permission: 'admin.whatsapp_templates' },
+    { label: 'Audit Log', path: '/audit-log', icon: History, permission: 'admin.access_control' },
   ];
 
   const visibleNavItems = navItems.filter((item) => {

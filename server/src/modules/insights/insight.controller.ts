@@ -23,6 +23,8 @@ import { PERMISSIONS } from '../../common/enums/permissions.js';
 import { hasPermission } from '../../common/helpers/incidentAccess.js';
 import { JwtPayload } from '../auth/auth.utils.js';
 import { logger } from '../../config/logger.js';
+import { env } from '../../config/env.js';
+import { logActivity } from '../audit/audit.service.js';
 
 // AI Insights: insights.view_all sees the whole hospital (optionally one department);
 // insights.view_department sees the user's own department. Each scope/period gets one automatic AI analysis per day (generated in the
@@ -166,7 +168,22 @@ const chatRemainingToday = async (userId: string): Promise<number | null> =>
     ? Math.max(0, CHAT_DAILY_LIMIT - (await AiChatLog.countDocuments({ userId, dayKey: dayKeyOf(new Date()), ok: true })))
     : null;
 
+/** Human-readable list of what the assistant looked up for an answer (audit log: AI Chats). */
+const describeLookups = (dataset: any): string[] => {
+  const list = dataset?.caseList;
+  if (!list) return [];
+  if (list.mode === 'FOCUSED') {
+    const nos = (list.records || []).map((r: any) => r.no).filter(Boolean);
+    return [`Looked up ${nos.length} specific incident(s)${nos.length ? `: ${nos.slice(0, 8).join(', ')}` : ''}`];
+  }
+  const rows = Array.isArray(list.rows) ? list.rows.length : undefined;
+  const cols = Array.isArray(list.columns) ? list.columns.join(', ') : '';
+  return [`Searched ${rows ?? 'all'} incident(s)`, ...(cols ? [`Fields used: ${cols}`] : [])];
+};
+
 const chatSchema = z.object({
+  /** Conversation id from the Ask AI panel, so the audit log can show whole chats. */
+  threadId: z.string().trim().max(64).optional(),
   messages: z
     .array(z.object({ role: z.enum(['user', 'assistant']), content: z.string().trim().min(1).max(CHAT_MAX_CHARS) }))
     .min(1)
@@ -215,7 +232,14 @@ export const chatWithInsights = async (req: Request, res: Response, next: NextFu
     let messages = body.messages.slice(-CHAT_MAX_TURNS);
     while (messages.length && messages[0].role !== 'user') messages = messages.slice(1);
     const question = messages[messages.length - 1].content;
-    const log = { userId, scopeKey: scopeKeyOf(scope), dayKey: dayKeyOf(new Date()), question: question.slice(0, CHAT_MAX_CHARS) };
+    const log = {
+      userId,
+      scopeKey: scopeKeyOf(scope),
+      dayKey: dayKeyOf(new Date()),
+      question: question.slice(0, CHAT_MAX_CHARS),
+      threadId: body.threadId,
+      turn: body.messages.filter((m) => m.role === 'user').length,
+    };
 
     // The previous question and answer let a short follow-up ("who closed it?") stay on the same incidents
     const followUp = messages.slice(-3, -1).map((m) => m.content).join('\n');
@@ -226,11 +250,21 @@ export const chatWithInsights = async (req: Request, res: Response, next: NextFu
     });
     try {
       const result = await answerQuestion({ scope, dataset, idByNumber, messages });
-      await AiChatLog.create({ ...log, ok: true, aiModel: result.model });
+      const lookups = describeLookups(dataset);
+      const usedFallback = result.model !== (env.AI_PROVIDER === 'openrouter' ? env.OPENROUTER_MODEL : env.GEMINI_MODEL);
+      await AiChatLog.create({ ...log, ok: true, aiModel: result.model, usedFallback, answer: result.answer, lookups });
+      await logActivity('AI_QUESTION', `Asked AI: "${question.slice(0, 120)}${question.length > 120 ? '…' : ''}"`, {
+        req,
+        meta: { threadId: body.threadId, turn: log.turn, question, answer: result.answer, model: result.model, usedFallback, lookups, cited: result.cited.map((c) => c.number) },
+      });
       sendSuccess(res, { ...result, remainingToday: remaining === null ? null : remaining - 1 }, 'Answered');
     } catch (err: any) {
       logger.error({ err, scopeKey: log.scopeKey }, '❌ AI chat failed');
       await AiChatLog.create({ ...log, ok: false, error: String(err?.message || 'Unknown error').slice(0, 500) });
+      await logActivity('AI_QUESTION_FAILED', `Ask AI could not answer: "${question.slice(0, 120)}"`, {
+        req,
+        meta: { threadId: body.threadId, turn: log.turn, question, error: String(err?.message || '').slice(0, 300) },
+      });
       if (isQuotaError(err)) {
         throw new AppError(
           "The AI's usage limit with the provider has been reached for now, so it can't answer. Please try again later, or ask your administrator to raise the AI plan's limits.",
@@ -265,6 +299,7 @@ export const regenerateInsights = async (req: Request, res: Response, next: Next
 
     const loaded = await loadFacts(scope, q.period);
     await generate(scope, q.period, 'MANUAL', req.user!.userId, loaded);
+    await logActivity('AI_INSIGHTS_REGENERATED', `Regenerated AI Insights (${scopeLabelOf(scope)}, ${q.period})`, { req, meta: { period: q.period } });
     sendSuccess(res, await buildView(scope, q.period, loaded.facts), 'Insights regenerated');
   } catch (error) {
     next(error);

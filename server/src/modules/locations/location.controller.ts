@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { Location } from './location.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
+import { logActivity } from '../audit/audit.service.js';
 
 const createLocationSchema = z.object({
   code: z.string().min(1, 'Location code is required'),
@@ -65,6 +66,7 @@ export const createLocation = async (req: Request, res: Response, next: NextFunc
       active: true,
     });
 
+    await logActivity('LOCATION_CREATED', `Created ward / location ${loc.name}`, { req, entityType: 'LOCATION', entityId: String(loc._id) });
     sendSuccess(res, loc, 'Location created successfully', 201);
   } catch (error) {
     next(error);
@@ -94,6 +96,7 @@ export const updateLocation = async (req: Request, res: Response, next: NextFunc
       .populate('departmentId', 'name code')
       .populate('parentLocationId', 'name code');
 
+    await logActivity('LOCATION_UPDATED', `Updated ward / location ${updated?.name ?? ''}`, { req, entityType: 'LOCATION', entityId: String(req.params.id), newValue: req.body });
     sendSuccess(res, updated, 'Location updated successfully');
   } catch (error) {
     next(error);

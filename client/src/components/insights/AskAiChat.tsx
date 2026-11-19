@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { trackActivity } from '../../lib/activityTracker';
 import { Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import dayjs from 'dayjs';
@@ -151,6 +152,28 @@ function ChatPanel({
   onClose?: () => void;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>(() => loadHistory(scopeKey));
+  // One id per conversation, so the audit log can show whole chats (a new chat gets a new id)
+  const threadRef = useRef<string>('');
+  const threadIdFor = (history: ChatMessage[]) => {
+    const key = `${storageKey(scopeKey)}:thread`;
+    try {
+      const saved = sessionStorage.getItem(key);
+      if (history.some((m) => m.role === 'user') && saved) return (threadRef.current = saved);
+      const fresh = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      sessionStorage.setItem(key, fresh);
+      return (threadRef.current = fresh);
+    } catch {
+      if (!history.some((m) => m.role === 'user') || !threadRef.current) {
+        threadRef.current = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+      }
+      return threadRef.current;
+    }
+  };
+
+  useEffect(() => {
+    trackActivity('AI_CHAT_OPENED', 'Opened Ask AI');
+    return () => trackActivity('AI_CHAT_CLOSED', 'Closed Ask AI');
+  }, []);
   const [draft, setDraft] = useState('');
   const [pending, setPending] = useState(false);
   const [elapsed, setElapsed] = useState(0);
@@ -210,6 +233,7 @@ function ChatPanel({
     setPending(true);
     try {
       const res: any = await api.post('/insights/chat', {
+        threadId: threadIdFor(history),
         messages: conversation.map(({ role, content }) => ({ role, content })),
       });
       setMessages([...conversation, { role: 'assistant', content: res.data.answer, cited: res.data.cited }]);
