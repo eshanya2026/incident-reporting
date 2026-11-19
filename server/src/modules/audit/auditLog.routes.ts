@@ -2,6 +2,7 @@ import express, { Router } from 'express';
 import { authenticate } from '../../middleware/authenticate.js';
 import { requirePermission } from '../../middleware/authorize.js';
 import { PERMISSIONS } from '../../common/enums/permissions.js';
+import { activityLimiter } from '../../middleware/rateLimiter.js';
 import {
   exportAuditEvents,
   forceEndSession,
@@ -18,8 +19,8 @@ import {
 const router = Router();
 
 // Sent by the app for every signed-in user: screens opened and presence heartbeats
-router.post('/activity/beacon', express.text({ type: '*/*', limit: '64kb' }), postActivityBeacon);
-router.post('/activity', authenticate, postActivity);
+router.post('/activity/beacon', activityLimiter, express.text({ type: '*/*', limit: '64kb' }), postActivityBeacon);
+router.post('/activity', activityLimiter, authenticate, postActivity);
 
 // The audit log itself: Super Admin only
 const superAdmin = [authenticate, requirePermission(PERMISSIONS.ADMIN_ACCESS_CONTROL)];
