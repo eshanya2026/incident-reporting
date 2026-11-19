@@ -66,14 +66,32 @@ const currentRoleCodes = async (user: IUser): Promise<string[]> =>
 
 const canManageSuperAdmins = (req: Request) => hasPermission(req.user, PERMISSIONS.ADMIN_ACCESS_CONTROL);
 
+/** Roles only a Super Admin may hand out or manage. */
+const PRIVILEGED_ROLES: string[] = [ROLE_CODES.SUPER_ADMIN, ROLE_CODES.ADMIN];
+const roleLabel = (code: string) => (code === ROLE_CODES.SUPER_ADMIN ? 'Super Admin' : 'Admin');
+const withArticle = (label: string) => `${/^[AEIOU]/.test(label) ? 'an' : 'a'} ${label}`;
+
 /**
- * Only a Super Admin may grant the Super Admin role or change a Super Admin's account (edit it,
- * reset its password, overwrite it by bulk import) — otherwise any Admin could make themselves
- * Super Admin, or take over a Super Admin account through a password reset.
+ * Only a Super Admin may give someone the Admin or Super Admin role, or change / reset the password
+ * of another Admin or Super Admin account. Otherwise any Admin — or Quality, who also manage users —
+ * could create more Admins, or take over an Admin account through a password reset.
+ * Admins can still edit their own account (but not change their own roles; see updateUser).
  */
-const assertCanManageSuperAdmin = (req: Request, ...roleCodeLists: string[][]): void => {
-  if (roleCodeLists.some((codes) => codes.includes(ROLE_CODES.SUPER_ADMIN)) && !canManageSuperAdmins(req)) {
-    throw AppError.forbidden('Only a Super Admin can manage Super Admin accounts');
+const assertCanManagePrivileged = (
+  req: Request,
+  newRoleCodes: string[],
+  existingRoleCodes: string[] = [],
+  targetUserId?: string
+): void => {
+  if (canManageSuperAdmins(req)) return;
+  const granted = newRoleCodes.find((c) => PRIVILEGED_ROLES.includes(c) && !existingRoleCodes.includes(c));
+  if (granted) {
+    throw AppError.forbidden(`Only a Super Admin can give someone the ${roleLabel(granted)} role`);
+  }
+  const held = existingRoleCodes.find((c) => PRIVILEGED_ROLES.includes(c));
+  const isSelf = Boolean(targetUserId) && targetUserId === req.user?.userId;
+  if (held && !isSelf) {
+    throw AppError.forbidden(`Only a Super Admin can change ${withArticle(roleLabel(held))} account`);
   }
 };
 
@@ -231,7 +249,7 @@ export const createUser = async (req: Request, res: Response, next: NextFunction
     }
 
     const roleCodes = await resolveRoleCodes(data.roles);
-    assertCanManageSuperAdmin(req, roleCodes);
+    assertCanManagePrivileged(req, roleCodes);
     await assertDepartmentForRoles(roleCodes, data.departmentId);
     assertDesignationForHod(roleCodes, data.designation);
 
@@ -276,7 +294,7 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     const roleIds = data.roles ?? user.roles.map((r) => r.toString());
     const roleCodes = await resolveRoleCodes(roleIds);
     const existingRoleCodes = await currentRoleCodes(user);
-    assertCanManageSuperAdmin(req, roleCodes, existingRoleCodes);
+    assertCanManagePrivileged(req, roleCodes, existingRoleCodes, user._id.toString());
     const departmentId = data.departmentId !== undefined ? data.departmentId : user.departmentId?.toString();
     await assertDepartmentForRoles(roleCodes, departmentId);
     const designation = data.designation !== undefined ? data.designation : user.designation;
@@ -341,7 +359,7 @@ export const resetUserPassword = async (req: Request, res: Response, next: NextF
     if (!user) {
       throw AppError.notFound('User not found');
     }
-    assertCanManageSuperAdmin(req, await currentRoleCodes(user));
+    assertCanManagePrivileged(req, [], await currentRoleCodes(user), user._id.toString());
 
     user.passwordHash = await hashPassword(password);
     user.failedLoginAttempts = 0;
@@ -407,8 +425,8 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
         continue;
       }
 
-      if (roleCodeUpper === ROLE_CODES.SUPER_ADMIN && !canManageSuperAdmins(req)) {
-        errors.push({ row: rowNum, employeeId: item.employeeId, error: 'Only a Super Admin can create Super Admin accounts' });
+      if (PRIVILEGED_ROLES.includes(roleCodeUpper) && !canManageSuperAdmins(req)) {
+        errors.push({ row: rowNum, employeeId: item.employeeId, error: `Only a Super Admin can create ${roleLabel(roleCodeUpper)} accounts` });
         continue;
       }
 
@@ -445,8 +463,9 @@ export const bulkImportUsers = async (req: Request, res: Response, next: NextFun
             skipped++;
             continue;
           }
-          if (!canManageSuperAdmins(req) && (await currentRoleCodes(existing)).includes(ROLE_CODES.SUPER_ADMIN)) {
-            errors.push({ row: rowNum, employeeId: item.employeeId, error: 'Only a Super Admin can change a Super Admin account' });
+          const existingPrivileged = (await currentRoleCodes(existing)).find((c) => PRIVILEGED_ROLES.includes(c));
+          if (!canManageSuperAdmins(req) && existingPrivileged) {
+            errors.push({ row: rowNum, employeeId: item.employeeId, error: `Only a Super Admin can change ${withArticle(roleLabel(existingPrivileged))} account` });
             continue;
           }
 

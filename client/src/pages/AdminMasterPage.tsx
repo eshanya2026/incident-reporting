@@ -10,10 +10,17 @@ import { PageHeader } from '../components/ui/primitives';
 import { EmptyState, FilterBar, Pagination, SearchInput, TabBar, filterControlClass } from '../components/ui/listKit';
 import { WhatsappInput, isValidMobile, toLocalMobile } from '../components/ui/WhatsappInput';
 import { DepartmentHodDialog } from '../components/admin/DepartmentHodDialog';
+import { useAuthStore } from '../store/useAuthStore';
+import { hasPermission } from '../lib/rbac';
+
+/** Roles only a Super Admin may give out or manage (the server enforces this too). */
+const PRIVILEGED_ROLE_CODES = ['ADMIN', 'SUPER_ADMIN'];
 
 
 export default function AdminMasterPage() {
   const queryClient = useQueryClient();
+  const me = useAuthStore((state) => state.user);
+  const isSuperAdmin = hasPermission(me, 'admin.access_control');
   const [activeTab, setActiveTab] = useState<'users' | 'departments' | 'wards' | 'categories'>('users');
 
   // User form state (shared by create and edit; editingUser is null when creating)
@@ -669,6 +676,12 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                         </span>
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
+                        {!isSuperAdmin && u._id !== me?.id && u.roles?.some((r: any) => PRIVILEGED_ROLE_CODES.includes(r.code)) ? (
+                          <span className="text-xs text-clinicalText-muted" title="Only a Super Admin can change Admin accounts">
+                            Super Admin only
+                          </span>
+                        ) : (
+                        <>
                         <button
                           type="button"
                           onClick={() => openEditUser(u)}
@@ -686,6 +699,8 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                         >
                           Reset Password
                         </button>
+                        </>
+                        )}
                       </td>
                     </tr>
                   );
@@ -1101,7 +1116,10 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                   onChange={setRoleId}
                   options={[
                     { value: '', label: '-- Choose Role --' },
-                    ...roles.map((r: any) => ({ value: r._id, label: r.name })),
+                    ...roles
+                      // Only a Super Admin can make someone an Admin or Super Admin
+                      .filter((r: any) => isSuperAdmin || !PRIVILEGED_ROLE_CODES.includes(r.code) || r._id === roleId)
+                      .map((r: any) => ({ value: r._id, label: r.name })),
                   ]}
                   searchPlaceholder="Search roles..."
                   className="w-full px-3 py-1.5 bg-slate-50 border border-clinicalBorder rounded-lg text-xs focus:ring-2 focus:ring-brandRed-500/20 focus:border-maroon-600 focus:bg-white transition"
