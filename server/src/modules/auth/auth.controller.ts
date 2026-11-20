@@ -319,7 +319,8 @@ export const completeProfile = async (req: Request, res: Response, next: NextFun
     const previous = { departmentId: user.departmentId, designation: user.designation };
     user.departmentId = department._id as mongoose.Types.ObjectId;
     user.designation = data.designation;
-    user.whatsappNumber = normaliseWhatsapp(data.whatsappNumber);
+    // Left blank: keep the number already on record (e.g. from HR) instead of erasing it
+    if (data.whatsappNumber?.trim()) user.whatsappNumber = normaliseWhatsapp(data.whatsappNumber);
     if (email) user.email = email;
     user.passwordHash = await hashPassword(data.newPassword);
     user.mustCompleteProfile = false;

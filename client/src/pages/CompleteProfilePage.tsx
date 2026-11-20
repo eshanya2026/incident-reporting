@@ -6,7 +6,7 @@ import { api } from '../lib/api';
 import { useAuthStore } from '../store/useAuthStore';
 import { errorMessage } from '../lib/useAction';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
-import { WhatsappInput, isValidMobile } from '../components/ui/WhatsappInput';
+import { WhatsappInput, isValidMobile, toLocalMobile } from '../components/ui/WhatsappInput';
 
 const COMMON_PASSWORD = 'mapims@123';
 
@@ -40,6 +40,8 @@ export default function CompleteProfilePage() {
         setDepartmentId((d) => d || me.departmentId || '');
         setDesignation((d) => d || me.designation || '');
         if (me.email) setEmail((e) => e || me.email);
+        // Number from HR records, if any: shown so the person can confirm or correct it
+        if (me.whatsappNumber) setWhatsapp((w) => w || toLocalMobile(me.whatsappNumber));
       })
       .catch(() => undefined);
   }, []);
