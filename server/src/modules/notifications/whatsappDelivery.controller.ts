@@ -9,6 +9,7 @@ import { logger } from '../../config/logger.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { logActivity } from '../audit/audit.service.js';
+import { istText, sendCsv } from '../../common/helpers/csv.js';
 
 // WhatsApp delivery dashboard (Super Admin) and the WATI webhook that reports delivered / read /
 // failed for each message we send.
@@ -302,30 +303,16 @@ export const getDeliveryMessages = async (req: Request, res: Response, next: Nex
   }
 };
 
-const csvCell = (v: unknown) => {
-  const s = v === undefined || v === null ? '' : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
 /** GET /whatsapp-delivery/messages/export — filtered list as CSV. */
 export const exportDeliveryMessages = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { match } = buildMatch(req);
     const rows = await WhatsappMessage.find(match).sort({ createdAt: -1 }).limit(20000).populate('triggeredBy', 'name').lean();
-    const ist = (d?: Date) => (d ? new Date(d).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }) : '');
     const header = ['Created (IST)', 'Recipient', 'Roles', 'Department', 'Number', 'Notification', 'Incident', 'Status', 'Sent', 'Delivered', 'Read', 'Failed', 'Failure code', 'Reason', 'Triggered by'];
-    const lines = [header.join(',')];
-    for (const m of rows as any[]) {
-      lines.push(
-        [ist(m.createdAt), m.recipientName, (m.recipientRoles || []).join(' '), m.recipientDepartment, m.to ? `+${m.to}` : '', m.notificationKey, m.incidentNumber, m.status, ist(m.sentAt), ist(m.deliveredAt), ist(m.readAt), ist(m.failedAt), m.failedCode, m.failureReason, m.triggeredBy?.name]
-          .map(csvCell)
-          .join(',')
-      );
-    }
+    const ist = istText;
+    const lines = (rows as any[]).map((m) => [ist(m.createdAt), m.recipientName, (m.recipientRoles || []).join(' '), m.recipientDepartment, m.to ? `+${m.to}` : '', m.notificationKey, m.incidentNumber, m.status, ist(m.sentAt), ist(m.deliveredAt), ist(m.readAt), ist(m.failedAt), m.failedCode, m.failureReason, m.triggeredBy?.name]);
     await logActivity('EXPORT_WHATSAPP_DELIVERY_CSV', `Downloaded the WhatsApp delivery report (CSV, ${rows.length} rows)`, { req, meta: { rows: rows.length, format: 'CSV' } });
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="whatsapp_delivery_${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.send('﻿' + lines.join('\n'));
+    sendCsv(res, `whatsapp_delivery_${new Date().toISOString().slice(0, 10)}.csv`, header, lines);
   } catch (error) {
     next(error);
   }

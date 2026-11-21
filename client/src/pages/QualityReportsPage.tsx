@@ -30,8 +30,10 @@ import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { EmptyState, FilterBar, SearchInput, StatTile, TabBar, TableSkeleton, filterControlClass } from '../components/ui/listKit';
 import { SEVERITY_COLOR } from '../lib/incidentMeta';
 import { showInViewer } from '../components/ui/FileViewer';
+import MonthlyReportTab from '../components/reports/MonthlyReportTab';
+import TrendsTab from '../components/reports/TrendsTab';
 
-type ReportTab = 'INCIDENTS' | 'CAPA';
+type ReportTab = 'INCIDENTS' | 'CAPA' | 'MONTHLY' | 'TRENDS';
 
 export default function QualityReportsPage() {
   const user = useAuthStore((state) => state.user);
@@ -39,6 +41,7 @@ export default function QualityReportsPage() {
   const userDeptId = user?.departmentId;
 
   const [activeTab, setActiveTab] = useState<ReportTab>('INCIDENTS');
+  const isRegister = activeTab === 'INCIDENTS' || activeTab === 'CAPA';
   const [fromDate, setFromDate] = useState('');
   const [toDate, setToDate] = useState('');
   const [departmentId, setDepartmentId] = useState(isHospitalWide ? '' : userDeptId || '');
@@ -353,8 +356,8 @@ export default function QualityReportsPage() {
           </p>
         </div>
 
-        {/* Action Buttons: Export CSV, Excel, Print */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Action Buttons: Export CSV, Excel, Print (registers only) */}
+        <div className={`flex flex-wrap items-center gap-2.5 ${isRegister ? '' : 'hidden'}`}>
           <button
             type="button"
             onClick={handleExportCsv}
@@ -389,7 +392,7 @@ export default function QualityReportsPage() {
       </div>
 
       {/* Printable Header (Visible only when printing) */}
-      <div className="hidden print:block mb-6 border-b-2 border-[#5C1A22] pb-4">
+      <div className={`hidden mb-6 border-b-2 border-[#5C1A22] pb-4 ${isRegister ? 'print:block' : ''}`}>
         <div className="flex justify-between items-start">
           <div>
             <h1 className="text-xl font-bold text-[#5C1A22]">ADHIPARASAKTHI HOSPITALS</h1>
@@ -416,10 +419,17 @@ export default function QualityReportsPage() {
           tabs={[
             { key: 'INCIDENTS', label: 'Incident Master Register', count: filteredIncidents.length },
             { key: 'CAPA', label: 'CAPA Compliance Register', count: filteredCapas.length },
+            { key: 'MONTHLY', label: 'Monthly Report' },
+            { key: 'TRENDS', label: 'Trends' },
           ]}
         />
       </div>
 
+      {activeTab === 'MONTHLY' && <MonthlyReportTab isHospitalWide={isHospitalWide} departments={departments} />}
+      {activeTab === 'TRENDS' && <TrendsTab isHospitalWide={isHospitalWide} departments={departments} />}
+
+      {isRegister && (
+        <>
       {/* KPI Metric Summary Strip */}
       <div key={activeTab} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 print:hidden animate-tab-panel-in">
         {activeTab === 'INCIDENTS' ? (
@@ -884,6 +894,8 @@ export default function QualityReportsPage() {
           )}
         </div>
       </div>
+        </>
+      )}
     </div>
   );
 }

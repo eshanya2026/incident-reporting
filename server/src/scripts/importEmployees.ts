@@ -19,8 +19,7 @@ import { COMMON_STAFF_PASSWORD } from '../modules/auth/auth.controller.js';
 import { ROLE_CODES } from '../common/enums/permissions.js';
 import { runMigrations } from '../migrations/index.js';
 import { buildEmployees, parseCsv } from './employeeImport.js';
-
-const csvCell = (v: unknown) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+import { csvCell } from '../common/helpers/csv.js';
 
 const main = async () => {
   const file = process.argv.slice(2).find((a) => !a.startsWith('--'));

@@ -5,6 +5,7 @@ import { Role } from '../roles/role.model.js';
 import { Department } from '../departments/department.model.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { logActivity } from './audit.service.js';
+import { istText, sendCsv } from '../../common/helpers/csv.js';
 
 // Super Admin > Audit Log > Accounts: who is set up and ready to use the system (first sign-in done,
 // HOD coverage, WhatsApp coverage, role counts), and lists to chase up. Current state, not a period.
@@ -12,7 +13,21 @@ import { logActivity } from './audit.service.js';
 const DAY = 24 * 60 * 60 * 1000;
 const ROLE_ORDER = ['STAFF', 'HOD', 'QUALITY', 'ADMIN', 'RCA_HEAD', 'INTIMATION_MEMBER', 'SUPER_ADMIN'];
 
-const loadAll = async () => {
+// The tab pages through lists and switches filters quickly; ~2,000 users are loaded once and
+// reused for a few seconds rather than re-read from the database on every click.
+const CACHE_MS = 15_000;
+let cache: { at: number; data: Promise<Awaited<ReturnType<typeof readAll>>> } | null = null;
+
+const loadAll = () => {
+  if (!cache || Date.now() - cache.at > CACHE_MS) {
+    const data = readAll();
+    cache = { at: Date.now(), data };
+    data.catch(() => (cache = null)); // never keep a failed read
+  }
+  return cache.data;
+};
+
+const readAll = async () => {
   const [users, roles, departments] = await Promise.all([
     User.find()
       .select('employeeId name username designation departmentId roles status mustCompleteProfile lastLoginAt whatsappNumber email createdAt')
@@ -65,8 +80,13 @@ export const getAccountsOverview = async (_req: Request, res: Response, next: Ne
     });
 
     const userById = new Map(users.map((u) => [u._id, u]));
-    const activeDepts = departments.filter((d: any) => d.active !== false && d.category !== 'Demo & Core Operations');
-    const withHod = activeDepts.filter((d: any) => d.hodUserId && userById.get(String(d.hodUserId))?.status === 'ACTIVE');
+    const activeDepts = departments.filter((d: any) => d.active !== false);
+    // Covered only if the named HOD is still active and still holds the HOD role
+    const isWorkingHod = (id: unknown) => {
+      const h = id ? userById.get(String(id)) : undefined;
+      return Boolean(h && h.status === 'ACTIVE' && h.roles.includes('HOD'));
+    };
+    const withHod = activeDepts.filter((d: any) => isWorkingHod(d.hodUserId));
     const withoutHod = activeDepts
       .filter((d: any) => !withHod.includes(d))
       .map((d: any) => ({ _id: String(d._id), name: d.name, category: d.category ?? null }))
@@ -132,7 +152,7 @@ const listSchema = z.object({
   search: z.string().trim().max(100).optional(),
 });
 
-const filterUsers = (users: Awaited<ReturnType<typeof loadAll>>['users'], q: z.infer<typeof listSchema>) =>
+const filterUsers = (users: Awaited<ReturnType<typeof readAll>>['users'], q: z.infer<typeof listSchema>) =>
   users
     .filter((u) => {
       if (q.filter === 'inactive') return u.status !== 'ACTIVE';
@@ -172,30 +192,16 @@ export const getAccountsUsers = async (req: Request, res: Response, next: NextFu
   }
 };
 
-const csvCell = (v: unknown) => {
-  const s = v === undefined || v === null ? '' : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
 /** GET /audit/accounts/users/export — the same list as CSV (to chase people up). */
 export const exportAccountsUsers = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const q = listSchema.parse(req.query);
     const { users } = await loadAll();
     const rows = filterUsers(users, q);
-    const ist = (d?: Date) => (d ? new Date(d).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false }) : '');
-    const lines = [['Employee ID', 'Name', 'Department', 'Designation', 'Roles', 'Status', 'First sign-in done', 'Last sign-in (IST)', 'Has WhatsApp'].join(',')];
-    for (const u of rows) {
-      lines.push(
-        [u.employeeId, u.name, u.department, u.designation, u.roles.join(' '), u.status, u.firstSignInDone ? 'Yes' : 'No', ist(u.lastLoginAt), u.hasWhatsapp ? 'Yes' : 'No']
-          .map(csvCell)
-          .join(',')
-      );
-    }
+    const header = ['Employee ID', 'Name', 'Department', 'Designation', 'Roles', 'Status', 'First sign-in done', 'Last sign-in (IST)', 'Has WhatsApp'];
+    const lines = rows.map((u) => [u.employeeId, u.name, u.department, u.designation, u.roles.join(' '), u.status, u.firstSignInDone ? 'Yes' : 'No', istText(u.lastLoginAt), u.hasWhatsapp ? 'Yes' : 'No']);
     await logActivity('EXPORT_ACCOUNTS_CSV', `Downloaded the accounts list "${q.filter}" (CSV, ${rows.length} rows)`, { req, meta: { rows: rows.length, ...q, format: 'CSV' } });
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="accounts_${q.filter}_${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.send('﻿' + lines.join('\n'));
+    sendCsv(res, `accounts_${q.filter}_${new Date().toISOString().slice(0, 10)}.csv`, header, lines);
   } catch (error) {
     next(error);
   }

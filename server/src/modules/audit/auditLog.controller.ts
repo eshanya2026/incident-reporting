@@ -14,6 +14,7 @@ import { verifyAccessToken } from '../auth/auth.utils.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
 import { clientInfo, runWithContext } from '../../common/context/requestContext.js';
+import { istText, sendCsv } from '../../common/helpers/csv.js';
 
 // Super Admin audit log: who did what, when, from where, and how long they were active.
 // Everything here is read-only except forcing a session to sign out.
@@ -268,32 +269,19 @@ export const getAuditEvents = async (req: Request, res: Response, next: NextFunc
   }
 };
 
-const csvCell = (v: unknown) => {
-  const s = v === undefined || v === null ? '' : String(v);
-  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-};
-
 /** GET /audit/events/export — the filtered timeline as CSV (up to 20,000 rows). */
 export const exportAuditEvents = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const f = parseFilters(req);
     const logs = await populateUser(AuditLog.find(await eventMatch(f)).sort({ timestamp: -1 }).limit(20000)).lean();
     const maps = await buildLookups(logs);
-    const ist = (d: Date) => new Date(d).toLocaleString('en-GB', { timeZone: 'Asia/Kolkata', hour12: false });
     const header = ['Time (IST)', 'Category', 'Action', 'Description', 'Name', 'Username', 'Employee ID', 'Department', 'Incident', 'IP address', 'Device', 'Session'];
-    const lines = [header.join(',')];
-    for (const l of logs) {
+    const rows = logs.map((l: any) => {
       const e = shapeEvent(l, maps);
-      lines.push(
-        [ist(e.at), e.category, e.action, e.description, e.user?.name, e.user?.username, e.user?.employeeId, e.user?.department, e.incidentNumber, e.ipAddress, e.userAgent, e.sessionId]
-          .map(csvCell)
-          .join(',')
-      );
-    }
+      return [istText(e.at), e.category, e.action, e.description, e.user?.name, e.user?.username, e.user?.employeeId, e.user?.department, e.incidentNumber, e.ipAddress, e.userAgent, e.sessionId];
+    });
     await logActivity('AUDIT_EXPORTED', `Exported the audit log (CSV, ${logs.length} rows)`, { req, meta: { rows: logs.length, format: 'CSV', from: f.from, to: f.to } });
-    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-    res.setHeader('Content-Disposition', `attachment; filename="audit_log_${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.send('﻿' + lines.join('\n'));
+    sendCsv(res, `audit_log_${new Date().toISOString().slice(0, 10)}.csv`, header, rows);
   } catch (error) {
     next(error);
   }
