@@ -22,7 +22,7 @@ export interface CreateAuditLogParams {
 
 /** Category of an action, for entries written without one. */
 export const categoryOf = (action: string): AuditCategory => {
-  if (/^(LOGIN|LOGOUT|PASSWORD_|PROFILE_COMPLETED|ACCOUNT_LOCKED|SESSION_)/.test(action)) return 'auth';
+  if (/^(LOGIN|LOGOUT|PASSWORD_|PROFILE_|ACCOUNT_LOCKED|SESSION_)/.test(action)) return 'auth';
   if (/^SCREEN_/.test(action)) return 'screen';
   if (/^PRESENCE_/.test(action)) return 'presence';
   if (/^EXPORT_|_DOWNLOADED$/.test(action)) return 'export';

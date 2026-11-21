@@ -16,6 +16,8 @@ import {
   MessageCircle,
   History,
   MessageSquareText,
+  KeyRound,
+  ChevronDown,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Inbox, ClipboardCheck, Building2 } from 'lucide-react';
@@ -40,6 +42,25 @@ export default function AppLayout() {
   const [unreadCount, setUnreadCount] = useState(0);
   const [showNotifications, setShowNotifications] = useState(false);
   const bellRef = useRef<HTMLDivElement>(null);
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
+
+  // Close the account menu when clicking anywhere else
+  useEffect(() => {
+    if (!showUserMenu) return;
+    const close = (e: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setShowUserMenu(false);
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [showUserMenu]);
+
+  /** Ends the session on the server too (audit log), then clears this browser. */
+  const signOut = () => {
+    api.post('/auth/logout').catch(() => undefined);
+    logout();
+    navigate('/login');
+  };
   const queryClient = useQueryClient();
 
   // Close the notification menu when clicking anywhere else
@@ -252,25 +273,62 @@ export default function AppLayout() {
               )}
             </div>
 
-            {/* User Profile Capsule */}
-            <div className="flex items-center gap-2.5 bg-white pl-1.5 pr-3 sm:pr-4 h-10 rounded-xl border border-[#E2E8F0]">
-              <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#5C1A22] to-[#9C3A42] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
-                {user?.name?.charAt(0) || <UserIcon className="w-4 h-4" />}
-              </div>
-              <div className="hidden sm:flex flex-col items-start gap-0.5 text-left">
-                <div className="text-xs font-bold leading-none text-[#172033]">{user?.name || 'User'}</div>
-                <div className="text-[11px] leading-none px-1.5 py-[3px] rounded-full bg-[#F4E6D7] text-[#5C1A22] font-bold uppercase tracking-wider">
-                  {user?.roles?.[0]?.replace(/_/g, ' ') || 'User'}
+            {/* User Profile Capsule: opens the account menu (My profile, Logout) */}
+            <div className="relative" ref={userMenuRef}>
+              <button
+                type="button"
+                onClick={() => setShowUserMenu((o) => !o)}
+                aria-haspopup="menu"
+                aria-expanded={showUserMenu}
+                title="Account"
+                className="flex items-center gap-2.5 bg-white hover:bg-[#FAF3EC] pl-1.5 pr-2.5 sm:pr-3 h-10 rounded-xl border border-[#E2E8F0] hover:border-[#DDBD9A] transition cursor-pointer"
+              >
+                <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#5C1A22] to-[#9C3A42] text-white flex items-center justify-center font-bold text-xs uppercase shadow-sm">
+                  {user?.name?.charAt(0) || <UserIcon className="w-4 h-4" />}
                 </div>
-              </div>
+                <div className="hidden sm:flex flex-col items-start gap-0.5 text-left">
+                  <div className="text-xs font-bold leading-none text-[#172033]">{user?.name || 'User'}</div>
+                  <div className="text-[11px] leading-none px-1.5 py-[3px] rounded-full bg-[#F4E6D7] text-[#5C1A22] font-bold uppercase tracking-wider">
+                    {user?.roles?.[0]?.replace(/_/g, ' ') || 'User'}
+                  </div>
+                </div>
+                <ChevronDown className={`w-4 h-4 text-[#94A3B8] transition-transform ${showUserMenu ? 'rotate-180' : ''}`} />
+              </button>
+              {showUserMenu && (
+                <div role="menu" className="absolute right-0 mt-2 w-60 bg-white border border-[#E2E8F0] rounded-xl shadow-xl z-50 overflow-hidden">
+                  <div className="px-4 py-3 border-b border-[#F1F5F9]">
+                    <p className="text-sm font-bold text-[#172033] truncate">{user?.name}</p>
+                    <p className="text-xs text-[#64748B] truncate">{[user?.employeeId && `ID ${user.employeeId}`, user?.designation].filter(Boolean).join(' · ')}</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={() => {
+                      setShowUserMenu(false);
+                      navigate('/profile');
+                    }}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#172033] hover:bg-[#FAF3EC] cursor-pointer"
+                  >
+                    <UserIcon className="w-4 h-4 text-[#7A2430]" /> My profile
+                    <span className="ml-auto text-[11px] text-[#94A3B8] inline-flex items-center gap-1">
+                      <KeyRound className="w-3 h-3" /> password
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    onClick={signOut}
+                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-[#172033] hover:bg-[#FAF3EC] border-t border-[#F1F5F9] cursor-pointer"
+                  >
+                    <LogOut className="w-4 h-4 text-[#64748B]" /> Logout
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Logout Button */}
             <button
-              onClick={() => {
-                logout();
-                navigate('/login');
-              }}
+              onClick={signOut}
               className="h-10 px-3 sm:px-3.5 rounded-xl bg-white hover:bg-[#FAF3EC] text-[#64748B] hover:text-[#7A2430] border border-[#E2E8F0] hover:border-[#DDBD9A] transition duration-180 cursor-pointer flex items-center gap-2 text-xs font-semibold"
               title="Logout"
             >

@@ -18,6 +18,7 @@ import AccessControlPage from './pages/AccessControlPage';
 import CompleteProfilePage from './pages/CompleteProfilePage';
 import WhatsappTemplatesPage from './pages/WhatsappTemplatesPage';
 import AuditLogPage from './pages/AuditLogPage';
+import ProfilePage from './pages/ProfilePage';
 import WhatsappDeliveryPage from './pages/WhatsappDeliveryPage';
 import { useAuthStore } from './store/useAuthStore';
 import { api } from './lib/api';
@@ -183,6 +184,8 @@ export default function App() {
               </RequirePermission>
             }
           />
+          {/* Every signed-in user: own details and password */}
+          <Route path="profile" element={<ProfilePage />} />
           <Route
             path="whatsapp-delivery"
             element={

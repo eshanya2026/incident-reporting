@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { login, refreshToken, logout, getMe, changePassword, completeProfile } from './auth.controller.js';
+import { login, refreshToken, logout, getMe, updateMyProfile, changePassword, completeProfile } from './auth.controller.js';
 import { authenticate } from '../../middleware/authenticate.js';
 import { authLimiter } from '../../middleware/rateLimiter.js';
 
@@ -9,6 +9,7 @@ router.post('/login', authLimiter, login);
 router.post('/refresh', refreshToken);
 router.post('/logout', logout);
 router.get('/me', authenticate, getMe);
+router.patch('/me', authenticate, updateMyProfile);
 router.post('/change-password', authenticate, changePassword);
 router.post('/complete-profile', authenticate, completeProfile);
 

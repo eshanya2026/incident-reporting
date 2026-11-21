@@ -73,15 +73,22 @@ export const endUserSessions = async (userId: string, reason: SessionEndReason):
 // Forced sign-outs must take effect at once, so every request checks its session. A short cache
 // keeps that to one lookup per session every few seconds.
 const REVOKED_CACHE_MS = 5000;
-const revokedCache = new Map<string, { revoked: boolean; at: number }>();
+const revokedCache = new Map<string, { reason: string | null; at: number }>();
 
-export const isSessionRevoked = async (sessionId?: string): Promise<boolean> => {
-  if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) return false;
+/** Why a session was shut off (forced sign-out, password changed elsewhere), or null if it is usable. */
+export const sessionRevokedReason = async (sessionId?: string): Promise<string | null> => {
+  if (!sessionId || !mongoose.Types.ObjectId.isValid(sessionId)) return null;
   const hit = revokedCache.get(sessionId);
-  if (hit && Date.now() - hit.at < REVOKED_CACHE_MS) return hit.revoked;
-  const s = await UserSession.findById(sessionId).select('revoked').lean();
-  const revoked = Boolean(s?.revoked);
-  revokedCache.set(sessionId, { revoked, at: Date.now() });
+  if (hit && Date.now() - hit.at < REVOKED_CACHE_MS) return hit.reason;
+  const s = await UserSession.findById(sessionId).select('revoked endReason').lean();
+  const reason = s?.revoked ? s.endReason || 'forced' : null;
+  revokedCache.set(sessionId, { reason, at: Date.now() });
   if (revokedCache.size > 5000) revokedCache.clear();
-  return revoked;
+  return reason;
 };
+
+/** What to tell someone whose session was shut off. */
+export const revokedMessage = (reason?: string | null): string =>
+  reason === 'password_changed'
+    ? 'Your password was changed, so you have been signed out here. Please sign in with the new password.'
+    : 'Your session was ended by an administrator. Please sign in again.';

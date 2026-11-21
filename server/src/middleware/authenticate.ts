@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../common/errors/appError.js';
 import { verifyAccessToken, JwtPayload } from '../modules/auth/auth.utils.js';
 import { User } from '../modules/users/user.model.js';
-import { isSessionRevoked } from '../modules/audit/session.service.js';
+import { revokedMessage, sessionRevokedReason } from '../modules/audit/session.service.js';
 import { clientInfo, runWithContext } from '../common/context/requestContext.js';
 
 // Until an imported staff member has confirmed their details and set their own password, their
@@ -40,8 +40,9 @@ export const authenticate = async (req: Request, res: Response, next: NextFuncti
 
   try {
     // A Super Admin can end a session from the audit log; its tokens stop working at once
-    if (await isSessionRevoked(payload.sid)) {
-      return next(AppError.unauthorized('Your session was ended by an administrator. Please sign in again.'));
+    const revoked = await sessionRevokedReason(payload.sid);
+    if (revoked) {
+      return next(AppError.unauthorized(revokedMessage(revoked)));
     }
 
     // Resolve roles and permissions from the database on every request so that role changes,

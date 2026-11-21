@@ -3,7 +3,7 @@ import { z } from 'zod';
 import mongoose from 'mongoose';
 import { Department } from '../departments/department.model.js';
 import { recordAuditLog, logActivity } from '../audit/audit.service.js';
-import { startSession, endSession } from '../audit/session.service.js';
+import { startSession, endSession, revokedMessage } from '../audit/session.service.js';
 import { UserSession } from '../audit/session.model.js';
 import { User } from '../users/user.model.js';
 import { Role } from '../roles/role.model.js';
@@ -47,8 +47,8 @@ export const normaliseWhatsapp = (raw?: string): string | undefined => {
 };
 
 const changePasswordSchema = z.object({
-  currentPassword: z.string().min(1, 'Current password is required'),
-  newPassword: z.string().min(6, 'New password must be at least 6 characters'),
+  currentPassword: z.string().min(1, 'Enter your current password'),
+  newPassword: z.string().min(8, 'The new password must be at least 8 characters').max(100),
 });
 
 export const login = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -186,7 +186,7 @@ export const refreshToken = async (req: Request, res: Response, next: NextFuncti
       if (!session || session.revoked || (session.endedAt && session.endReason !== 'expired')) {
         res.clearCookie('refreshToken');
         throw AppError.unauthorized(
-          session?.endReason === 'forced' ? 'Your session was ended by an administrator. Please sign in again.' : 'Your session has ended. Please sign in again.'
+          session?.revoked ? revokedMessage(session.endReason) : 'Your session has ended. Please sign in again.'
         );
       }
       await UserSession.updateOne({ _id: sid }, { $set: { lastSeenAt: new Date() }, $unset: { endedAt: 1, endReason: 1 } });
@@ -347,6 +347,49 @@ export const completeProfile = async (req: Request, res: Response, next: NextFun
   }
 };
 
+const updateMyProfileSchema = z.object({
+  whatsappNumber: z.string().trim().max(20).optional(),
+  email: z.string().trim().email('Enter a valid email address').max(200).optional().or(z.literal('')),
+});
+
+/**
+ * PATCH /auth/me — the signed-in person updates their own WhatsApp number and email (My Profile).
+ * Department, designation and role are managed by Admin and cannot be changed here.
+ */
+export const updateMyProfile = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const data = updateMyProfileSchema.parse(req.body ?? {});
+    const user = await User.findById(req.user!.userId);
+    if (!user) throw AppError.notFound('User not found');
+
+    const changed: string[] = [];
+    if (data.whatsappNumber !== undefined) {
+      const next = data.whatsappNumber ? normaliseWhatsapp(data.whatsappNumber) : undefined;
+      if (next !== user.whatsappNumber) {
+        user.whatsappNumber = next;
+        changed.push('WhatsApp number');
+      }
+    }
+    if (data.email !== undefined) {
+      const email = data.email ? data.email.toLowerCase() : undefined;
+      if (email && (await User.exists({ email, _id: { $ne: user._id } }))) {
+        throw AppError.conflict('Another account already uses this email');
+      }
+      if (email !== (user.email || undefined)) {
+        user.email = email as any;
+        changed.push('email');
+      }
+    }
+    if (changed.length) {
+      await user.save();
+      await logActivity('PROFILE_UPDATED', `Updated own ${changed.join(' and ')}`, { req });
+    }
+    sendSuccess(res, { whatsappNumber: user.whatsappNumber ?? null, email: user.email ?? null }, changed.length ? 'Your details are saved' : 'Nothing to change');
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const changePassword = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     if (!req.user) {
@@ -362,14 +405,29 @@ export const changePassword = async (req: Request, res: Response, next: NextFunc
 
     const isMatch = await comparePassword(currentPassword, user.passwordHash);
     if (!isMatch) {
-      throw AppError.badRequest('Current password is incorrect');
+      throw AppError.badRequest('Your current password is not correct');
+    }
+    // Same rules as the first sign-in
+    if (newPassword === COMMON_STAFF_PASSWORD) throw AppError.badRequest('Choose a password other than the one you were given');
+    if ([user.username, user.employeeId].some((v) => v && newPassword.toLowerCase() === String(v).toLowerCase())) {
+      throw AppError.badRequest('Your password cannot be your Employee ID or username');
+    }
+    if (await comparePassword(newPassword, user.passwordHash)) {
+      throw AppError.badRequest('The new password must be different from the current one');
     }
 
     user.passwordHash = await hashPassword(newPassword);
+    user.failedLoginAttempts = 0;
     await user.save();
-    await logActivity('PASSWORD_CHANGED', 'Changed own password', { req });
 
-    sendSuccess(res, null, 'Password updated successfully');
+    // Sign out everywhere else, in case someone else knew the old password (this session stays)
+    const others = await UserSession.updateMany(
+      { userId: user._id, _id: { $ne: req.user.sid }, endedAt: { $exists: false } },
+      { $set: { endedAt: new Date(), endReason: 'password_changed', revoked: true } }
+    );
+    await logActivity('PASSWORD_CHANGED', `Changed own password${others.modifiedCount ? ` (signed out ${others.modifiedCount} other session(s))` : ''}`, { req });
+
+    sendSuccess(res, { otherSessionsEnded: others.modifiedCount }, 'Your password has been changed');
   } catch (error) {
     next(error);
   }
