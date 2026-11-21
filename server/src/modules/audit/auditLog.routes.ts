@@ -15,6 +15,7 @@ import {
   postActivity,
   postActivityBeacon,
 } from './auditLog.controller.js';
+import { exportAccountsUsers, getAccountsOverview, getAccountsUsers } from './accounts.controller.js';
 
 const router = Router();
 
@@ -32,5 +33,8 @@ router.get('/departments', ...superAdmin, getAuditDepartments);
 router.get('/sessions', ...superAdmin, getAuditSessions);
 router.post('/sessions/:id/end', ...superAdmin, forceEndSession);
 router.get('/ai-chats', ...superAdmin, getAuditAiChats);
+router.get('/accounts', ...superAdmin, getAccountsOverview);
+router.get('/accounts/users', ...superAdmin, getAccountsUsers);
+router.get('/accounts/users/export', ...superAdmin, exportAccountsUsers);
 
 export default router;

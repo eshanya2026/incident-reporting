@@ -27,6 +27,7 @@ import { toast } from '../store/useToastStore';
 import { errorMessage } from '../lib/useAction';
 import { PageHeader } from '../components/ui/primitives';
 import { EmptyState, TabBar } from '../components/ui/listKit';
+import AccountsTab from '../components/audit/AccountsTab';
 
 // ---------- Time (IST) ----------
 
@@ -82,7 +83,7 @@ const PRESETS: Array<{ key: Preset; label: string }> = [
   { key: 'custom', label: 'Custom' },
 ];
 
-type Tab = 'timeline' | 'people' | 'departments' | 'sessions' | 'ai';
+type Tab = 'timeline' | 'people' | 'departments' | 'sessions' | 'ai' | 'accounts';
 type Person = { _id: string; name: string; username?: string; department?: string };
 
 const SESSION_END_LABEL: Record<string, string> = {
@@ -391,6 +392,7 @@ export default function AuditLogPage() {
     { key: 'departments' as Tab, label: 'Departments' },
     { key: 'sessions' as Tab, label: 'Sessions' },
     { key: 'ai' as Tab, label: 'AI Chats' },
+    { key: 'accounts' as Tab, label: 'Accounts' },
   ];
 
   const loadingSpinner = (
@@ -411,6 +413,9 @@ export default function AuditLogPage() {
         </button>
       </PageHeader>
 
+      {/* Filters and activity tiles: not for Accounts, which shows the current state */}
+      {tab !== 'accounts' && (
+        <>
       {/* Filters */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-card p-4 space-y-3">
         <div className="flex flex-wrap items-center gap-2">
@@ -497,6 +502,8 @@ export default function AuditLogPage() {
         <Kpi label="Ask AI questions" value={summary?.aiQuestions ?? '—'} icon={Sparkles} tone="#EC4899" />
         <Kpi label="Failed sign-ins" value={summary?.failedSignIns ?? '—'} hint="Wrong password, unknown user, locked" icon={ShieldAlert} tone="#2563EB" alert={(summary?.failedSignIns ?? 0) > 0} />
       </div>
+        </>
+      )}
 
       <TabBar tabs={tabs} active={tab} onChange={(k) => setTab(k)} />
 
@@ -751,6 +758,16 @@ export default function AuditLogPage() {
             </table>
           )}
         </div>
+      )}
+
+      {/* Accounts: who is set up and ready */}
+      {tab === 'accounts' && (
+        <AccountsTab
+          onShowPerson={(u) => {
+            setPerson({ _id: u._id, name: u.name });
+            setTab('timeline');
+          }}
+        />
       )}
 
       {/* AI Chats */}
