@@ -18,6 +18,7 @@ export default function CompleteProfilePage() {
   const user = useAuthStore((s) => s.user);
   const isAuthenticated = useAuthStore((s) => s.isAuthenticated);
   const logout = useAuthStore((s) => s.logout);
+  const setUser = useAuthStore((s) => s.setUser);
   const navigate = useNavigate();
 
   const [departmentId, setDepartmentId] = useState(user?.departmentId ?? '');
@@ -29,22 +30,30 @@ export default function CompleteProfilePage() {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [loadingMe, setLoadingMe] = useState(true);
+  const [meError, setMeError] = useState('');
 
-  // The stored user may predate the latest department/designation; take them from the server once
-  useEffect(() => {
+  // The details on record (from HR or an admin) always come from the server: what this browser
+  // saved at an earlier sign-in may be out of date (e.g. from before the HR employee update)
+  const loadMe = () => {
+    setLoadingMe(true);
+    setMeError('');
     api
       .get('/auth/me')
       .then((res: any) => {
         const me = res?.data;
-        if (!me) return;
-        setDepartmentId((d) => d || me.departmentId || '');
-        setDesignation((d) => d || me.designation || '');
-        if (me.email) setEmail((e) => e || me.email);
+        if (!me) throw new Error('empty');
+        setDepartmentId(me.departmentId || '');
+        setDesignation(me.designation || '');
+        if (me.email) setEmail(me.email);
         // Number from HR records, if any: shown so the person can confirm or correct it
-        if (me.whatsappNumber) setWhatsapp((w) => w || toLocalMobile(me.whatsappNumber));
+        setWhatsapp(me.whatsappNumber ? toLocalMobile(me.whatsappNumber) : '');
+        if (user) setUser({ ...user, name: me.name ?? user.name, departmentId: me.departmentId, designation: me.designation });
       })
-      .catch(() => undefined);
-  }, []);
+      .catch((err) => setMeError(errorMessage(err, 'Could not load your details.')))
+      .finally(() => setLoadingMe(false));
+  };
+  useEffect(loadMe, []);
 
   const { data: deptData, isLoading: deptLoading } = useQuery({
     queryKey: ['departments'],
@@ -146,6 +155,18 @@ export default function CompleteProfilePage() {
           </div>
 
           <form onSubmit={submit} className="mt-6 space-y-5" noValidate>
+            {loadingMe && (
+              <div className="p-3 bg-[#F8FAFC] border border-[#E2E8F0] text-[#475569] rounded-xl text-sm flex items-center gap-2">
+                <Loader2 className="w-4 h-4 animate-spin shrink-0" /> Loading your details…
+              </div>
+            )}
+            {meError && (
+              <div role="alert" className="p-3 bg-[#FAF3EC] border border-[#F4E6D7] text-[#7A2430] rounded-xl text-sm flex items-center gap-2">
+                <AlertCircle className="w-5 h-5 shrink-0" />
+                <span className="font-medium flex-1">Your details could not be loaded ({meError}). You can fill them in below, or</span>
+                <button type="button" onClick={loadMe} className="font-semibold underline cursor-pointer">try again</button>
+              </div>
+            )}
             {error && (
               <div
                 role="alert"
