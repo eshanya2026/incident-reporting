@@ -24,6 +24,7 @@ import { useAuthStore } from './store/useAuthStore';
 import { api } from './lib/api';
 import { hasAnyPermission, homePath } from './lib/rbac';
 import Toaster from './components/ui/Toaster';
+import FileViewer from './components/ui/FileViewer';
 
 function ProtectedRoute({ children }: { children: React.JSX.Element }) {
   const { isAuthenticated, accessToken, setUser, logout, user } = useAuthStore();
@@ -73,6 +74,7 @@ export default function App() {
   return (
     <Router>
       <Toaster />
+      <FileViewer />
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/complete-profile" element={<CompleteProfilePage />} />

@@ -18,6 +18,8 @@ import {
   MessageSquareText,
   KeyRound,
   ChevronDown,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { FileText, Inbox, ClipboardCheck, Building2 } from 'lucide-react';
@@ -54,6 +56,19 @@ export default function AppLayout() {
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [showUserMenu]);
+
+  // Full screen for the whole app (browser full-screen mode; Esc or the same button exits)
+  const canFullscreen = typeof document !== 'undefined' && Boolean(document.fullscreenEnabled);
+  const [isFullscreen, setIsFullscreen] = useState(() => typeof document !== 'undefined' && Boolean(document.fullscreenElement));
+  useEffect(() => {
+    const onChange = () => setIsFullscreen(Boolean(document.fullscreenElement));
+    document.addEventListener('fullscreenchange', onChange);
+    return () => document.removeEventListener('fullscreenchange', onChange);
+  }, []);
+  const toggleFullscreen = () => {
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => undefined);
+    else void document.documentElement.requestFullscreen().catch(() => undefined);
+  };
 
   /** Ends the session on the server too (audit log), then clears this browser. */
   const signOut = () => {
@@ -213,6 +228,20 @@ export default function AppLayout() {
 
           {/* Right Header Navigation & Actions */}
           <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+            {/* Full screen toggle (hidden where the browser does not support it, e.g. iPhone Safari) */}
+            {canFullscreen && (
+              <button
+                type="button"
+                onClick={toggleFullscreen}
+                title={isFullscreen ? 'Exit full screen (Esc)' : 'Full screen'}
+                aria-label={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                aria-pressed={isFullscreen}
+                className="h-10 w-10 rounded-xl bg-white hover:bg-[#FAF3EC] text-[#64748B] hover:text-[#7A2430] border border-[#E2E8F0] hover:border-[#DDBD9A] transition cursor-pointer flex items-center justify-center"
+              >
+                {isFullscreen ? <Minimize className="w-[18px] h-[18px]" /> : <Maximize className="w-[18px] h-[18px]" />}
+              </button>
+            )}
+
             {/* Notification Bell */}
             <div className="relative" ref={bellRef}>
               <button

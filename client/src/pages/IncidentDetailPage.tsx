@@ -21,6 +21,7 @@ import CapaSection from '../components/incident/detail/CapaSection';
 import DepartmentComparisonSection from '../components/incident/detail/DepartmentComparisonSection';
 import { HistorySection, ReportDetails } from '../components/incident/detail/ReportSections';
 import { HodAssignedPanel, StaffResponsePanel, SubmitClosurePanel, WaitingNotice, RcaMeetingPanel } from '../components/incident/detail/WorkflowPanels';
+import { showInViewer } from '../components/ui/FileViewer';
 
 const INVESTIGATION_STAGES = ['UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'RCA_REQUESTED', 'CLOSED'];
 const CAPA_STAGES = ['CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'RCA_REQUESTED', 'CLOSED'];
@@ -81,14 +82,8 @@ export default function IncidentDetailPage() {
     setDownloadingReport(true);
     try {
       const blob = (await api.get(`/incidents/${id}/report`, { responseType: 'blob' })) as unknown as Blob;
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${incident.incidentNumber}-final-report.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      // Open in the viewer first; it has a Download button
+      showInViewer(blob, `${incident.incidentNumber}-final-report.pdf`, 'application/pdf');
     } catch (err: any) {
       let message = 'Could not download the report';
       const data = err?.response?.data;
@@ -176,7 +171,7 @@ export default function IncidentDetailPage() {
             title="Download the final report as a single PDF, including attached files"
           >
             {downloadingReport ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-            <span>{downloadingReport ? 'Preparing report…' : 'Download Final Report'}</span>
+            <span>{downloadingReport ? 'Preparing report…' : 'View Final Report'}</span>
           </button>
         )}
       </div>

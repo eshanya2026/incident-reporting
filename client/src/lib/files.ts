@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { api } from './api';
+import { showInViewer, useFileViewer } from '../components/ui/FileViewer';
 
 export type AttachmentEntity = 'INCIDENT' | 'INVESTIGATION' | 'RCA' | 'CAPA';
 
@@ -13,20 +14,21 @@ export const uploadFile = async (file: File, entityType: AttachmentEntity): Prom
 };
 
 /**
- * Opens an attachment through the access-checked download endpoint.
- * Uses axios directly because the shared client unwraps JSON responses.
+ * Opens an attachment in the in-app viewer (images, PDFs... shown first, with a Download button),
+ * through the access-checked download endpoint. Uses axios directly because the shared client
+ * unwraps JSON responses.
  */
-export const openAttachment = async (attachment: { _id: string; originalName?: string }): Promise<void> => {
-  const res = await axios.get(`/api/v1/attachments/${attachment._id}/download`, {
-    responseType: 'blob',
-    headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
-  });
-  const url = URL.createObjectURL(res.data);
-  const link = document.createElement('a');
-  link.href = url;
-  link.target = '_blank';
-  link.rel = 'noopener';
-  link.download = attachment.originalName || 'attachment';
-  link.click();
-  setTimeout(() => URL.revokeObjectURL(url), 60_000);
+export const openAttachment = async (attachment: { _id: string; originalName?: string; mimeType?: string }): Promise<void> => {
+  const name = attachment.originalName || 'attachment';
+  useFileViewer.getState().loading(name);
+  try {
+    const res = await axios.get(`/api/v1/attachments/${attachment._id}/download`, {
+      responseType: 'blob',
+      headers: { Authorization: `Bearer ${localStorage.getItem('accessToken')}` },
+    });
+    showInViewer(res.data, name, attachment.mimeType || String(res.headers['content-type'] || '') || undefined);
+  } catch (err) {
+    useFileViewer.getState().close();
+    throw err;
+  }
 };

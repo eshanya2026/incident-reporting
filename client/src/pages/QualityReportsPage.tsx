@@ -29,6 +29,7 @@ import { departmentOptions } from '../components/ui/DepartmentOptions';
 import { SearchableSelect } from '../components/ui/SearchableSelect';
 import { EmptyState, FilterBar, SearchInput, StatTile, TabBar, TableSkeleton, filterControlClass } from '../components/ui/listKit';
 import { SEVERITY_COLOR } from '../lib/incidentMeta';
+import { showInViewer } from '../components/ui/FileViewer';
 
 type ReportTab = 'INCIDENTS' | 'CAPA';
 
@@ -315,14 +316,8 @@ export default function QualityReportsPage() {
     setDownloadingReportId(incidentId);
     try {
       const blob = (await api.get(`/incidents/${incidentId}/report`, { responseType: 'blob' })) as unknown as Blob;
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `${incidentNumber}-final-report.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      // Open in the viewer first; it has a Download button
+      showInViewer(blob, `${incidentNumber}-final-report.pdf`, 'application/pdf');
     } catch (err: any) {
       let message = 'Could not download the report';
       const data = err?.response?.data;
@@ -750,7 +745,7 @@ export default function QualityReportsPage() {
                             onClick={() => handleDownloadIncidentReport(inc._id, inc.incidentNumber)}
                             disabled={downloadingReportId === inc._id}
                             className="inline-flex items-center gap-1.5 h-8 px-3 text-[12.5px] font-semibold text-[#5C1A22] bg-[#FAF3EC] hover:bg-[#F4E6D7] border border-[#E9D3BC] rounded-lg transition cursor-pointer disabled:opacity-60"
-                            title="Download the final report as a single PDF"
+                            title="Open the final report (PDF) — download it from the viewer"
                           >
                             {downloadingReportId === inc._id ? (
                               <Loader2 className="w-3.5 h-3.5 animate-spin" />
