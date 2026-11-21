@@ -7,6 +7,7 @@ import { Department } from '../departments/department.model.js';
 import { bulkImportUsers } from './user.controller.js';
 import { parseCsvFile } from '../../scripts/importStaffCsv.js';
 import { comparePassword } from '../auth/auth.utils.js';
+import { COMMON_STAFF_PASSWORD } from '../auth/auth.controller.js';
 
 const withDbName = (uri: string, db: string) => {
   const url = new URL(uri);
@@ -124,8 +125,8 @@ describe.skipIf(!MONGO_URI)('User Bulk Import (Integration & Unit)', () => {
     expect(user1?.name).toBe('Dr. Test One');
     expect(user1?.departmentId?.toString()).toBe(deptEmgId.toString());
 
-    // Password must be hashed and match default Staff@123
-    const isMatch = await comparePassword('Staff@123', user1!.passwordHash);
+    // Password must be hashed and match the common first sign-in password
+    const isMatch = await comparePassword(COMMON_STAFF_PASSWORD, user1!.passwordHash);
     expect(isMatch).toBe(true);
   });
 

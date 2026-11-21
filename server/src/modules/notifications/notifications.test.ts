@@ -147,7 +147,7 @@ describe.skipIf(!MONGO_URI)('notifications (MongoDB)', () => {
     await Capa.updateOne({ _id: capa._id }, { status: 'DONE' });
     await perform(incident, 'SUBMIT_CLOSURE', hod, { text: 'Evidence added' });
     await Notification.deleteMany({});
-    await perform(incident, 'REVIEW_ACCEPT', quality, { text: 'Effective' });
+    await perform(incident, 'REVIEW_ACCEPT', quality, { text: 'Effective', riskLikelihood: 2, riskSeverity: 3 });
     expect(await received()).toEqual({ staff: ['INCIDENT_REVIEW_ACCEPT'], hod: ['INCIDENT_REVIEW_ACCEPT'] });
 
     const toReporter = await Notification.findOne({ userId: ids.staff });

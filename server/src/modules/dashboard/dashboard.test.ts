@@ -41,8 +41,11 @@ describe.skipIf(!MONGO_URI)('Phase 6: Dashboards and Reports Verification agains
     const expectedOpen = await Incident.countDocuments({ status: { $in: openStatuses } });
     const expectedSubmitted = await Incident.countDocuments({ status: 'SUBMITTED' });
     const expectedPendingReview = await Incident.countDocuments({ status: 'PENDING_QUALITY_REVIEW' });
-    const expectedClosed = await Incident.countDocuments({ status: 'CLOSED' });
-    const expectedRejected = await Incident.countDocuments({ status: 'REJECTED' });
+    // Same 12-month window as the controller's default period
+    const now = new Date();
+    const since = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const expectedClosed = await Incident.countDocuments({ status: 'CLOSED', closedAt: { $gte: since } });
+    const expectedRejected = await Incident.countDocuments({ status: 'REJECTED', reportedAt: { $gte: since } });
 
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);

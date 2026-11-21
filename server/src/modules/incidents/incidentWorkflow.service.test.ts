@@ -133,7 +133,7 @@ describe.skipIf(!MONGO_URI)('IncidentWorkflowService (MongoDB)', () => {
 
     await Capa.updateOne({ _id: capa._id }, { status: 'DONE' });
     await perform(incident._id, 'SUBMIT_CLOSURE', hod, { text: 'Audit sheet attached' });
-    doc = await perform(incident._id, 'REVIEW_ACCEPT', quality, { text: 'Effective' });
+    doc = await perform(incident._id, 'REVIEW_ACCEPT', quality, { text: 'Effective', riskLikelihood: 2, riskSeverity: 3 });
     expect(doc.status).toBe('CLOSED');
     expect(doc.closedBy?.toString()).toBe(ids.quality.toString());
     capaDoc = await Capa.findById(capa._id);

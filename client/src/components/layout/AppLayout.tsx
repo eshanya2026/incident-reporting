@@ -30,6 +30,7 @@ import { api } from '../../lib/api';
 import { hasAnyPermission, hasPermission } from '../../lib/rbac';
 import BrandLogo from '../ui/BrandLogo';
 import { useActivityTracker } from '../../lib/activityTracker';
+import NavMenu, { navPillClass } from './NavMenu';
 
 dayjs.extend(relativeTime);
 
@@ -170,6 +171,8 @@ export default function AppLayout() {
     permission?: string;
     anyPermissions?: string[];
     count?: number;
+    /** Shown inside a dropdown with the other items of the same group (when there are 2+). */
+    group?: 'admin';
   }> = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
     { label: 'Report Incident', path: '/incidents/new', icon: PlusCircle, permission: 'incident.create' },
@@ -181,11 +184,11 @@ export default function AppLayout() {
     { label: 'CAPA', path: '/capas', icon: CheckSquare, permission: 'capa.read' },
     { label: 'Reports', path: '/reports', icon: BarChart3, anyPermissions: ['report.view_all', 'report.view_department'] },
     { label: 'AI Insights', path: '/insights', icon: Sparkles, anyPermissions: ['insights.view_all', 'insights.view_department'] },
-    { label: 'Administration', path: '/admin', icon: Settings, permission: 'admin.user_manage' },
-    { label: 'Access Control', path: '/access-control', icon: ShieldCheck, permission: 'admin.access_control' },
-    { label: 'WhatsApp Messages', path: '/whatsapp-messages', icon: MessageCircle, permission: 'admin.whatsapp_templates' },
-    { label: 'WhatsApp Delivery', path: '/whatsapp-delivery', icon: MessageSquareText, permission: 'admin.access_control' },
-    { label: 'Audit Log', path: '/audit-log', icon: History, permission: 'admin.access_control' },
+    { label: 'Administration', path: '/admin', icon: Settings, permission: 'admin.user_manage', group: 'admin' },
+    { label: 'Access Control', path: '/access-control', icon: ShieldCheck, permission: 'admin.access_control', group: 'admin' },
+    { label: 'WhatsApp Messages', path: '/whatsapp-messages', icon: MessageCircle, permission: 'admin.whatsapp_templates', group: 'admin' },
+    { label: 'WhatsApp Delivery', path: '/whatsapp-delivery', icon: MessageSquareText, permission: 'admin.access_control', group: 'admin' },
+    { label: 'Audit Log', path: '/audit-log', icon: History, permission: 'admin.access_control', group: 'admin' },
   ];
 
   const visibleNavItems = navItems.filter((item) => {
@@ -193,6 +196,10 @@ export default function AppLayout() {
     if (item.anyPermissions) return hasAnyPermission(user, item.anyPermissions);
     return true;
   });
+  // Admin pages fold into one "Admin" menu when there are two or more, so the bar fits in one row
+  const adminItems = visibleNavItems.filter((i) => i.group === 'admin');
+  const groupAdmin = adminItems.length >= 2;
+  const topLevelItems = groupAdmin ? visibleNavItems.filter((i) => i.group !== 'admin') : visibleNavItems;
   // The active pill glides to the current tab instead of snapping (no match on a sub-route, e.g.
   // /incidents/:id, just collapses the indicator to width 0 — nothing to glide to).
 
@@ -369,25 +376,24 @@ export default function AppLayout() {
 
         {/* Navigation Bar - soft tinted tray with pill items */}
         <div className="bg-gradient-to-b from-[#FAF4E9] to-[#FAF4E9] border-t border-[#E9DDC9]">
-          <div className="w-full px-4 sm:px-6 lg:px-8 flex justify-start md:justify-center gap-1.5 py-2 overflow-x-auto scrollbar-none">
+          {/* Scrolls sideways on narrow screens. The inner row is centred with mx-auto rather than
+              justify-center, which would cut off the first items once the row is wider than the screen. */}
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-2 overflow-x-auto scrollbar-none">
+            <nav className="flex w-max mx-auto gap-1.5" aria-label="Main">
             {/*
               The active pill's background lives directly on the Link, not as a separate element
               tracking its position via JS measurement — that approach could drift out of sync
               with the text (e.g. right after the visible items change, as they do per role),
               leaving white active-state text rendered outside the pill and unreadable.
             */}
-            {visibleNavItems.map((item) => {
+            {topLevelItems.map((item) => {
               const Icon = item.icon;
               const isActive = location.pathname === item.path;
               return (
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`group/nav relative flex items-center gap-2 h-9 px-4 text-[14px] whitespace-nowrap rounded-full transition-colors duration-180 ${
-                    isActive
-                      ? 'text-white font-semibold bg-gradient-to-r from-[#5C1A22] via-[#7A2430] to-[#9C3A42] shadow-[0_6px_14px_-4px_rgba(92,26,34,0.55)]'
-                      : 'text-[#475569] font-medium hover:text-[#3D0F16] hover:bg-white hover:shadow-[0_2px_8px_-2px_rgba(61,15,22,0.18)]'
-                  }`}
+                  className={navPillClass(isActive)}
                 >
                   {isActive && (
                     <span
@@ -411,6 +417,8 @@ export default function AppLayout() {
                 </Link>
               );
             })}
+            {groupAdmin && <NavMenu label="Admin" icon={Settings} items={adminItems} />}
+            </nav>
           </div>
         </div>
       </header>

@@ -1,0 +1,380 @@
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import mongoose from 'mongoose';
+import request from 'supertest';
+import { inflateSync } from 'node:zlib';
+import app from '../app.js';
+import { syncSystemRoles } from '../seeders/systemRoles.js';
+import { Role } from '../modules/roles/role.model.js';
+import { User } from '../modules/users/user.model.js';
+import { Department } from '../modules/departments/department.model.js';
+import { Location } from '../modules/locations/location.model.js';
+import { IncidentCategory } from '../modules/categories/category.model.js';
+import { Incident } from '../modules/incidents/incident.model.js';
+import { UserSession } from '../modules/audit/session.model.js';
+import { WhatsappMessage } from '../modules/notifications/whatsappMessage.model.js';
+import { hashPassword } from '../modules/auth/auth.utils.js';
+import { ROLE_CODES } from '../common/enums/permissions.js';
+
+// End-to-end checks of the promises the hospital relies on, through the real HTTP API with real
+// roles and real sign-ins: reporter confidentiality, who may create Admins, HOD hand-over, ended
+// sessions, and WhatsApp delivery statuses. Opt-in (drops its own database), like the other
+// MongoDB tests:  TEST_MONGO_URI=mongodb://localhost:27018 npx vitest run src/test/security.test.ts
+
+const withDbName = (uri: string, db: string) => {
+  const url = new URL(uri);
+  url.pathname = `/${db}`;
+  return url.toString();
+};
+const MONGO_URI = process.env.TEST_MONGO_URI ? withDbName(process.env.TEST_MONGO_URI, 'security_test') : undefined;
+
+const PASSWORD = 'Secure#Pass2026';
+const WEBHOOK = `/api/v1/whatsapp/webhook/${process.env.WATI_WEBHOOK_SECRET}`;
+
+// A reporter whose name, username and employee ID are unique strings, so any leak is caught
+// wherever it appears in a response
+const REPORTER = { name: 'Zebulon Quillfeather', username: 'zquillfeather', employeeId: 'ZQ-77441' };
+
+describe.skipIf(!MONGO_URI)('Security and confidentiality (HTTP, MongoDB)', () => {
+  const ids: Record<string, string> = {};
+  const roleId: Record<string, string> = {};
+  const tokens: Record<string, string> = {};
+  let openIncidentId = '';
+  let closedIncidentId = '';
+
+  const signIn = async (username: string, password = PASSWORD) => {
+    const res = await request(app).post('/api/v1/auth/login').send({ username, password });
+    expect(res.status, `sign-in as ${username}: ${JSON.stringify(res.body)}`).toBe(200);
+    return { token: res.body.data.accessToken as string, cookies: res.headers['set-cookie'] as unknown as string[] };
+  };
+  const api = (token: string) => ({
+    get: (url: string) => request(app).get(url).set('Authorization', `Bearer ${token}`),
+    post: (url: string, body?: object) => request(app).post(url).set('Authorization', `Bearer ${token}`).send(body ?? {}),
+    patch: (url: string, body?: object) => request(app).patch(url).set('Authorization', `Bearer ${token}`).send(body ?? {}),
+  });
+
+  let passwordHash: string | undefined; // hashed once: bcrypt is slow on purpose
+  const makeUser = async (key: string, role: string, extra: Record<string, unknown> = {}) => {
+    const u = await User.create({
+      employeeId: `E-${key}`,
+      name: `User ${key}`,
+      username: key.toLowerCase(),
+      email: `${key.toLowerCase()}@test.local`,
+      passwordHash: passwordHash ??= await hashPassword(PASSWORD),
+      roles: [roleId[role]],
+      status: 'ACTIVE',
+      mustCompleteProfile: false,
+      designation: role === ROLE_CODES.HOD ? 'Head of Department' : 'Staff',
+      ...extra,
+    });
+    ids[key] = String(u._id);
+    return u;
+  };
+
+  beforeAll(async () => {
+    await mongoose.connect(MONGO_URI!);
+    await mongoose.connection.dropDatabase();
+    await syncSystemRoles();
+    for (const r of await Role.find().select('code')) roleId[r.code] = String(r._id);
+
+    const [deptA, deptB, deptC] = await Department.create([
+      { code: 'SECA', name: 'Ward A' },
+      { code: 'SECB', name: 'Ward B' },
+      { code: 'SECC', name: 'Ward C' },
+    ]);
+    ids.deptA = String(deptA._id);
+    ids.deptB = String(deptB._id);
+    ids.deptC = String(deptC._id);
+    const [loc] = await Location.create([{ code: 'SECLOC', name: 'Corridor 1', type: 'WARD' }]);
+    const [cat] = await IncidentCategory.create([{ code: 'SECCAT', name: 'Patient Fall' }]);
+    ids.location = String(loc._id);
+    ids.category = String(cat._id);
+
+    await makeUser('reporter', ROLE_CODES.STAFF, { ...REPORTER, departmentId: deptB._id });
+    ids.reporter = String((await User.findOne({ username: REPORTER.username }))!._id);
+    await makeUser('quality', ROLE_CODES.QUALITY);
+    await makeUser('admin', ROLE_CODES.ADMIN);
+    await makeUser('admin2', ROLE_CODES.ADMIN);
+    await makeUser('superadmin', ROLE_CODES.SUPER_ADMIN);
+    await makeUser('hodA', ROLE_CODES.HOD, { departmentId: deptA._id });
+    await makeUser('hodB', ROLE_CODES.HOD, { departmentId: deptB._id });
+    await makeUser('nextHod', ROLE_CODES.STAFF, { departmentId: deptC._id });
+    await makeUser('intimated', ROLE_CODES.INTIMATION_MEMBER);
+    await makeUser('plainStaff', ROLE_CODES.STAFF, { departmentId: deptC._id });
+    await Department.updateOne({ _id: deptA._id }, { hodUserId: ids.hodA });
+    await Department.updateOne({ _id: deptB._id }, { hodUserId: ids.hodB });
+
+    for (const key of ['quality', 'admin', 'superadmin', 'hodA', 'hodB', 'intimated', 'plainStaff']) {
+      tokens[key] = (await signIn(key.toLowerCase())).token;
+    }
+    tokens.reporter = (await signIn(REPORTER.username)).token;
+
+    // The reporter reports through the app; Quality asks a question; the reporter answers;
+    // Quality assigns it to Ward A and copies in an intimation member
+    const created = await api(tokens.reporter).post('/api/v1/incidents', {
+      incidentDateTime: new Date().toISOString(),
+      occurredInDepartmentId: ids.deptA,
+      locationId: ids.location,
+      categoryId: ids.category,
+      affectedPersonType: 'EMPLOYEE',
+      title: 'Wet floor fall near nurses station',
+      description: 'Staff member slipped on a wet floor near the nurses station.',
+    });
+    expect(created.status, JSON.stringify(created.body)).toBe(201);
+    openIncidentId = created.body.data._id;
+    expect((await api(tokens.quality).post(`/api/v1/incidents/${openIncidentId}/request-info`, { question: 'Which corridor?' })).status).toBe(200);
+    expect((await api(tokens.reporter).post(`/api/v1/incidents/${openIncidentId}/respond`, { response: 'Corridor 1, east side' })).status).toBe(200);
+    const assigned = await api(tokens.quality).post(`/api/v1/incidents/${openIncidentId}/assign`, {
+      departmentId: ids.deptA,
+      severity: 2,
+      intimatedUserIds: [ids.intimated],
+    });
+    expect(assigned.status, JSON.stringify(assigned.body)).toBe(200);
+
+    // A closed incident from the same reporter, closed by Ward A's HOD, for the final report PDF
+    const now = new Date();
+    const closed = await Incident.create({
+      incidentNumber: 'SEC-CLOSED-1',
+      reportedBy: ids.reporter,
+      reportedAt: new Date(now.getTime() - 10 * 86400000),
+      incidentDateTime: new Date(now.getTime() - 10 * 86400000),
+      reportingDepartmentId: ids.deptB,
+      occurredInDepartmentId: ids.deptA,
+      departmentId: ids.deptA,
+      locationId: ids.location,
+      categoryId: ids.category,
+      affectedPersonType: 'EMPLOYEE',
+      title: 'Earlier closed incident',
+      description: 'Closed earlier for the report test.',
+      severity: 2,
+      initialSeverity: 2,
+      status: 'CLOSED',
+      assignedHod: ids.hodA,
+      assignedAt: new Date(now.getTime() - 9 * 86400000),
+      assignments: [{ departmentId: ids.deptA, hodUserId: ids.hodA, severity: 2, by: ids.quality, at: new Date(now.getTime() - 9 * 86400000) }],
+      closedAt: new Date(now.getTime() - 2 * 86400000),
+      closedBy: ids.quality,
+    });
+    closedIncidentId = String(closed._id);
+  }, 60_000);
+
+  afterAll(async () => {
+    await mongoose.connection.dropDatabase();
+    await mongoose.disconnect();
+  });
+
+  // ---------- Reporter confidentiality ----------
+
+  /** Fails if anything identifying the reporter appears anywhere in the response. */
+  const expectNoReporter = (body: unknown, where: string) => {
+    const text = typeof body === 'string' ? body : JSON.stringify(body);
+    for (const needle of [REPORTER.name, REPORTER.username, REPORTER.employeeId, ids.reporter]) {
+      expect(text.includes(needle), `${where} leaks "${needle}"`).toBe(false);
+    }
+  };
+  /** Text drawn in a PDF: page streams are compressed and pdf-lib writes strings as hex. */
+  const pdfText = (buf: Buffer): string => {
+    const raw = buf.toString('latin1');
+    const parts: string[] = [raw];
+    const re = /stream\r?\n/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(raw))) {
+      const start = m.index + m[0].length;
+      const end = raw.indexOf('endstream', start);
+      if (end < 0) break;
+      try {
+        parts.push(inflateSync(buf.subarray(start, end)).toString('latin1'));
+      } catch {
+        // not a compressed stream (fonts, images...)
+      }
+    }
+    // Decode <hex> strings so names can be searched as plain text
+    return parts.join('\n').replace(/<([0-9A-Fa-f]{2,})>/g, (_, hex: string) => Buffer.from(hex, 'hex').toString('latin1'));
+  };
+  const pdfContains = (buf: Buffer, s: string) => pdfText(buf).includes(s);
+
+  const SCREENS = (id: string) => [
+    '/api/v1/incidents',
+    '/api/v1/incidents/my-department',
+    '/api/v1/incidents/review-queue',
+    `/api/v1/incidents/${id}`,
+    `/api/v1/incidents/${id}/timeline`,
+    '/api/v1/reports/incidents',
+    '/api/v1/reports/incidents?format=csv',
+    `/api/v1/reports/monthly?month=${new Date().toISOString().slice(0, 7)}`,
+    '/api/v1/reports/trends',
+    '/api/v1/dashboard/overview',
+    '/api/v1/notifications',
+  ];
+
+  it('the HOD handling the incident never sees who reported it, on any screen or export', async () => {
+    let checked = 0;
+    for (const url of SCREENS(openIncidentId)) {
+      const res = await api(tokens.hodA).get(url);
+      if (res.status === 403 || res.status === 404) continue; // not available to an HOD at all
+      expect(res.status, `${url}: ${JSON.stringify(res.body).slice(0, 200)}`).toBe(200);
+      expectNoReporter(res.text, `HOD ${url}`);
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThanOrEqual(8);
+    // The detail screen says it is confidential rather than just leaving it blank
+    const detail = await api(tokens.hodA).get(`/api/v1/incidents/${openIncidentId}`);
+    expect(detail.body.data.reporterHidden).toBe(true);
+  });
+
+  it('the final report PDF does not name the reporter for the HOD', async () => {
+    const res = await api(tokens.hodA).get(`/api/v1/incidents/${closedIncidentId}/report`).buffer(true).parse((r, cb) => {
+      const chunks: Buffer[] = [];
+      r.on('data', (c: Buffer) => chunks.push(c));
+      r.on('end', () => cb(null, Buffer.concat(chunks)));
+    });
+    expect(res.status).toBe(200);
+    const pdf = res.body as Buffer;
+    expect(pdf.subarray(0, 4).toString()).toBe('%PDF');
+    expect(pdfContains(pdf, REPORTER.name)).toBe(false);
+    expect(pdfContains(pdf, 'Earlier closed incident')).toBe(true); // the check can see text at all
+  });
+
+  it('an intimation member copied in does not see the reporter either', async () => {
+    for (const url of [`/api/v1/incidents/${openIncidentId}`, `/api/v1/incidents/${openIncidentId}/timeline`, '/api/v1/incidents', '/api/v1/notifications']) {
+      const res = await api(tokens.intimated).get(url);
+      if (res.status === 403 || res.status === 404) continue;
+      expect(res.status, url).toBe(200);
+      expectNoReporter(res.text, `intimation member ${url}`);
+    }
+  });
+
+  it('staff who are not involved cannot open the incident at all', async () => {
+    const res = await api(tokens.plainStaff).get(`/api/v1/incidents/${openIncidentId}`);
+    expect([403, 404]).toContain(res.status);
+    expectNoReporter(res.text, 'unrelated staff');
+  });
+
+  it('Quality, Admin and the reporter themselves do see the reporter', async () => {
+    for (const who of ['quality', 'admin', 'reporter']) {
+      const res = await api(tokens[who]).get(`/api/v1/incidents/${openIncidentId}`);
+      expect(res.status).toBe(200);
+      expect(res.text.includes(REPORTER.name), `${who} should see the reporter`).toBe(true);
+    }
+  });
+
+  // ---------- Only a Super Admin manages Admins ----------
+
+  const newUserBody = (key: string, role: string) => ({
+    employeeId: `NEW-${key}`,
+    name: `New ${key}`,
+    email: `new-${key}@test.local`,
+    username: `new${key}`,
+    password: 'Another#Pass2026',
+    roles: [roleId[role]],
+  });
+
+  it('an Admin cannot create an Admin or a Super Admin', async () => {
+    for (const role of [ROLE_CODES.ADMIN, ROLE_CODES.SUPER_ADMIN]) {
+      const res = await api(tokens.admin).post('/api/v1/users', newUserBody(`by-admin-${role}`, role));
+      expect(res.status, `${role}: ${JSON.stringify(res.body)}`).toBe(403);
+    }
+    expect(await User.countDocuments({ username: /^newby-admin/ })).toBe(0);
+  });
+
+  it('an Admin cannot promote someone to Admin, nor edit another Admin', async () => {
+    const promote = await api(tokens.admin).patch(`/api/v1/users/${ids.plainStaff}`, { roles: [roleId[ROLE_CODES.ADMIN]] });
+    expect(promote.status).toBe(403);
+    const editOther = await api(tokens.admin).patch(`/api/v1/users/${ids.admin2}`, { status: 'INACTIVE' });
+    expect(editOther.status).toBe(403);
+    expect((await User.findById(ids.admin2))!.status).toBe('ACTIVE');
+    const resetOther = await api(tokens.admin).post(`/api/v1/users/${ids.admin2}/reset-password`, { password: 'Hijack#Pass2026' });
+    expect([403, 404]).toContain(resetOther.status);
+  });
+
+  it('a Super Admin can create an Admin', async () => {
+    const res = await api(tokens.superadmin).post('/api/v1/users', newUserBody('by-super', ROLE_CODES.ADMIN));
+    expect(res.status, JSON.stringify(res.body)).toBe(201);
+  });
+
+  // ---------- HOD change ----------
+
+  it('changing a department HOD hands over open incidents but keeps who handled past ones', async () => {
+    const res = await api(tokens.admin).patch(`/api/v1/departments/${ids.deptA}`, { hodUserId: ids.nextHod });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    const open = await Incident.findById(openIncidentId);
+    expect(String(open!.assignedHod)).toBe(ids.nextHod);
+    const closed = await Incident.findById(closedIncidentId);
+    expect(String(closed!.assignedHod)).toBe(ids.hodA);
+    expect(String(closed!.assignments[0].hodUserId)).toBe(ids.hodA);
+
+    const next = await User.findById(ids.nextHod).populate('roles', 'code');
+    expect((next!.roles as any[]).map((r) => r.code)).toContain(ROLE_CODES.HOD);
+    expect(String(next!.departmentId)).toBe(ids.deptA);
+
+    // The new HOD sees the handed-over incident, still without the reporter
+    const nextToken = (await signIn('nexthod')).token;
+    const detail = await api(nextToken).get(`/api/v1/incidents/${openIncidentId}`);
+    expect(detail.status).toBe(200);
+    expectNoReporter(detail.text, 'new HOD detail');
+  });
+
+  // ---------- Sessions ----------
+
+  it('a session ended by the Super Admin stops working at once, including refresh', async () => {
+    const { token, cookies } = await signIn('hodb');
+    expect((await api(token).get('/api/v1/auth/me')).status).toBe(200);
+    const session = await UserSession.findOne({ userId: ids.hodB, endedAt: null }).sort({ startedAt: -1 });
+    expect((await api(tokens.superadmin).post(`/api/v1/audit/sessions/${session!._id}/end`)).status).toBe(200);
+
+    const after = await api(token).get('/api/v1/auth/me');
+    expect(after.status).toBe(401);
+    expect(after.body.error.message).toMatch(/ended by an administrator/i);
+    const refresh = await request(app).post('/api/v1/auth/refresh').set('Cookie', cookies);
+    expect(refresh.status).toBe(401);
+  });
+
+  it('changing your password signs out your other sessions, not this one', async () => {
+    const here = await signIn('plainstaff');
+    const elsewhere = await signIn('plainstaff');
+    const res = await api(here.token).post('/api/v1/auth/change-password', { currentPassword: PASSWORD, newPassword: 'Changed#Pass2026' });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+
+    expect((await api(here.token).get('/api/v1/auth/me')).status).toBe(200);
+    const other = await api(elsewhere.token).get('/api/v1/auth/me');
+    expect(other.status).toBe(401);
+    expect(other.body.error.message).toMatch(/password was changed/i);
+    // The old password no longer works
+    expect((await request(app).post('/api/v1/auth/login').send({ username: 'plainstaff', password: PASSWORD })).status).toBe(401);
+  });
+
+  it('only a Super Admin can see the audit log', async () => {
+    for (const who of ['admin', 'quality', 'hodA']) {
+      expect((await api(tokens[who]).get('/api/v1/audit/summary')).status, who).toBe(403);
+    }
+    expect((await api(tokens.superadmin).get('/api/v1/audit/summary')).status).toBe(200);
+  });
+
+  // ---------- WhatsApp delivery statuses ----------
+
+  it('WhatsApp statuses only move forward, whatever order WATI reports them in', async () => {
+    const msg = await WhatsappMessage.create({
+      to: '919000000001',
+      notificationKey: 'INCIDENT_ASSIGNED',
+      status: 'SENT',
+      providerIds: ['wati-msg-1'],
+      history: [],
+    });
+    const event = (eventType: string, extra: object = {}) => request(app).post(WEBHOOK).send({ eventType, localMessageId: 'wati-msg-1', ...extra });
+
+    expect((await event('sentMessageREAD_v2')).status).toBe(200);
+    expect((await WhatsappMessage.findById(msg._id))!.status).toBe('READ');
+    await event('sentMessageDELIVERED_v2'); // arrives late
+    let after = (await WhatsappMessage.findById(msg._id))!;
+    expect(after.status).toBe('READ');
+    expect(after.deliveredAt).toBeTruthy(); // its time is still recorded
+    await event('templateMessageSent_v2');
+    after = (await WhatsappMessage.findById(msg._id))!;
+    expect(after.status).toBe('READ');
+  });
+
+  it('the WhatsApp webhook ignores calls without the secret', async () => {
+    const res = await request(app).post('/api/v1/whatsapp/webhook/wrong-secret-value').send({ eventType: 'sentMessageREAD_v2', localMessageId: 'x' });
+    expect(res.status).toBe(404);
+  });
+});
