@@ -5,6 +5,7 @@ import { PERMISSIONS } from '../../common/enums/permissions.js';
 import {
   exportDeliveryMessages,
   getDeliveryMessages,
+  getMessageLinkEvents,
   getDeliverySummary,
   receiveWatiWebhook,
   resendMessage,
@@ -21,5 +22,6 @@ router.get('/summary', getDeliverySummary);
 router.get('/messages', getDeliveryMessages);
 router.get('/messages/export', exportDeliveryMessages);
 router.post('/messages/:id/resend', resendMessage);
+router.get('/messages/:id/link-events', getMessageLinkEvents);
 
 export default router;

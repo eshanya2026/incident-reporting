@@ -163,6 +163,32 @@ export default function AppLayout() {
     }
   };
 
+  // Opened from a WhatsApp short link (?via=<code>): tell the server who opened it, then tidy the URL
+  const reportedVia = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const via = params.get('via');
+    if (!via) return;
+    params.delete('via');
+    const rest = params.toString();
+    navigate(`${location.pathname}${rest ? `?${rest}` : ''}${location.hash}`, { replace: true });
+    if (!/^[A-Za-z0-9]{6,16}$/.test(via) || reportedVia.current.has(via)) return;
+    reportedVia.current.add(via);
+    let timezone: string | undefined;
+    try {
+      timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    } catch {
+      timezone = undefined;
+    }
+    api
+      .post(`/links/${via}/opened`, {
+        screen: { width: window.screen?.width, height: window.screen?.height, pixelRatio: Math.round((window.devicePixelRatio || 1) * 100) / 100 },
+        timezone,
+        installedApp: window.matchMedia?.('(display-mode: standalone)').matches || false,
+      })
+      .catch(() => undefined);
+  }, [location.search, location.pathname, location.hash, navigate]);
+
   // Items appear only for users with the permission (see lib/rbac.ts); counts show waiting work
   const navItems: Array<{
     label: string;

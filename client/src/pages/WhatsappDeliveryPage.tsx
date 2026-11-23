@@ -16,6 +16,7 @@ import {
   AlertTriangle,
   Copy,
   Loader2,
+  MousePointerClick,
 } from 'lucide-react';
 import { api } from '../lib/api';
 import { toast } from '../store/useToastStore';
@@ -167,6 +168,41 @@ function Breakdown({ title, rows, labelOf, onPick }: { title: string; rows: any[
   );
 }
 
+const LINK_EVENT_LABEL: Record<string, string> = { TAP: 'Tapped link', OPENED: 'Opened in Statlog', PREVIEW: 'Link preview (not a person)' };
+
+/** Every tap / open of the short link in one message: when, phone, browser, IP, who (if signed in). */
+function LinkEvents({ messageId }: { messageId: string }) {
+  const q = useQuery({ queryKey: ['wa-link-events', messageId], queryFn: () => api.get(`/whatsapp-delivery/messages/${messageId}/link-events`) });
+  const events: any[] = (q.data as any)?.data || [];
+  if (q.isLoading) return <p className="text-xs text-slate-400">Loading link activity…</p>;
+  if (!events.length) return <p className="text-xs text-slate-400">Link not tapped yet.</p>;
+  return (
+    <ul className="space-y-1.5">
+      {events.map((e) => (
+        <li key={e._id} className="text-xs text-slate-600">
+          <span className={`font-semibold ${e.kind === 'OPENED' ? 'text-emerald-700' : e.kind === 'TAP' ? 'text-violet-700' : 'text-slate-400'}`}>
+            {LINK_EVENT_LABEL[e.kind] || e.kind}
+          </span>{' '}
+          · {fmt(e.at, { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}
+          {e.user && (
+            <>
+              {' '}
+              · by <span className="font-semibold text-slate-800">{e.user.name}</span>
+              {e.isRecipient === false && <span className="text-amber-700"> (not the recipient)</span>}
+            </>
+          )}
+          <span className="block text-slate-500">
+            {[e.deviceLabel, e.device?.formFactor && e.device.formFactor !== 'bot' ? e.device.formFactor : null, e.language, e.ip && `IP ${e.ip}`]
+              .filter(Boolean)
+              .join(' · ') || e.userAgent || '—'}
+            {e.screen?.width ? ` · screen ${e.screen.width}×${e.screen.height}${e.installedApp ? ' · installed app' : ''}` : ''}
+          </span>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 export default function WhatsappDeliveryPage() {
   const queryClient = useQueryClient();
   const [preset, setPreset] = useState<Preset>('30d');
@@ -180,12 +216,14 @@ export default function WhatsappDeliveryPage() {
   const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [expanded, setExpanded] = useState<string | null>(null);
+  // Grouped by default: one row per person + notification + incident (resends and repeat tests fold in)
+  const [everyAttempt, setEveryAttempt] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => setDebouncedSearch(search.trim()), 300);
     return () => clearTimeout(t);
   }, [search]);
-  useEffect(() => setPage(1), [preset, customFrom, customTo, statuses, notificationKey, role, departmentId, debouncedSearch]);
+  useEffect(() => setPage(1), [preset, customFrom, customTo, statuses, notificationKey, role, departmentId, debouncedSearch, everyAttempt]);
 
   const range = useMemo(() => {
     const now = new Date();
@@ -211,8 +249,8 @@ export default function WhatsappDeliveryPage() {
 
   const summaryQ = useQuery({ queryKey: ['wa-summary', key], queryFn: () => api.get('/whatsapp-delivery/summary', { params }), refetchInterval: 60 * 1000 });
   const messagesQ = useQuery({
-    queryKey: ['wa-messages', key, page],
-    queryFn: () => api.get('/whatsapp-delivery/messages', { params: { ...params, page, limit: 50 } }),
+    queryKey: ['wa-messages', key, page, everyAttempt],
+    queryFn: () => api.get('/whatsapp-delivery/messages', { params: { ...params, page, limit: 50, view: everyAttempt ? 'all' : undefined } }),
     refetchInterval: 60 * 1000,
   });
   const s = (summaryQ.data as any)?.data;
@@ -256,7 +294,7 @@ export default function WhatsappDeliveryPage() {
 
   const resend = async (m: any) => {
     try {
-      const res: any = await api.post(`/whatsapp-delivery/messages/${m._id}/resend`);
+      const res: any = await api.post(`/whatsapp-delivery/messages/${m.resendId || m._id}/resend`);
       toast.success(res?.message || 'Sent again');
       void queryClient.invalidateQueries({ queryKey: ['wa-messages'] });
       void queryClient.invalidateQueries({ queryKey: ['wa-summary'] });
@@ -412,13 +450,20 @@ export default function WhatsappDeliveryPage() {
       </div>
 
       {/* Tiles */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
         <Kpi label="Notifications" value={t?.total ?? '—'} hint="Sent or attempted" icon={MessageCircle} tone="#7A2430" />
         <Kpi label="Sent" value={t?.sent ?? '—'} hint="Accepted by WATI" icon={Send} tone="#7C3AED" />
         <Kpi label="Delivered" value={t?.delivered ?? '—'} hint={t ? `${pct(t.deliveryRate)} of sent · avg ${fmtDuration(s?.avgTimeToDeliverMs)}` : undefined} icon={CheckCheck} tone="#0284C7" />
         <Kpi label="Read" value={t?.read ?? '—'} hint={t ? `${pct(t.readRate)} of delivered · avg ${fmtDuration(s?.avgTimeToReadMs)}` : undefined} icon={Eye} tone="#047857" />
         <Kpi label="Failed" value={t?.failed ?? '—'} hint={t ? `${pct(t.failureRate)} of attempts` : undefined} icon={XCircle} tone="#DC2626" alert={(t?.failed ?? 0) > 0} />
         <Kpi label="Not sent" value={t?.skipped ?? '—'} hint="No WhatsApp number on profile" icon={UserX} tone="#D97706" />
+        <Kpi
+          label="Link tapped"
+          value={t?.tapped ?? '—'}
+          hint={t ? `${pct(t.tapRate)} of messages with a link · ${t.opened ?? 0} opened signed in` : undefined}
+          icon={MousePointerClick}
+          tone="#7A2430"
+        />
       </div>
 
       {/* Trend */}
@@ -486,7 +531,16 @@ export default function WhatsappDeliveryPage() {
 
       {/* Messages */}
       <div className="bg-white rounded-2xl border border-slate-200 shadow-card overflow-hidden">
-        <h3 className="px-4 py-3 text-sm font-bold text-slate-800 border-b border-slate-100">Messages</h3>
+        <div className="px-4 py-3 border-b border-slate-100 flex flex-wrap items-center gap-3">
+          <h3 className="text-sm font-bold text-slate-800">Messages</h3>
+          <span className="text-xs text-slate-400">
+            {everyAttempt ? 'Every attempt on its own line' : 'One line per person and notification; repeat sends are grouped'}
+          </span>
+          <label className="ml-auto inline-flex items-center gap-2 text-xs font-semibold text-slate-600 cursor-pointer select-none">
+            <input type="checkbox" checked={everyAttempt} onChange={(e) => setEveryAttempt(e.target.checked)} className="accent-[#7A2430] w-4 h-4" />
+            Show every attempt
+          </label>
+        </div>
         {messagesQ.isLoading ? (
           <div className="py-10 flex justify-center text-slate-400"><Loader2 className="w-6 h-6 animate-spin" /></div>
         ) : messages.length === 0 ? (
@@ -510,7 +564,7 @@ export default function WhatsappDeliveryPage() {
                 {messages.map((m) => (
                   <React.Fragment key={m._id}>
                     <tr className="hover:bg-slate-50/70 align-top cursor-pointer" onClick={() => setExpanded(expanded === m._id ? null : m._id)}>
-                      <td className="px-4 py-2.5 text-xs text-slate-600 whitespace-nowrap">{fmtDateTime(m.createdAt)}</td>
+                      <td className="px-4 py-2.5 text-xs text-slate-600 whitespace-nowrap">{fmtDateTime(m.latestAt || m.createdAt)}</td>
                       <td className="px-3 py-2.5">
                         <span className="block font-semibold text-slate-800">{m.recipient.name || '—'}</span>
                         <span className="block text-xs text-slate-500">
@@ -529,13 +583,33 @@ export default function WhatsappDeliveryPage() {
                             <span className="text-xs text-slate-500">{m.incidentNumber}</span>
                           ))}
                       </td>
-                      <td className="px-3 py-2.5"><StatusBadge status={m.status} /></td>
+                      <td className="px-3 py-2.5">
+                        <StatusBadge status={m.status} />
+                        {m.attemptCount > 1 && (
+                          <span className="block mt-1 text-[11px] font-semibold text-slate-500 whitespace-nowrap" title="Sent more than once; click the row to see each attempt">
+                            {m.attemptCount} attempts
+                          </span>
+                        )}
+                      </td>
                       <td className="px-3 py-2.5 text-xs text-slate-500 whitespace-nowrap">
                         {m.sentAt && <span className="block">Sent {fmtTime(m.sentAt)}</span>}
                         {m.deliveredAt && <span className="block text-sky-700">Delivered {fmtTime(m.deliveredAt)}</span>}
                         {m.readAt && <span className="block text-emerald-700">Read {fmtTime(m.readAt)}</span>}
                         {m.repliedAt && <span className="block text-emerald-800">Replied {fmtTime(m.repliedAt)}</span>}
                         {m.failedAt && <span className="block text-red-600">Failed {fmtTime(m.failedAt)}</span>}
+                        {m.link?.taps > 0 && (
+                          <span className="block text-violet-700" title={m.link.lastDevice || undefined}>
+                            Tapped link {fmtTime(m.link.firstTapAt)}
+                            {m.link.taps > 1 ? ` (×${m.link.taps})` : ''}
+                          </span>
+                        )}
+                        {m.link?.openedAt && (
+                          <span className="block text-emerald-800" title={m.link.openedBy?.name}>
+                            Opened {fmtTime(m.link.openedAt)}
+                            {m.link.openedByRecipient === false ? ` by ${m.link.openedBy?.name || 'someone else'}` : ''}
+                          </span>
+                        )}
+                        {m.link?.lastDevice && <span className="block text-slate-400 max-w-[220px] truncate">{m.link.lastDevice}</span>}
                         {!m.sentAt && !m.failedAt && m.status === 'PENDING' && <span className="inline-flex items-center gap-1"><Clock className="w-3 h-3" /> Sending</span>}
                       </td>
                       <td className="px-3 py-2.5 max-w-[260px]">
@@ -575,18 +649,35 @@ export default function WhatsappDeliveryPage() {
                               <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Message</p>
                               <pre className="whitespace-pre-wrap font-sans text-slate-800 bg-white border border-slate-200 rounded-xl p-3 max-h-60 overflow-y-auto">{m.preview || '—'}</pre>
                             </div>
-                            <div>
-                              <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">Status history</p>
-                              <ul className="space-y-1">
-                                {(m.history || []).map((h: any, i: number) => (
-                                  <li key={i} className="flex items-center gap-2">
-                                    <StatusBadge status={h.status} />
-                                    <span className="text-xs text-slate-600">{fmt(h.at, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</span>
-                                    {h.detail && <span className="text-xs text-slate-500">· {h.detail}</span>}
-                                  </li>
-                                ))}
-                              </ul>
-                              {m.resendOf && <p className="text-xs text-slate-500 mt-2">This is a resend of an earlier failed message.</p>}
+                            <div className="space-y-3">
+                              {(m.attempts || [m]).map((a: any, n: number, all: any[]) => (
+                                <div key={a._id}>
+                                  <p className="text-xs font-bold text-slate-500 uppercase tracking-wide mb-1">
+                                    {all.length > 1 ? `Attempt ${all.length - n} · ${fmtDateTime(a.createdAt)}` : 'Status history'}
+                                    {all.length > 1 && (
+                                      <span className="ml-2 normal-case font-normal tracking-normal text-slate-400">
+                                        to +{a.to} · by {a.triggeredBy?.name || 'System'}
+                                      </span>
+                                    )}
+                                  </p>
+                                  <ul className="space-y-1">
+                                    {(a.history || []).map((h: any, i: number) => (
+                                      <li key={i} className="flex items-center gap-2">
+                                        <StatusBadge status={h.status} />
+                                        <span className="text-xs text-slate-600">{fmt(h.at, { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true })}</span>
+                                        {h.detail && <span className="text-xs text-slate-500">· {h.detail}</span>}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                  {a.resendOf && <p className="text-xs text-slate-500 mt-1">Resend of an earlier failed message.</p>}
+                                  {a.link && (
+                                    <div className="mt-2">
+                                      <p className="text-[11px] font-bold text-slate-500 uppercase tracking-wide mb-1">Link activity</p>
+                                      <LinkEvents messageId={a._id} />
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
                             </div>
                           </div>
                         </td>

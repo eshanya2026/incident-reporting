@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import LoginPage from './pages/LoginPage';
 import AppLayout from './components/layout/AppLayout';
 import DashboardPage from './pages/DashboardPage';
@@ -28,6 +28,7 @@ import FileViewer from './components/ui/FileViewer';
 
 function ProtectedRoute({ children }: { children: React.JSX.Element }) {
   const { isAuthenticated, accessToken, setUser, logout, user } = useAuthStore();
+  const location = useLocation();
 
   useEffect(() => {
     if (accessToken) {
@@ -47,7 +48,8 @@ function ProtectedRoute({ children }: { children: React.JSX.Element }) {
   }, [accessToken, setUser, logout]);
 
   if (!isAuthenticated) {
-    return <Navigate to="/login" replace />;
+    // Back to this page after signing in (e.g. an incident opened from a WhatsApp link)
+    return <Navigate to="/login" replace state={{ from: location.pathname + location.search }} />;
   }
   // Imported staff confirm their details and set their own password before anything else
   if (user?.mustCompleteProfile) {

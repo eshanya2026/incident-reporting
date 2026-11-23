@@ -5,6 +5,7 @@ import { logActivity } from '../audit/audit.service.js';
 import { currentContext } from '../../common/context/requestContext.js';
 import { WhatsappMessage } from './whatsappMessage.model.js';
 import { User } from '../users/user.model.js';
+import { attachLinkToMessage } from '../links/shortLink.service.js';
 
 // Optional WhatsApp delivery via WATI (https://wati.io), a WhatsApp Business API provider.
 // Off unless WHATSAPP_NOTIFICATIONS=true and WATI_API_ENDPOINT / WATI_ACCESS_TOKEN are set.
@@ -39,6 +40,8 @@ export interface SendMeta {
   incidentId?: string | mongoose.Types.ObjectId;
   incidentNumber?: string;
   resendOf?: string;
+  /** Short link (links/) in this message, tied to the message once it is recorded. */
+  linkCode?: string;
 }
 
 const INCIDENT_REF = /(INC|CAPA)-\d{4}-\d{6}/;
@@ -183,6 +186,8 @@ const sendAndRecord = async (
   } catch (error) {
     logger.error({ err: error }, '❌ Could not record WhatsApp message');
   }
+
+  if (record && meta.linkCode) await attachLinkToMessage(meta.linkCode, String(record._id));
 
   const result = await post(path, payload);
 

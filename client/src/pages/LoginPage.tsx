@@ -47,7 +47,10 @@ export default function LoginPage() {
           /* storage unavailable — ignore */
         }
         setAuth(res.data.user, res.data.accessToken);
-        navigate('/');
+        // Return to the page that sent them here (only paths inside this app)
+        const from = (location.state as any)?.from;
+        const safe = typeof from === 'string' && from.startsWith('/') && !from.startsWith('//') && !from.startsWith('/login');
+        navigate(safe ? from : '/');
       }
     } catch (err: any) {
       setError(err?.message || 'Invalid credentials or login failed');

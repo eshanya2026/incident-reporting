@@ -4,6 +4,7 @@ import type { WorkflowAction } from '../incidents/incidentWorkflow.rules.js';
 import type { JwtPayload } from '../auth/auth.utils.js';
 import { notifyUsers, qualityUserIds, rcaHeadUserIds } from './notification.service.js';
 import { recordSkippedWhatsapp, sendWhatsapp, sendWhatsappTemplate, SendMeta, whatsappEnabled } from './whatsapp.js';
+import { createShortLink } from '../links/shortLink.service.js';
 import { renderMessage, sessionMessageText, singleLine, TemplateValues, WhatsappTemplateKey } from './whatsappTemplates.js';
 import { loadTemplate } from './whatsappTemplate.service.js';
 import { User } from '../users/user.model.js';
@@ -192,7 +193,6 @@ const sendTemplated = async (
   const template = await loadTemplate(key);
   if (!template.enabled) return;
 
-  const link = `${env.APP_URL}/incidents/${incident._id}`;
   for (const r of recipients) {
     const meta: SendMeta = {
       recipientUserId: r.userId,
@@ -206,7 +206,10 @@ const sendTemplated = async (
       continue;
     }
     const rendered = renderMessage(template, { ...incidentValues(incident), ...values, ...r.values });
-    await sendWithTemplate(r.whatsappNumber, r.name, rendered.content, link, sessionMessageText(rendered, link), meta);
+    // Each recipient gets their own tracked short link to the incident (the text is unchanged)
+    const short = await createShortLink({ target: `/incidents/${incident._id}`, recipientUserId: r.userId, incidentId: incident._id as mongoose.Types.ObjectId });
+    const link = short.url;
+    await sendWithTemplate(r.whatsappNumber, r.name, rendered.content, link, sessionMessageText(rendered, link), { ...meta, linkCode: short.code });
   }
 };
 

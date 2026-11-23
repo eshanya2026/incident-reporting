@@ -56,6 +56,17 @@ export interface IWhatsappMessage extends Document {
   history: Array<{ status: WhatsappStatus; at: Date; detail?: string }>;
   /** Set on a message sent again from the dashboard. */
   resendOf?: mongoose.Types.ObjectId;
+  /** The tracked short link in this message (links/shortLink.model.ts) and what happened to it. */
+  linkCode?: string;
+  linkTaps: number;
+  linkFirstTapAt?: Date;
+  linkLastTapAt?: Date;
+  /** Phone/browser of the latest tap, e.g. "Android 14 · Chrome · SM-S918B". */
+  linkLastDevice?: string;
+  /** The incident page was opened from the link in a signed-in session (and by whom). */
+  linkOpenedAt?: Date;
+  linkOpenedBy?: mongoose.Types.ObjectId;
+  linkOpenedByRecipient?: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -94,6 +105,14 @@ const WhatsappMessageSchema = new Schema<IWhatsappMessage>(
       },
     ],
     resendOf: { type: Schema.Types.ObjectId, ref: 'WhatsappMessage' },
+    linkCode: { type: String, index: true },
+    linkTaps: { type: Number, default: 0 },
+    linkFirstTapAt: { type: Date },
+    linkLastTapAt: { type: Date },
+    linkLastDevice: { type: String },
+    linkOpenedAt: { type: Date },
+    linkOpenedBy: { type: Schema.Types.ObjectId, ref: 'User' },
+    linkOpenedByRecipient: { type: Boolean },
   },
   { timestamps: true }
 );

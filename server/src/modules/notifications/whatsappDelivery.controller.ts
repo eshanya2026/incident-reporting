@@ -3,6 +3,8 @@ import mongoose from 'mongoose';
 import { z } from 'zod';
 import { WhatsappMessage, WhatsappStatus, STATUS_RANK, WHATSAPP_STATUSES } from './whatsappMessage.model.js';
 import { sendWhatsappTemplateChecked, whatsappEnabled } from './whatsapp.js';
+import { codeInUrl, createShortLink, deviceLabel } from '../links/shortLink.service.js';
+import { ShortLink, LinkEvent } from '../links/shortLink.model.js';
 import { User } from '../users/user.model.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
@@ -186,13 +188,13 @@ const filterSchema = z.object({
   search: z.string().trim().max(100).optional(),
 });
 
-const buildMatch = (req: Request) => {
+const buildMatch = (req: Request, opts: { withStatus?: boolean } = {}) => {
   const f = filterSchema.parse(req.query);
   const to = f.to ?? new Date();
   const from = f.from ?? new Date(to.getTime() - 30 * DAY);
   const match: Record<string, any> = { createdAt: { $gte: from, $lte: to } };
   const statuses = (f.status || '').split(',').filter((s) => (WHATSAPP_STATUSES as readonly string[]).includes(s));
-  if (statuses.length) match.status = { $in: statuses };
+  if (statuses.length && opts.withStatus !== false) match.status = { $in: statuses };
   if (f.notificationKey) match.notificationKey = f.notificationKey;
   if (f.role) match.recipientRoles = f.role;
   if (f.departmentId === 'none') match.recipientDepartmentId = { $exists: false };
@@ -201,7 +203,7 @@ const buildMatch = (req: Request) => {
     const re = { $regex: f.search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
     match.$or = [{ recipientName: re }, { to: re }, { incidentNumber: re }, { failureReason: re }];
   }
-  return { match, from, to };
+  return { match, from, to, statuses };
 };
 
 const countBy = (field: string) => [
@@ -217,6 +219,10 @@ const countBy = (field: string) => [
       read: { $sum: { $cond: [{ $in: ['$status', ['READ', 'REPLIED']] }, 1, 0] } },
       replied: { $sum: { $cond: [{ $eq: ['$status', 'REPLIED'] }, 1, 0] } },
       pending: { $sum: { $cond: [{ $eq: ['$status', 'PENDING'] }, 1, 0] } },
+      // Short link in the message tapped at least once / incident opened from it signed in
+      withLink: { $sum: { $cond: [{ $ifNull: ['$linkCode', false] }, 1, 0] } },
+      tapped: { $sum: { $cond: [{ $gt: [{ $ifNull: ['$linkTaps', 0] }, 0] }, 1, 0] } },
+      opened: { $sum: { $cond: [{ $ifNull: ['$linkOpenedAt', false] }, 1, 0] } },
     },
   },
 ];
@@ -270,7 +276,13 @@ export const getDeliverySummary = async (req: Request, res: Response, next: Next
     sendSuccess(res, {
       from,
       to,
-      totals: { ...strip(t), deliveryRate: rate(t.delivered, t.sent), readRate: rate(t.read, t.delivered), failureRate: rate(t.failed, t.sent + t.failed) },
+      totals: {
+        ...strip(t),
+        deliveryRate: rate(t.delivered, t.sent),
+        readRate: rate(t.read, t.delivered),
+        failureRate: rate(t.failed, t.sent + t.failed),
+        tapRate: rate(t.tapped, t.withLink),
+      },
       daily: daily.map((d: any) => ({ day: d._id, ...strip(d) })).sort((a: any, b: any) => a.day.localeCompare(b.day)),
       byType: byType.map((r: any) => ({ key: r._id, ...strip(r) })),
       byRole: byRole.map((r: any) => ({ role: r._id, ...strip(r) })),
@@ -320,19 +332,111 @@ const shapeMessage = (m: any) => ({
   history: m.history,
   canResend: ['FAILED'].includes(m.status) && m.kind === 'template' && (m.params || []).length > 0,
   resendOf: m.resendOf ? String(m.resendOf) : null,
+  link: m.linkCode
+    ? {
+        code: m.linkCode,
+        taps: m.linkTaps || 0,
+        firstTapAt: m.linkFirstTapAt ?? null,
+        lastTapAt: m.linkLastTapAt ?? null,
+        lastDevice: m.linkLastDevice ?? null,
+        openedAt: m.linkOpenedAt ?? null,
+        openedBy: m.linkOpenedBy?.name ? { _id: String(m.linkOpenedBy._id), name: m.linkOpenedBy.name } : null,
+        openedByRecipient: m.linkOpenedByRecipient ?? null,
+      }
+    : null,
 });
 
-/** GET /whatsapp-delivery/messages — newest first, paged. */
+/** How good an outcome is, for picking the best of several attempts (sent beats failed). */
+const OUTCOME_RANK: Record<string, number> = { SKIPPED: 0, FAILED: 1, PENDING: 2, SENT: 3, DELIVERED: 4, READ: 5, REPLIED: 6 };
+
+/**
+ * GET /whatsapp-delivery/messages — newest first, paged.
+ * Grouped by default: one row per person + notification + incident, so a resend or repeated test
+ * sends show as one line with their best outcome and every attempt underneath. `view=all` lists
+ * every message on its own. In grouped view the status filter applies to the row's best outcome.
+ */
 export const getDeliveryMessages = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { match } = buildMatch(req);
     const page = Math.max(1, Number(req.query.page) || 1);
     const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const [total, rows] = await Promise.all([
-      WhatsappMessage.countDocuments(match),
-      WhatsappMessage.find(match).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('triggeredBy', 'name').lean(),
+
+    if (req.query.view === 'all') {
+      const { match } = buildMatch(req);
+      const [total, rows] = await Promise.all([
+        WhatsappMessage.countDocuments(match),
+        WhatsappMessage.find(match).sort({ createdAt: -1 }).skip((page - 1) * limit).limit(limit).populate('triggeredBy', 'name').populate('linkOpenedBy', 'name').lean(),
+      ]);
+      sendSuccess(res, rows.map(shapeMessage), 'Messages', 200, { total, page, limit, totalPages: Math.ceil(total / limit) });
+      return;
+    }
+
+    const { match, statuses } = buildMatch(req, { withStatus: false });
+    const rankExpr = {
+      $switch: { branches: Object.entries(OUTCOME_RANK).map(([st, r]) => ({ case: { $eq: ['$status', st] }, then: r })), default: 0 },
+    };
+    const [result] = await WhatsappMessage.aggregate([
+      { $match: match },
+      {
+        $addFields: {
+          // Same person whether the number was stored with or without the country code
+          phone10: { $substrCP: [{ $ifNull: ['$to', ''] }, { $max: [{ $subtract: [{ $strLenCP: { $ifNull: ['$to', ''] } }, 10] }, 0] }, 10] },
+          outcomeRank: rankExpr,
+        },
+      },
+      { $sort: { outcomeRank: -1, createdAt: -1 } },
+      {
+        $group: {
+          _id: { person: { $ifNull: [{ $toString: '$recipientUserId' }, '$phone10'] }, key: '$notificationKey', incident: { $ifNull: ['$incidentNumber', null] } },
+          bestStatus: { $first: '$status' },
+          latestAt: { $max: '$createdAt' },
+          attempts: { $sum: 1 },
+          ids: { $push: '$_id' },
+        },
+      },
+      ...(statuses.length ? [{ $match: { bestStatus: { $in: statuses } } }] : []),
+      { $sort: { latestAt: -1 } },
+      { $facet: { total: [{ $count: 'n' }], rows: [{ $skip: (page - 1) * limit }, { $limit: limit }] } },
     ]);
-    sendSuccess(res, rows.map(shapeMessage), 'Messages', 200, { total, page, limit, totalPages: Math.ceil(total / limit) });
+    const groups: any[] = result?.rows || [];
+    const total = result?.total?.[0]?.n || 0;
+
+    const docs = await WhatsappMessage.find({ _id: { $in: groups.flatMap((g) => g.ids.slice(0, 20)) } })
+      .populate('triggeredBy', 'name').populate('linkOpenedBy', 'name')
+      .lean();
+    const byId = new Map(docs.map((d: any) => [String(d._id), d]));
+    const rows = groups.map((g) => {
+      // ids are in best-first order; attempts are listed newest first
+      const attempts = g.ids.map((id: any) => byId.get(String(id))).filter(Boolean);
+      const best = attempts[0];
+      const latest = [...attempts].sort((a: any, b: any) => +new Date(b.createdAt) - +new Date(a.createdAt))[0];
+      const shaped = attempts.map(shapeMessage);
+      const links = shaped.map((a: any) => a.link).filter(Boolean);
+      const firstOf = (k: string) => links.map((l: any) => l[k]).filter(Boolean).sort()[0] ?? null;
+      const lastOf = (k: string) => links.map((l: any) => l[k]).filter(Boolean).sort().pop() ?? null;
+      const latestTap = links.filter((l: any) => l.lastTapAt).sort((a: any, b: any) => +new Date(b.lastTapAt) - +new Date(a.lastTapAt))[0];
+      const opener = links.find((l: any) => l.openedByRecipient) ?? links.find((l: any) => l.openedAt);
+      return {
+        ...shapeMessage(best),
+        link: links.length
+          ? {
+              taps: links.reduce((n: number, l: any) => n + l.taps, 0),
+              firstTapAt: firstOf('firstTapAt'),
+              lastTapAt: lastOf('lastTapAt'),
+              lastDevice: latestTap?.lastDevice ?? null,
+              openedAt: opener?.openedAt ?? null,
+              openedBy: opener?.openedBy ?? null,
+              openedByRecipient: opener?.openedByRecipient ?? null,
+            }
+          : null,
+        latestAt: g.latestAt,
+        attemptCount: g.attempts,
+        // Send again only when nothing got through; it resends the latest failed attempt
+        canResend: g.bestStatus === 'FAILED' && shapeMessage(latest).canResend,
+        resendId: String(latest._id),
+        attempts: [...attempts].sort((a: any, b: any) => +new Date(b.createdAt) - +new Date(a.createdAt)).map(shapeMessage),
+      };
+    });
+    sendSuccess(res, rows, 'Messages', 200, { total, page, limit, totalPages: Math.ceil(total / limit) });
   } catch (error) {
     next(error);
   }
@@ -342,10 +446,10 @@ export const getDeliveryMessages = async (req: Request, res: Response, next: Nex
 export const exportDeliveryMessages = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
   try {
     const { match } = buildMatch(req);
-    const rows = await WhatsappMessage.find(match).sort({ createdAt: -1 }).limit(20000).populate('triggeredBy', 'name').lean();
-    const header = ['Created (IST)', 'Recipient', 'Roles', 'Department', 'Number', 'Notification', 'Incident', 'Status', 'Sent', 'Delivered', 'Read', 'Failed', 'Failure code', 'Reason', 'Triggered by'];
+    const rows = await WhatsappMessage.find(match).sort({ createdAt: -1 }).limit(20000).populate('triggeredBy', 'name').populate('linkOpenedBy', 'name').lean();
+    const header = ['Created (IST)', 'Recipient', 'Roles', 'Department', 'Number', 'Notification', 'Incident', 'Status', 'Sent', 'Delivered', 'Read', 'Failed', 'Failure code', 'Reason', 'Triggered by', 'Link taps', 'First tap', 'Last tap device', 'Opened (signed in)', 'Opened by'];
     const ist = istText;
-    const lines = (rows as any[]).map((m) => [ist(m.createdAt), m.recipientName, (m.recipientRoles || []).join(' '), m.recipientDepartment, m.to ? `+${m.to}` : '', m.notificationKey, m.incidentNumber, m.status, ist(m.sentAt), ist(m.deliveredAt), ist(m.readAt), ist(m.failedAt), m.failedCode, m.failureReason, m.triggeredBy?.name]);
+    const lines = (rows as any[]).map((m) => [ist(m.createdAt), m.recipientName, (m.recipientRoles || []).join(' '), m.recipientDepartment, m.to ? `+${m.to}` : '', m.notificationKey, m.incidentNumber, m.status, ist(m.sentAt), ist(m.deliveredAt), ist(m.readAt), ist(m.failedAt), m.failedCode, m.failureReason, m.triggeredBy?.name, m.linkCode ? m.linkTaps || 0 : '', ist(m.linkFirstTapAt), m.linkLastDevice, ist(m.linkOpenedAt), m.linkOpenedBy?.name]);
     await logActivity('EXPORT_WHATSAPP_DELIVERY_CSV', `Downloaded the WhatsApp delivery report (CSV, ${rows.length} rows)`, { req, meta: { rows: rows.length, format: 'CSV' } });
     sendCsv(res, `whatsapp_delivery_${new Date().toISOString().slice(0, 10)}.csv`, header, lines);
   } catch (error) {
@@ -365,7 +469,19 @@ export const resendMessage = async (req: Request, res: Response, next: NextFunct
     const user = msg.recipientUserId ? await User.findById(msg.recipientUserId).select('whatsappNumber status name') : null;
     const number = user?.whatsappNumber || msg.to;
     if (!number) throw AppError.badRequest('This person has no WhatsApp number on their profile');
-    const result = await sendWhatsappTemplateChecked(number, msg.templateName, msg.params, {
+    // A fresh tracked link for the resend (to the same page), so its taps are counted on it
+    const params = [...msg.params];
+    let linkCode: string | undefined;
+    const oldCode = codeInUrl(params[2]);
+    const oldLink = oldCode ? await ShortLink.findOne({ code: oldCode }).select('target') : null;
+    const target = oldLink?.target ?? (msg.incidentId ? `/incidents/${msg.incidentId}` : undefined);
+    if (params.length >= 3 && target) {
+      const short = await createShortLink({ target, recipientUserId: msg.recipientUserId, incidentId: msg.incidentId });
+      params[2] = short.url;
+      linkCode = short.code;
+    }
+    const result = await sendWhatsappTemplateChecked(number, msg.templateName, params, {
+      linkCode,
       recipientUserId: msg.recipientUserId,
       recipientName: msg.recipientName,
       notificationKey: msg.notificationKey,
@@ -375,6 +491,35 @@ export const resendMessage = async (req: Request, res: Response, next: NextFunct
     });
     if (!result.ok) throw AppError.badRequest(`WATI did not accept the message: ${result.error}`);
     sendSuccess(res, { messageId: result.messageId }, `Sent again to ${msg.recipientName || `+${number}`}`);
+  } catch (error) {
+    next(error);
+  }
+};
+
+/** GET /whatsapp-delivery/messages/:id/link-events — every tap / open of the link in a message. */
+export const getMessageLinkEvents = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const id = oid(req.params.id as string);
+    if (!id) throw AppError.badRequest('Invalid message');
+    const events = await LinkEvent.find({ messageId: id }).sort({ at: -1 }).limit(200).populate('userId', 'name employeeId').lean();
+    sendSuccess(
+      res,
+      events.map((e: any) => ({
+        _id: String(e._id),
+        kind: e.kind,
+        at: e.at,
+        ip: e.ip,
+        device: e.device,
+        deviceLabel: deviceLabel(e.device || {}),
+        language: e.language,
+        user: e.userId ? { _id: String(e.userId._id), name: e.userId.name, employeeId: e.userId.employeeId } : null,
+        isRecipient: e.isRecipient ?? null,
+        screen: e.screen,
+        timezone: e.timezone,
+        installedApp: e.installedApp,
+        userAgent: e.userAgent,
+      }))
+    );
   } catch (error) {
     next(error);
   }

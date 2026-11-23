@@ -26,6 +26,7 @@ import insightRoutes from './modules/insights/insight.routes.js';
 import whatsappTemplateRoutes from './modules/notifications/whatsappTemplate.routes.js';
 import auditLogRoutes from './modules/audit/auditLog.routes.js';
 import whatsappDeliveryRoutes, { whatsappWebhookRouter } from './modules/notifications/whatsappDelivery.routes.js';
+import { shortLinkApiRouter, shortLinkRedirectRouter } from './modules/links/shortLink.controller.js';
 
 const app: Express = express();
 
@@ -73,11 +74,15 @@ app.get('/health', (req: Request, res: Response) => {
   );
 });
 
+// Short links in WhatsApp messages (https://<app>/l/<code>): record the tap, redirect to the page
+app.use('/l', shortLinkRedirectRouter);
+
 // API v1 Routes
 // Before the routers mounted on /api/v1 itself (they authenticate everything under it): the
 // window-close beacon carries its token in the body, not a header
 app.use('/api/v1/audit', auditLogRoutes);
 app.use('/api/v1/whatsapp', whatsappWebhookRouter);
+app.use('/api/v1/links', shortLinkApiRouter);
 app.use('/api/v1/whatsapp-delivery', whatsappDeliveryRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/users', userRoutes);

@@ -16,6 +16,8 @@ import { hashPassword } from '../modules/auth/auth.utils.js';
 import { ROLE_CODES } from '../common/enums/permissions.js';
 import { AuditLog } from '../modules/audit/audit.model.js';
 import { releaseOldWrongPasswordLocks } from '../migrations/releaseOldLocks.js';
+import { createShortLink, attachLinkToMessage } from '../modules/links/shortLink.service.js';
+import { LinkEvent } from '../modules/links/shortLink.model.js';
 
 // End-to-end checks of the promises the hospital relies on, through the real HTTP API with real
 // roles and real sign-ins: reporter confidentiality, who may create Admins, HOD hand-over, ended
@@ -393,6 +395,76 @@ describe.skipIf(!MONGO_URI)('Security and confidentiality (HTTP, MongoDB)', () =
     const state: any = await mongoose.connection.collection('app_state').findOne({ _id: 'wati_webhook' as any });
     expect(state.types.sentMessageREAD_v2.total).toBeGreaterThanOrEqual(1);
     expect(state.recent.at(-1)).toMatchObject({ eventType: 'sentMessageREAD_v2', id: 'unknown-id', matched: false });
+  });
+
+  it('the delivery list groups repeat sends into one row with the best outcome', async () => {
+    const t = Date.now();
+    const recipientUserId = new mongoose.Types.ObjectId();
+    await WhatsappMessage.create([
+      // the same HOD, same incident: failed first, then a resend that was delivered
+      { to: '919000000077', recipientUserId, recipientName: 'Dr Grouptest', notificationKey: 'HOD_ASSIGNED', incidentNumber: 'INC-G-1', status: 'FAILED', failureReason: 'x', history: [], createdAt: new Date(t - 60000) },
+      { to: '919000000077', recipientUserId, recipientName: 'Dr Grouptest', notificationKey: 'HOD_ASSIGNED', incidentNumber: 'INC-G-1', status: 'DELIVERED', history: [], createdAt: new Date(t - 30000) },
+      // test sends to one number, stored with and without 91
+      { to: '9000000088', notificationKey: 'TEST', incidentNumber: 'INC-G-2', status: 'SENT', history: [], createdAt: new Date(t - 50000) },
+      { to: '919000000088', notificationKey: 'TEST', incidentNumber: 'INC-G-2', status: 'READ', history: [], createdAt: new Date(t - 40000) },
+    ]);
+    const res = await api(tokens.superadmin).get('/api/v1/whatsapp-delivery/messages?search=INC-G-');
+    expect(res.status).toBe(200);
+    expect(res.body.data).toHaveLength(2);
+    const hod = res.body.data.find((r: any) => r.incidentNumber === 'INC-G-1');
+    expect(hod).toMatchObject({ status: 'DELIVERED', attemptCount: 2, canResend: false });
+    expect(hod.attempts.map((a: any) => a.status)).toEqual(['DELIVERED', 'FAILED']); // newest first
+    expect(res.body.data.find((r: any) => r.incidentNumber === 'INC-G-2')).toMatchObject({ status: 'READ', attemptCount: 2 });
+
+    // Status filter applies to the row's best outcome: nothing here is "failed" overall
+    expect((await api(tokens.superadmin).get('/api/v1/whatsapp-delivery/messages?search=INC-G-&status=FAILED')).body.data).toHaveLength(0);
+    // Every attempt on its own
+    expect((await api(tokens.superadmin).get('/api/v1/whatsapp-delivery/messages?search=INC-G-&view=all')).body.data).toHaveLength(4);
+  });
+
+  it('WhatsApp short links: tap, phone details, previews ignored, opened by the recipient', async () => {
+    const msg = await WhatsappMessage.create({ to: '919000000099', recipientUserId: ids.hodA, notificationKey: 'HOD_ASSIGNED', status: 'DELIVERED', history: [] });
+    const short = await createShortLink({ target: `/incidents/${openIncidentId}`, recipientUserId: ids.hodA, incidentId: openIncidentId });
+    expect(short.code).toMatch(/^[A-Za-z0-9]{8}$/);
+    expect(short.url).toBe(`http://localhost:5173/l/${short.code}`);
+    await attachLinkToMessage(short.code, String(msg._id));
+
+    const android = 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Mobile Safari/537.36';
+    const tap = await request(app).get(`/l/${short.code}`).set('User-Agent', android).set('Accept-Language', 'ta-IN,ta;q=0.9,en;q=0.8');
+    expect(tap.status).toBe(302);
+    expect(tap.headers.location).toBe(`http://localhost:5173/incidents/${openIncidentId}?via=${short.code}`);
+    expect(tap.headers['critical-ch']).toMatch(/Sec-CH-UA-Model/);
+    // Chrome repeats it once with the phone model: same tap, now with the model
+    await request(app).get(`/l/${short.code}`).set('User-Agent', android).set('Sec-CH-UA-Model', '"SM-S918B"').set('Sec-CH-UA-Platform-Version', '"14.0.0"');
+    // WhatsApp's own preview fetch is not a person
+    await request(app).get(`/l/${short.code}`).set('User-Agent', 'WhatsApp/2.24.1 A');
+
+    let after = (await WhatsappMessage.findById(msg._id))!;
+    expect(after.linkTaps).toBe(1);
+    expect(after.linkLastDevice).toBe('Android 14 · Chrome 131 · SM-S918B');
+    const taps = await LinkEvent.find({ code: short.code }).sort({ at: 1 });
+    expect(taps.map((e) => e.kind)).toEqual(['TAP', 'PREVIEW']);
+    expect(taps[0].language).toBe('ta-IN');
+
+    // The HOD's app reports the incident opened from the link
+    const opened = await api(tokens.hodA).post(`/api/v1/links/${short.code}/opened`, { screen: { width: 412, height: 915, pixelRatio: 2.63 }, timezone: 'Asia/Kolkata' });
+    expect(opened.body.data.recorded).toBe(true);
+    after = (await WhatsappMessage.findById(msg._id))!;
+    expect(after.linkOpenedAt).toBeTruthy();
+    expect(after.linkOpenedByRecipient).toBe(true);
+
+    // The dashboard lists it all
+    const events = await api(tokens.superadmin).get(`/api/v1/whatsapp-delivery/messages/${msg._id}/link-events`);
+    expect(events.body.data.map((e: any) => e.kind)).toEqual(['OPENED', 'PREVIEW', 'TAP']);
+    expect(events.body.data[0].user.name).toBe('User hodA');
+    // Only the Super Admin can see link activity
+    expect((await api(tokens.hodA).get(`/api/v1/whatsapp-delivery/messages/${msg._id}/link-events`)).status).toBe(403);
+  });
+
+  it('an unknown short link goes to the app home page', async () => {
+    const res = await request(app).get('/l/NotAReal1');
+    expect(res.status).toBe(302);
+    expect(res.headers.location).toBe('http://localhost:5173/');
   });
 
   it('the WhatsApp webhook ignores calls without the secret', async () => {

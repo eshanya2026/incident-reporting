@@ -14,6 +14,7 @@ import {
   validateContent,
 } from './whatsappTemplates.js';
 import { sendWhatsappTemplateChecked, whatsappEnabled } from './whatsapp.js';
+import { createShortLink } from '../links/shortLink.service.js';
 import { User } from '../users/user.model.js';
 import { AppError } from '../../common/errors/appError.js';
 import { sendSuccess } from '../../common/helpers/response.js';
@@ -170,9 +171,12 @@ export const sendTestTemplate = async (req: Request, res: Response, next: NextFu
     const me = await User.findById(req.user!.userId).select('name');
     const name = me?.name ?? def.sampleRecipient;
     const rendered = renderMessage(content, sampleValues(def));
-    const result = await sendWhatsappTemplateChecked(digits, env.WATI_TEMPLATE_NAME, [name, rendered.content, sampleLink()], {
+    // A tracked short link, like real messages; the sample incident doesn't exist, so it opens the dashboard
+    const short = await createShortLink({ target: '/dashboard', recipientUserId: req.user!.userId });
+    const result = await sendWhatsappTemplateChecked(digits, env.WATI_TEMPLATE_NAME, [name, rendered.content, short.url], {
       notificationKey: 'TEST',
       recipientName: `Test send: ${def.name}`,
+      linkCode: short.code,
     });
     if (!result.ok) throw AppError.badRequest(`WATI did not accept the message: ${result.error}`);
 
