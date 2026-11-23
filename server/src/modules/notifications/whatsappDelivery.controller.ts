@@ -104,6 +104,10 @@ const applyEvent = async (e: any): Promise<boolean> => {
     set.failedCode = e.failedCode ? String(e.failedCode) : msg.failedCode;
     set.failureReason = String(e.failedDetail || e.failedReason || msg.failureReason || 'Failed').slice(0, 300);
   }
+  // Marked failed at send time but WhatsApp then delivered it: the failure no longer applies
+  if (msg.status === 'FAILED' && STATUS_RANK[status] > STATUS_RANK.FAILED) {
+    update.$unset = { failureReason: '', failedCode: '', failedAt: '' };
+  }
   if (Object.keys(set).length) update.$set = set;
   if (!msg.history.some((h) => h.status === status)) {
     update.$push = { history: { status, at, detail: status === 'FAILED' ? set.failureReason : undefined } };

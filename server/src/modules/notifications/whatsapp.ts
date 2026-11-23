@@ -21,6 +21,8 @@ const toWhatsappId = (rawNumber: string): string => rawNumber.replace(/\D/g, '')
 export interface SendResult {
   ok: boolean;
   error?: string;
+  /** Accepted, with something worth knowing (e.g. WATI has not confirmed the number yet). */
+  note?: string;
   /** The delivery-dashboard record of this message. */
   messageId?: string;
 }
@@ -74,24 +76,46 @@ export const recordSkippedWhatsapp = async (meta: SendMeta, reason: string): Pro
   }
 };
 
-/** Every id WATI may later use for this message in its webhook. */
-const providerIdsOf = (body: any): string[] => {
+/**
+ * Every id WATI may later use for this message in its webhook. sendTemplateMessage answers with
+ * `local_message_id` (snake case), which the webhook then sends back as `localMessageId`.
+ * Not `model.ids` / `contact.id`: those are the CONTACT's id, which matches no webhook event.
+ */
+export const providerIdsOf = (body: any): string[] => {
   const ids = new Set<string>();
   const add = (v: unknown) => {
     if (typeof v === 'string' && v.trim()) ids.add(v.trim());
   };
   if (!body || typeof body !== 'object') return [];
+  add(body.local_message_id);
   add(body.localMessageId);
-  add(body.id);
   add(body.whatsappMessageId);
   add(body.messageId);
-  (body.receivers || []).forEach((r: any) => add(r?.localMessageId));
-  (body.model?.ids || []).forEach(add);
-  add(body.model?.id);
+  (body.receivers || []).forEach((r: any) => {
+    add(r?.localMessageId);
+    add(r?.local_message_id);
+  });
   add(body.message?.id);
   add(body.message?.whatsappMessageId);
   add(body.message?.localMessageId);
   return [...ids];
+};
+
+/**
+ * How to read WATI's answer to a send. `result: true` means WATI accepted and queued it. Its
+ * `validWhatsAppNumber: false` is NOT a refusal: WATI says that for every contact it has just
+ * created (contactStatus UNCONFIRMED) and still sends. Whether it really arrives comes later
+ * through the webhook (delivered / read, or templateMessageFailed with WhatsApp's own reason).
+ */
+export const interpretWatiReply = (httpOk: boolean, httpStatus: number, body: any): { ok: boolean; error?: string; note?: string } => {
+  const flaggedInvalid = body?.validWhatsAppNumber === false || body?.receivers?.[0]?.isValidWhatsAppNumber === false;
+  if (!httpOk || body?.result === false) {
+    const reason = String(
+      body?.info || body?.message || body?.receivers?.[0]?.errors?.[0]?.message || body?.receivers?.[0]?.errors?.[0] || (flaggedInvalid ? 'Not a WhatsApp number' : `HTTP ${httpStatus}`)
+    );
+    return { ok: false, error: reason.slice(0, 300) };
+  }
+  return { ok: true, note: flaggedInvalid ? 'New contact on WATI: number not confirmed yet' : undefined };
 };
 
 const post = async (path: string, payload: Record<string, unknown>): Promise<SendResult & { body?: any }> => {
@@ -113,15 +137,12 @@ const post = async (path: string, payload: Record<string, unknown>): Promise<Sen
     } catch {
       /* not JSON */
     }
-    const invalidNumber = body?.validWhatsAppNumber === false || body?.receivers?.[0]?.isValidWhatsAppNumber === false;
-    if (!res.ok || body?.result === false || invalidNumber) {
+    const verdict = interpretWatiReply(res.ok, res.status, body);
+    if (!verdict.ok) {
       logger.error({ status: res.status, body: text }, '❌ WhatsApp notification failed');
-      const reason = invalidNumber
-        ? 'Not a WhatsApp number'
-        : String(body?.info || body?.message || body?.receivers?.[0]?.errors?.[0]?.message || body?.receivers?.[0]?.errors?.[0] || `HTTP ${res.status}`);
-      return { ok: false, error: reason.slice(0, 300), body };
+      return { ok: false, error: verdict.error, body };
     }
-    return { ok: true, body };
+    return { ok: true, note: verdict.note, body };
   } catch (error) {
     logger.error({ err: error }, '❌ WhatsApp notification failed');
     return { ok: false, error: (error as Error)?.message || 'Network error' };
@@ -167,11 +188,13 @@ const sendAndRecord = async (
     await WhatsappMessage.updateOne(
       { _id: record._id, status: 'PENDING' }, // a webhook may already have moved it on
       result.ok
-        ? { $set: { status: 'SENT', sentAt: at }, $addToSet: { providerIds: { $each: providerIdsOf(result.body) } }, $push: { history: { status: 'SENT', at } } }
+        ? { $set: { status: 'SENT', sentAt: at }, $push: { history: { status: 'SENT', at, detail: result.note } } }
         : { $set: { status: 'FAILED', failedAt: at, failureReason: result.error }, $push: { history: { status: 'FAILED', at, detail: result.error } } }
     ).catch(() => undefined);
-    if (result.ok) {
-      await WhatsappMessage.updateOne({ _id: record._id }, { $addToSet: { providerIds: { $each: providerIdsOf(result.body) } } }).catch(() => undefined);
+    // Always keep WATI's ids, even if a webhook already moved the message on, so later events match
+    const providerIds = providerIdsOf(result.body);
+    if (providerIds.length) {
+      await WhatsappMessage.updateOne({ _id: record._id }, { $addToSet: { providerIds: { $each: providerIds } } }).catch(() => undefined);
     }
   }
 
