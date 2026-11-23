@@ -14,6 +14,8 @@ import { UserSession } from '../modules/audit/session.model.js';
 import { WhatsappMessage } from '../modules/notifications/whatsappMessage.model.js';
 import { hashPassword } from '../modules/auth/auth.utils.js';
 import { ROLE_CODES } from '../common/enums/permissions.js';
+import { AuditLog } from '../modules/audit/audit.model.js';
+import { releaseOldWrongPasswordLocks } from '../migrations/releaseOldLocks.js';
 
 // End-to-end checks of the promises the hospital relies on, through the real HTTP API with real
 // roles and real sign-ins: reporter confidentiality, who may create Admins, HOD hand-over, ended
@@ -376,5 +378,64 @@ describe.skipIf(!MONGO_URI)('Security and confidentiality (HTTP, MongoDB)', () =
   it('the WhatsApp webhook ignores calls without the secret', async () => {
     const res = await request(app).post('/api/v1/whatsapp/webhook/wrong-secret-value').send({ eventType: 'sentMessageREAD_v2', localMessageId: 'x' });
     expect(res.status).toBe(404);
+  });
+
+  // ---------- Wrong-password lock: 15 minutes, then it lifts by itself ----------
+
+  it('locks for 15 minutes after 5 wrong passwords, refusing even the right one meanwhile', async () => {
+    await makeUser('lockme', ROLE_CODES.STAFF, { departmentId: ids.deptC });
+    const tryLogin = (password: string) => request(app).post('/api/v1/auth/login').send({ username: 'lockme', password });
+
+    for (let i = 1; i <= 4; i++) expect((await tryLogin('wrong-password')).status).toBe(401);
+    const fifth = await tryLogin('wrong-password');
+    expect(fifth.status).toBe(429);
+    expect(fifth.body.error.message).toMatch(/locked for 15 minutes/i);
+    const user = await User.findOne({ username: 'lockme' });
+    expect(user!.status).toBe('ACTIVE'); // not permanently locked
+    const minutes = (user!.lockUntil!.getTime() - Date.now()) / 60000;
+    expect(minutes).toBeGreaterThan(14);
+    expect(minutes).toBeLessThanOrEqual(15);
+
+    const during = await tryLogin(PASSWORD);
+    expect(during.status).toBe(429);
+    expect(during.body.error.code).toBe('ACCOUNT_TEMPORARILY_LOCKED');
+    expect(during.body.error.message).toMatch(/try again after/i);
+    expect(await AuditLog.countDocuments({ action: 'ACCOUNT_LOCKED', userId: user!._id })).toBe(1);
+
+    // 15 minutes later (simulated): the right password works again
+    await User.updateOne({ _id: user!._id }, { lockUntil: new Date(Date.now() - 1000) });
+    expect((await tryLogin(PASSWORD)).status).toBe(200);
+    const after = await User.findById(user!._id);
+    expect(after!.lockUntil).toBeFalsy();
+    expect(after!.failedLoginAttempts).toBe(0);
+  });
+
+  it('warns on the last two tries before the lock', async () => {
+    await makeUser('warnme', ROLE_CODES.STAFF, { departmentId: ids.deptC });
+    const tryLogin = () => request(app).post('/api/v1/auth/login').send({ username: 'warnme', password: 'wrong-password' });
+    for (let i = 1; i <= 2; i++) expect((await tryLogin()).body.error.message).toBe('Invalid username or password');
+    expect((await tryLogin()).body.error.message).toMatch(/2 more wrong tries/);
+    expect((await tryLogin()).body.error.message).toMatch(/1 more wrong try/);
+  });
+
+  it('an administrator can unlock sooner', async () => {
+    const u = await makeUser('unlockme', ROLE_CODES.STAFF, { departmentId: ids.deptC, lockUntil: new Date(Date.now() + 10 * 60000) });
+    expect((await request(app).post('/api/v1/auth/login').send({ username: 'unlockme', password: PASSWORD })).status).toBe(429);
+    expect((await api(tokens.admin).patch(`/api/v1/users/${u._id}`, { status: 'ACTIVE' })).status).toBe(200);
+    expect((await request(app).post('/api/v1/auth/login').send({ username: 'unlockme', password: PASSWORD })).status).toBe(200);
+  });
+
+  it('releases old wrong-password locks, but not accounts an administrator locked', async () => {
+    const auto = await makeUser('oldautolock', ROLE_CODES.STAFF, { departmentId: ids.deptC, status: 'LOCKED' });
+    const byAdmin = await makeUser('adminlocked', ROLE_CODES.STAFF, { departmentId: ids.deptC, status: 'LOCKED' });
+    const t = Date.now();
+    await AuditLog.create([
+      { action: 'ACCOUNT_LOCKED', userId: auto._id, timestamp: new Date(t - 3600000) },
+      { action: 'ACCOUNT_LOCKED', userId: byAdmin._id, timestamp: new Date(t - 7200000) },
+      { action: 'USER_DEACTIVATED', entityId: byAdmin._id, newValue: { status: 'LOCKED' }, timestamp: new Date(t - 3600000) },
+    ]);
+    await releaseOldWrongPasswordLocks();
+    expect((await User.findById(auto._id))!.status).toBe('ACTIVE');
+    expect((await User.findById(byAdmin._id))!.status).toBe('LOCKED');
   });
 });

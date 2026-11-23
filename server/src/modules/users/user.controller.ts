@@ -342,7 +342,9 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
     if (data.status) {
       user.status = data.status;
       if (data.status === 'ACTIVE') {
+        // Saving someone as Active also lifts a lock from wrong passwords
         user.failedLoginAttempts = 0;
+        user.lockUntil = undefined;
       }
     }
 
@@ -374,6 +376,7 @@ export const resetUserPassword = async (req: Request, res: Response, next: NextF
 
     user.passwordHash = await hashPassword(password);
     user.failedLoginAttempts = 0;
+    user.lockUntil = undefined;
     if (user.status === 'LOCKED') {
       user.status = 'ACTIVE';
     }

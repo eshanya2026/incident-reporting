@@ -23,6 +23,12 @@ const loginSchema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+/** Wrong passwords in a row before the account is locked, and for how long. */
+export const MAX_FAILED_LOGINS = 5;
+export const LOCK_MINUTES = 15;
+
+const istTime = (d: Date) => d.toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit' });
+
 /** The password every imported staff account starts with; it can never be kept as a real password. */
 export const COMMON_STAFF_PASSWORD = 'mapims@123';
 
@@ -82,27 +88,65 @@ export const login = async (req: Request, res: Response, next: NextFunction): Pr
       throw AppError.forbidden(`Account is ${user.status.toLowerCase()}. Please contact administrator.`);
     }
 
+    // Locked for a while after too many wrong passwords: refused without checking the password,
+    // so the lock can't be used to keep guessing. It lifts by itself when the time is up.
+    const now = new Date();
+    if (user.lockUntil && user.lockUntil > now) {
+      const minutes = Math.ceil((user.lockUntil.getTime() - now.getTime()) / 60000);
+      await logActivity('LOGIN_FAILED', `Failed sign-in: locked for ${minutes} more minute${minutes === 1 ? '' : 's'} after wrong passwords`, {
+        req,
+        userId: String(user._id),
+        meta: { triedUsername: loginId.slice(0, 60), reason: 'temporarily_locked', lockUntil: user.lockUntil },
+      });
+      throw new AppError(
+        `Too many wrong passwords. Try again after ${istTime(user.lockUntil)} (in ${minutes} minute${minutes === 1 ? '' : 's'}), or ask an administrator to reset your password.`,
+        429,
+        'ACCOUNT_TEMPORARILY_LOCKED'
+      );
+    }
+    if (user.lockUntil) {
+      // The lock has expired: a fresh set of attempts
+      user.lockUntil = undefined;
+      user.failedLoginAttempts = 0;
+    }
+
     // Check password
     const isMatch = await comparePassword(password, user.passwordHash);
     if (!isMatch) {
       user.failedLoginAttempts += 1;
-      if (user.failedLoginAttempts >= 5) {
-        user.status = 'LOCKED';
+      const attempt = user.failedLoginAttempts;
+      const locking = attempt >= MAX_FAILED_LOGINS;
+      if (locking) {
+        user.lockUntil = new Date(now.getTime() + LOCK_MINUTES * 60000);
+        user.failedLoginAttempts = 0;
       }
       await user.save();
-      await logActivity('LOGIN_FAILED', `Failed sign-in: wrong password (attempt ${user.failedLoginAttempts})`, {
+      await logActivity('LOGIN_FAILED', `Failed sign-in: wrong password (attempt ${attempt})`, {
         req,
         userId: String(user._id),
-        meta: { triedUsername: loginId.slice(0, 60), reason: 'wrong_password', attempt: user.failedLoginAttempts },
+        meta: { triedUsername: loginId.slice(0, 60), reason: 'wrong_password', attempt },
       });
-      if (user.status === 'LOCKED') {
-        await logActivity('ACCOUNT_LOCKED', 'Account locked after 5 wrong passwords', { req, userId: String(user._id) });
+      if (locking) {
+        await logActivity('ACCOUNT_LOCKED', `Account locked for ${LOCK_MINUTES} minutes after ${MAX_FAILED_LOGINS} wrong passwords`, {
+          req,
+          userId: String(user._id),
+          meta: { lockUntil: user.lockUntil, minutes: LOCK_MINUTES },
+        });
+        throw new AppError(
+          `Too many wrong passwords. Your account is locked for ${LOCK_MINUTES} minutes (until ${istTime(user.lockUntil!)}). An administrator can unlock it sooner by resetting your password.`,
+          429,
+          'ACCOUNT_TEMPORARILY_LOCKED'
+        );
       }
-      throw AppError.unauthorized('Invalid username or password');
+      const left = MAX_FAILED_LOGINS - attempt;
+      throw AppError.unauthorized(
+        left <= 2 ? `Invalid username or password. ${left} more wrong ${left === 1 ? 'try' : 'tries'} will lock the account for ${LOCK_MINUTES} minutes.` : 'Invalid username or password'
+      );
     }
 
     // Reset failed attempts & update last login
     user.failedLoginAttempts = 0;
+    user.lockUntil = undefined;
     user.lastLoginAt = new Date();
     await user.save();
 

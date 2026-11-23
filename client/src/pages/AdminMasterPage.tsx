@@ -359,6 +359,17 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
     }
   };
 
+  // Lifts a 15-minute lock from wrong passwords (saving the user as Active clears it)
+  const unlockUser = async (u: any) => {
+    try {
+      await api.patch(`/users/${u._id}`, { status: 'ACTIVE' });
+      queryClient.invalidateQueries({ queryKey: ['users'] });
+      toast.success(`${u.name} can sign in again`);
+    } catch (err: any) {
+      toast.error(errorMessage(err, 'Unlocking failed'));
+    }
+  };
+
   const handleResetPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resetUser) return;
@@ -674,6 +685,21 @@ employeeId,name,email,username,departmentCode,roleCode,designation,phone
                         >
                           {u.status}
                         </span>
+                        {u.lockUntil && new Date(u.lockUntil) > new Date() && (
+                          <div className="mt-1.5 flex items-center gap-1.5 whitespace-nowrap">
+                            <span
+                              className="px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold text-[11px]"
+                              title="Locked after 5 wrong passwords; unlocks by itself"
+                            >
+                              Locked until {new Date(u.lockUntil).toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' })}
+                            </span>
+                            {(isSuperAdmin || u._id === me?.id || !u.roles?.some((r: any) => PRIVILEGED_ROLE_CODES.includes(r.code))) && (
+                              <button type="button" onClick={() => unlockUser(u)} className="text-[11.5px] font-semibold text-[#5C1A22] hover:underline cursor-pointer">
+                                Unlock
+                              </button>
+                            )}
+                          </div>
+                        )}
                       </td>
                       <td className="py-3 px-4 text-right whitespace-nowrap">
                         {!isSuperAdmin && u._id !== me?.id && u.roles?.some((r: any) => PRIVILEGED_ROLE_CODES.includes(r.code)) ? (
