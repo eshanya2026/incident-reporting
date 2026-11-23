@@ -375,6 +375,26 @@ describe.skipIf(!MONGO_URI)('Security and confidentiality (HTTP, MongoDB)', () =
     expect(after.status).toBe('READ');
   });
 
+  it('a "read" for a message we did not send (shared WATI number) does not touch our messages', async () => {
+    const msg = await WhatsappMessage.create({
+      to: '9000000002', // saved without the country code, as an old test send did
+      notificationKey: 'TEST',
+      status: 'DELIVERED',
+      providerIds: ['known-id'],
+      history: [],
+      createdAt: new Date(Date.now() - 2 * 3600000),
+    });
+    const res = await request(app).post(WEBHOOK).send({ eventType: 'sentMessageREAD_v2', statusString: 'Read', id: 'unknown-id', waId: '919000000002' });
+    expect(res.status).toBe(200);
+    const after = (await WhatsappMessage.findById(msg._id))!;
+    expect(after.status).toBe('DELIVERED');
+    expect(after.providerIds).not.toContain('unknown-id');
+    // The webhook keeps a count per event type and the latest events, for diagnosis
+    const state: any = await mongoose.connection.collection('app_state').findOne({ _id: 'wati_webhook' as any });
+    expect(state.types.sentMessageREAD_v2.total).toBeGreaterThanOrEqual(1);
+    expect(state.recent.at(-1)).toMatchObject({ eventType: 'sentMessageREAD_v2', id: 'unknown-id', matched: false });
+  });
+
   it('the WhatsApp webhook ignores calls without the secret', async () => {
     const res = await request(app).post('/api/v1/whatsapp/webhook/wrong-secret-value').send({ eventType: 'sentMessageREAD_v2', localMessageId: 'x' });
     expect(res.status).toBe(404);

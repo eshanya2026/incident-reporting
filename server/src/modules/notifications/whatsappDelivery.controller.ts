@@ -70,6 +70,14 @@ const eventTime = (e: any): Date => {
   return created && !Number.isNaN(created.getTime()) ? created : new Date();
 };
 
+/** The number as stored and as WATI sends it (with or without India's 91). */
+const numberVariants = (waId: string): string[] => {
+  const v = new Set([waId]);
+  if (waId.length === 12 && waId.startsWith('91')) v.add(waId.slice(2));
+  if (waId.length === 10) v.add(`91${waId}`);
+  return [...v];
+};
+
 const applyEvent = async (e: any): Promise<boolean> => {
   const type = String(e?.eventType || '');
   // A reply from the person: mark the message they replied to
@@ -83,15 +91,17 @@ const applyEvent = async (e: any): Promise<boolean> => {
 
   const ids = [e.localMessageId, e.id, e.whatsappMessageId].filter((v) => typeof v === 'string' && v.trim());
   let msg = ids.length ? await WhatsappMessage.findOne({ providerIds: { $in: ids } }) : null;
-  // The first "sent" event may arrive before we stored WATI's ids: match on the number instead
   const waId = String(e?.waId || '').replace(/\D/g, '');
-  if (!msg && waId) {
+  // The first "sent" event may arrive before we stored WATI's ids: match on the number instead
+  if (!msg && waId && status === 'SENT') {
     msg = await WhatsappMessage.findOne({
-      to: waId,
+      to: { $in: numberVariants(waId) },
       status: { $in: ['PENDING', 'SENT'] },
       createdAt: { $gte: new Date(Date.now() - 30 * 60 * 1000) },
     }).sort({ createdAt: -1 });
   }
+  // Later updates (delivered, read, replied) are matched by id only: the WATI number is shared with
+  // other systems, so an unknown id is usually someone else's message, not ours.
   if (!msg) return false;
 
   const at = eventTime(e);
@@ -129,12 +139,33 @@ export const receiveWatiWebhook = async (req: Request, res: Response): Promise<v
   try {
     const events = Array.isArray(req.body) ? req.body : [req.body];
     let matched = 0;
+    const inc: Record<string, number> = { count: events.length };
+    const recent: any[] = [];
     for (const e of events.slice(0, 100)) {
-      if (await applyEvent(e)) matched += 1;
+      const ok = await applyEvent(e);
+      if (ok) matched += 1;
+      // Per event type: how many arrived and how many matched one of our messages (for diagnosis)
+      const key = String(e?.eventType || 'unknown').replace(/[^\w-]/g, '_').slice(0, 60) || 'unknown';
+      inc[`types.${key}.total`] = (inc[`types.${key}.total`] || 0) + 1;
+      if (ok) inc[`types.${key}.matched`] = (inc[`types.${key}.matched`] || 0) + 1;
+      recent.push({
+        at: new Date(),
+        eventType: e?.eventType,
+        statusString: e?.statusString,
+        id: e?.id,
+        localMessageId: e?.localMessageId,
+        whatsappMessageId: e?.whatsappMessageId,
+        waId: e?.waId,
+        matched: ok,
+      });
     }
     await appState().updateOne(
       { _id: 'wati_webhook' },
-      { $set: { lastAt: new Date(), lastEvent: String(events[0]?.eventType || ''), lastMatched: matched > 0 }, $inc: { count: events.length } },
+      {
+        $set: { lastAt: new Date(), lastEvent: String(events[0]?.eventType || ''), lastMatched: matched > 0 },
+        $inc: inc,
+        $push: { recent: { $each: recent, $slice: -100 } } as any,
+      },
       { upsert: true }
     );
   } catch (error) {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { interpretWatiReply, providerIdsOf } from './whatsapp.js';
+import { interpretWatiReply, providerIdsOf, toWhatsappId } from './whatsapp.js';
 
 // Shape of WATI's real sendTemplateMessage reply for a contact it has just created (production
 // log, 23 Nov 2026; number and ids replaced).
@@ -35,5 +35,14 @@ describe('reading WATI send replies', () => {
 
   it('a normal accepted message has no note', () => {
     expect(interpretWatiReply(true, 200, { result: true, validWhatsAppNumber: true, local_message_id: 'x' })).toEqual({ ok: true, note: undefined });
+  });
+});
+
+describe('numbers sent to WATI', () => {
+  it('adds India\'s 91 to a 10-digit mobile and keeps full numbers as they are', () => {
+    expect(toWhatsappId('95513 82296')).toBe('919551382296');
+    expect(toWhatsappId('+91 95513 82296')).toBe('919551382296');
+    expect(toWhatsappId('09551382296')).toBe('919551382296');
+    expect(toWhatsappId('+971501234567')).toBe('971501234567');
   });
 });

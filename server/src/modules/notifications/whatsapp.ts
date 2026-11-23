@@ -15,8 +15,11 @@ import { User } from '../users/user.model.js';
 export const whatsappEnabled = (): boolean =>
   env.WHATSAPP_NOTIFICATIONS && Boolean(env.WATI_API_ENDPOINT) && Boolean(env.WATI_ACCESS_TOKEN);
 
-/** WATI expects digits only, with country code and no leading "+" or spaces. */
-const toWhatsappId = (rawNumber: string): string => rawNumber.replace(/\D/g, '');
+/** WATI expects digits only, with country code and no leading "+" or spaces; a 10-digit Indian mobile gets 91. */
+export const toWhatsappId = (rawNumber: string): string => {
+  const digits = rawNumber.replace(/\D/g, '').replace(/^0+/, '');
+  return digits.length === 10 ? `91${digits}` : digits;
+};
 
 export interface SendResult {
   ok: boolean;
