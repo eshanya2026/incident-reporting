@@ -81,19 +81,36 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
   const needs = severityNeeds(severity);
   const lastReturn = incident.hodReturns?.[incident.hodReturns.length - 1];
 
+  // Every active user, page by page: the list endpoint returns at most 200 at a time (sorted by name), so
+  // one page left out everyone after the first 200 names, Intimation Members included.
   const { data: usersData } = useQuery({
-    queryKey: ['users', 'active'],
-    queryFn: () => api.get('/users?status=ACTIVE&limit=200'),
+    queryKey: ['users', 'active', 'all'],
+    queryFn: async () => {
+      const all: any[] = [];
+      for (let page = 1; page <= 50; page++) {
+        const res: any = await api.get(`/users?status=ACTIVE&limit=200&page=${page}`);
+        all.push(...(res?.data || []));
+        if (page >= (res?.meta?.totalPages || 1)) break;
+      }
+      return all;
+    },
+    staleTime: 5 * 60 * 1000,
   });
-  const usersList: any[] = (usersData as any)?.data || [];
+  const usersList: any[] = (usersData as any[]) || [];
+  const isIntimationMember = (u: any) => (u.roles || []).some((r: any) => r?.code === 'INTIMATION_MEMBER');
 
   const availableAdditional = departments.filter(
     (d) => d._id !== departmentId && !notifiedDepartmentIds.includes(d._id)
   );
 
-  const availableIntimateUsers = usersList.filter(
-    (u) => !intimatedUserIds.includes(u._id)
-  );
+  // Two groups: Intimation Members first, then all other members; each by name (department in the label).
+  const availableIntimateUsers = usersList
+    .filter((u) => !intimatedUserIds.includes(u._id))
+    .sort(
+      (a, b) =>
+        Number(isIntimationMember(b)) - Number(isIntimationMember(a)) ||
+        String(a.name || '').localeCompare(String(b.name || ''), undefined, { sensitivity: 'base' })
+    );
 
   const modes: Array<{ key: Mode; label: string; icon: any }> = [
     { key: 'assign', label: 'Assign to HOD', icon: UserCheck },
@@ -320,7 +337,7 @@ export default function QualityTriagePanel({ incident }: { incident: any }) {
                   ...availableIntimateUsers.map((u) => ({
                     value: u._id,
                     label: `${u.name}${u.departmentId?.name ? ` (${u.departmentId.name})` : ''}`,
-                    group: u.departmentId?.name || u.roles?.[0]?.name || 'General',
+                    group: isIntimationMember(u) ? 'Intimation Members' : 'Other members',
                   })),
                 ]}
                 searchPlaceholder="Search personnel..."
