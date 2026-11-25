@@ -40,3 +40,7 @@ active_employees_*.csv
 docs/*.xlsx
 docs/hr_employees*.csv
 hr_employees*.csv
+
+# Accounts saved by deleteInactiveUsers (staff personal data) - never commit
+inactive-users/
+deleted-inactive-users-*
