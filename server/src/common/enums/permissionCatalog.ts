@@ -24,7 +24,7 @@ export const PERMISSION_CATALOG: PermissionInfo[] = [
   // Screens (each shows or hides a navbar item and the data behind it)
   { key: PERMISSIONS.DASHBOARD_VIEW, group: 'Screens', configurable: true, label: 'Dashboard', description: 'Dashboard with incident and CAPA analytics. Hospital-wide for roles that can see all incidents, otherwise the user\'s own department.' },
   { key: PERMISSIONS.INCIDENT_CREATE, group: 'Screens', configurable: true, label: 'Report Incident', description: 'Report a new incident.' },
-  { key: PERMISSIONS.INCIDENT_READ_OWN, group: 'Screens', configurable: true, label: 'My Reports', description: 'Incidents the user reported themselves, or was intimated on.' },
+  { key: PERMISSIONS.INCIDENT_READ_OWN, group: 'Screens', configurable: true, label: 'My Reports', description: 'Incidents the user reported themselves. (Incidents they were copied on are under "Copied to me", which everyone gets.)' },
   { key: PERMISSIONS.REVIEW_QUEUE_VIEW, group: 'Screens', configurable: true, label: 'Review & RCA Queue', description: 'Incidents waiting for Quality review or an RCA meeting.' },
   { key: PERMISSIONS.INCIDENT_READ_ASSIGNED, group: 'Screens', configurable: true, label: "My Department's Incidents", description: "Incidents assigned to, or involving, the user's department." },
   { key: PERMISSIONS.INCIDENT_READ_ALL, group: 'Screens', configurable: true, label: 'All Incidents', description: 'Every incident in the hospital, and opening any of them.' },
@@ -49,13 +49,13 @@ export const PERMISSION_CATALOG: PermissionInfo[] = [
   { key: PERMISSIONS.ADMIN_AUDIT_VIEW, group: 'Administration', configurable: true, label: 'Audit log', description: 'See the audit trail of workflow actions.' },
 
   // Workflow steps: fixed to the roles that perform them
-  { key: PERMISSIONS.INCIDENT_TRIAGE, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.QUALITY], label: 'Triage new reports', description: 'Triage Inbox: assign, ask the reporter a question, or reject.' },
-  { key: PERMISSIONS.INCIDENT_REVIEW, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.QUALITY], label: 'Review and close', description: 'Accept or return the HOD\'s work, request an RCA, and close with a risk score.' },
+  { key: PERMISSIONS.INCIDENT_TRIAGE, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.QUALITY, ROLE_CODES.ADMIN], label: 'Triage new reports', description: 'Triage Inbox: assign, ask the reporter a question, or reject.' },
+  { key: PERMISSIONS.INCIDENT_REVIEW, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.QUALITY, ROLE_CODES.ADMIN], label: 'Review and close', description: 'Accept or return the HOD\'s work, request an RCA, and close with a risk score.' },
   { key: PERMISSIONS.INCIDENT_REPORTER_VIEW, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.QUALITY, ROLE_CODES.ADMIN], label: 'See who reported an incident', description: "The reporter's name and details. Everyone else (HODs, RCA Heads, Intimation members, other staff) sees the reporter as confidential." },
   { key: PERMISSIONS.INCIDENT_RESUBMIT, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.STAFF], label: 'Answer Quality\'s questions', description: 'The reporter answers a question Quality asked about their report.' },
   { key: PERMISSIONS.INCIDENT_RETURN_TO_QUALITY, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.HOD], label: 'Return a wrongly assigned incident', description: 'The HOD sends an incident back to Quality.' },
   { key: PERMISSIONS.INVESTIGATION_WRITE, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.HOD], label: 'Investigate', description: "The HOD records their department's investigation." },
-  { key: PERMISSIONS.RCA_WRITE, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.HOD, ROLE_CODES.QUALITY, ROLE_CODES.RCA_HEAD], label: 'Write RCA / RCA meeting report', description: 'The HOD writes the 5-Why RCA; Quality uploads the RCA meeting report.' },
+  { key: PERMISSIONS.RCA_WRITE, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.HOD, ROLE_CODES.QUALITY, ROLE_CODES.ADMIN, ROLE_CODES.RCA_HEAD], label: 'Write RCA / RCA meeting report', description: 'The HOD writes the 5-Why RCA; Quality uploads the RCA meeting report.' },
   { key: PERMISSIONS.CAPA_WRITE, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.HOD], label: 'Write CAPA', description: "The HOD writes and completes their department's CAPA." },
   { key: PERMISSIONS.INCIDENT_SUBMIT_CLOSURE, group: 'Incident workflow', configurable: false, performedBy: [ROLE_CODES.HOD], label: 'Submit for closure', description: 'The HOD submits the finished investigation and CAPA to Quality.' },
 

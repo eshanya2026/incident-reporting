@@ -7,6 +7,7 @@ import {
   getTriageQueue,
   getReviewQueue,
   getMyDepartmentIncidents,
+  getCopiedToMe,
   requestInfo,
   respondToInfoRequest,
   rejectIncident,
@@ -30,6 +31,8 @@ router.use(authenticate);
 router.get('/triage-queue', requirePermission(PERMISSIONS.INCIDENT_TRIAGE), getTriageQueue);
 router.get('/review-queue', getReviewQueue);
 router.get('/my-department', requirePermission(PERMISSIONS.INCIDENT_READ_ASSIGNED), getMyDepartmentIncidents);
+// Anyone Quality copied (intimated) on an incident, whatever their role
+router.get('/copied-to-me', getCopiedToMe);
 router.get('/rca-heads', getRcaHeads);
 
 // Reporting and reading (lists and details are scoped to what the user may see)

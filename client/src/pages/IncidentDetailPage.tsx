@@ -128,7 +128,7 @@ export default function IncidentDetailPage() {
   const isRcaRequested = status === 'RCA_REQUESTED';
   // Quality scheduled the meeting and uploads its report; the RCA Head just views the meeting
   // details and investigates — both see RcaMeetingPanel, no one else needs to.
-  const canPerformRca = (user?.roles || []).includes('RCA_HEAD') || (user?.roles || []).includes('QUALITY');
+  const canPerformRca = (user?.roles || []).some((r: string) => ['RCA_HEAD', 'QUALITY', 'ADMIN'].includes(r));
   // RcaMeetingPanel replaces this 5-Why form during RCA_REQUESTED; this form stays only for the
   // HOD's investigation-stage RCA (severity 4–5).
   const rcaEditable = workEditable && incident.requiresRca;

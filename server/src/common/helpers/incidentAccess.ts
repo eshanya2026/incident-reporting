@@ -1,6 +1,6 @@
 import { Request } from 'express';
 import { AppError } from '../errors/appError.js';
-import { PERMISSIONS, ROLE_CODES } from '../enums/permissions.js';
+import { PERMISSIONS, ROLE_CODES, actsAsQuality } from '../enums/permissions.js';
 import { Incident, IIncident } from '../../modules/incidents/incident.model.js';
 import { JwtPayload } from '../../modules/auth/auth.utils.js';
 
@@ -65,7 +65,7 @@ export const canViewIncident = (user: JwtPayload | undefined, incident: IInciden
 export const canWorkOnIncident = (user: JwtPayload | undefined, incident: IIncident): boolean => {
   if (!user) return false;
   if (incident.status === 'RCA_REQUESTED') {
-    return Boolean(user.roles?.includes(ROLE_CODES.QUALITY));
+    return actsAsQuality(user.roles);
   }
   return (
     hasPermission(user, PERMISSIONS.INCIDENT_READ_ASSIGNED) &&

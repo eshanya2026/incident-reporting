@@ -1,4 +1,4 @@
-import { ROLE_CODES } from '../../common/enums/permissions.js';
+import { ROLE_CODES, actsAsQuality } from '../../common/enums/permissions.js';
 import type { IncidentStatus } from './incident.model.js';
 import type { CapaStatus } from '../capa/capa.model.js';
 
@@ -25,7 +25,7 @@ export type WorkflowAction = (typeof WORKFLOW_ACTIONS)[number];
 
 /** Who may perform an action. */
 export type WorkflowActor =
-  | 'QUALITY' // any Quality user
+  | 'QUALITY' // any Quality user, or an Admin (backup for Quality)
   | 'REPORTER' // the Staff member who reported the incident
   | 'RESPONSIBLE_HOD' // HOD of the department the incident is currently assigned to
   | 'INVOLVED_HOD'; // RESPONSIBLE_HOD, or the HOD of a department marked as involved on the incident
@@ -247,7 +247,7 @@ export const isActor = (actor: WorkflowActor, ctx: WorkflowContext): boolean => 
   const { roles = [], userId, departmentId } = ctx.actor || {};
   switch (actor) {
     case 'QUALITY':
-      return roles.includes(ROLE_CODES.QUALITY);
+      return actsAsQuality(roles);
     case 'REPORTER':
       return roles.includes(ROLE_CODES.STAFF) && userId === ctx.incident.reportedBy;
     case 'RESPONSIBLE_HOD':
@@ -264,7 +264,7 @@ export const isActor = (actor: WorkflowActor, ctx: WorkflowContext): boolean => 
 };
 
 const ACTOR_NAMES: Record<WorkflowActor, string> = {
-  QUALITY: 'Quality',
+  QUALITY: 'Quality or an Admin',
   REPORTER: 'the staff member who reported the incident',
   RESPONSIBLE_HOD: 'the HOD of the responsible department',
   INVOLVED_HOD: 'the HOD of the responsible or an involved department',

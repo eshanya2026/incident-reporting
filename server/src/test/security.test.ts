@@ -247,6 +247,21 @@ describe.skipIf(!MONGO_URI)('Security and confidentiality (HTTP, MongoDB)', () =
     }
   });
 
+  it('"Copied to me" lists the incidents a person was copied on, reporter hidden, and nothing for others', async () => {
+    const res = await api(tokens.intimated).get('/api/v1/incidents/copied-to-me');
+    expect(res.status).toBe(200);
+    expect(res.body.data.map((i: any) => i._id)).toEqual([openIncidentId]);
+    expect(res.body.data[0].copiedBy).toBe('User quality');
+    expect(res.body.data[0].copiedAt).toBeTruthy();
+    expect(res.body.meta).toMatchObject({ total: 1, open: 1 });
+    expectNoReporter(res.text, 'copied-to-me');
+    expect((await api(tokens.intimated).get('/api/v1/incidents/copied-to-me?status=closed')).body.data).toHaveLength(0);
+    // Not copied: empty, whatever their role
+    for (const who of ['hodA', 'plainStaff', 'quality']) {
+      expect((await api(tokens[who]).get('/api/v1/incidents/copied-to-me')).body.data, who).toHaveLength(0);
+    }
+  });
+
   it('staff who are not involved cannot open the incident at all', async () => {
     const res = await api(tokens.plainStaff).get(`/api/v1/incidents/${openIncidentId}`);
     expect([403, 404]).toContain(res.status);
@@ -259,6 +274,32 @@ describe.skipIf(!MONGO_URI)('Security and confidentiality (HTTP, MongoDB)', () =
       expect(res.status).toBe(200);
       expect(res.text.includes(REPORTER.name), `${who} should see the reporter`).toBe(true);
     }
+  });
+
+  it('an Admin can stand in for Quality: triage inbox, assign, and the step is recorded as theirs', async () => {
+    const inc = await Incident.create({
+      incidentNumber: 'SEC-ADMIN-1',
+      reportedBy: ids.reporter,
+      incidentDateTime: new Date(),
+      occurredInDepartmentId: ids.deptB,
+      locationId: ids.location,
+      categoryId: ids.category,
+      affectedPersonType: 'EMPLOYEE',
+      title: 'Admin triage test',
+      description: 'Assigned by an Admin while Quality is away.',
+      status: 'SUBMITTED',
+    });
+    const inbox = await api(tokens.admin).get('/api/v1/incidents/triage-queue');
+    expect(inbox.status).toBe(200);
+    expect(inbox.body.data.map((i: any) => i._id)).toContain(String(inc._id));
+    const res = await api(tokens.admin).post(`/api/v1/incidents/${inc._id}/assign`, { departmentId: ids.deptB, severity: 1 });
+    expect(res.status, JSON.stringify(res.body)).toBe(200);
+    const after = await Incident.findById(inc._id);
+    expect(after!.status).toBe('ASSIGNED');
+    expect(String(after!.assignments[0].by)).toBe(ids.admin);
+    // An HOD still can't
+    const other = await Incident.create({ ...inc.toObject(), _id: undefined, incidentNumber: 'SEC-ADMIN-2', status: 'SUBMITTED', assignments: [] });
+    expect((await api(tokens.hodA).post(`/api/v1/incidents/${other._id}/assign`, { departmentId: ids.deptB, severity: 1 })).status).toBe(403);
   });
 
   // ---------- Only a Super Admin manages Admins ----------

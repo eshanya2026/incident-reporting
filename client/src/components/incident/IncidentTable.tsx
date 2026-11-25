@@ -22,9 +22,11 @@ export type IncidentColumn =
   | 'status'
   | 'waiting'
   | 'priority'
-  | 'deadline';
+  | 'deadline'
+  | 'copied';
 
 const HEADERS: Record<IncidentColumn, string> = {
+  copied: 'Copied to you',
   number: 'Incident No',
   occurred: 'Occurred',
   reported: 'Reported',
@@ -204,6 +206,15 @@ export default function IncidentTable({
           </div>
         );
       }
+      case 'copied':
+        return inc.copiedAt ? (
+          <div className="whitespace-nowrap" title={dayjs(inc.copiedAt).format('DD MMM YYYY HH:mm')}>
+            <div className="text-sm text-slate-700">{dayjs(inc.copiedAt).format('DD MMM YYYY')}</div>
+            <div className="text-[11px] text-slate-500">{inc.copiedBy ? `by ${inc.copiedBy}` : dayjs(inc.copiedAt).fromNow()}</div>
+          </div>
+        ) : (
+          '—'
+        );
       case 'waiting': {
         const since = waitingSince?.(inc);
         if (!since) return '—';

@@ -429,6 +429,50 @@ export const getMyDepartmentIncidents = async (req: Request, res: Response, next
   }
 };
 
+/** Incidents still being worked (not closed or rejected). */
+const OPEN_FOR_CC = ['SUBMITTED', 'INFO_REQUESTED', 'ASSIGNED', 'UNDER_INVESTIGATION', 'CAPA_IN_PROGRESS', 'PENDING_QUALITY_REVIEW', 'RCA_REQUESTED'];
+
+/**
+ * GET /incidents/copied-to-me — incidents Quality copied (intimated, CC) this user on, now or in an
+ * earlier assignment, newest first. Read-only for them, reporter hidden as everywhere else.
+ * `?status=open|closed`, `?search=`. meta: total, open.
+ */
+export const getCopiedToMe = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const userId = new mongoose.Types.ObjectId(req.user!.userId);
+    const base: any = { $or: [{ intimatedUserIds: userId }, { 'assignments.intimatedUserIds': userId }] };
+    const query: any = { $and: [base] };
+    const status = String(req.query.status || '');
+    if (status === 'open') query.$and.push({ status: { $in: OPEN_FOR_CC } });
+    if (status === 'closed') query.$and.push({ status: { $in: ['CLOSED', 'REJECTED'] } });
+    const search = String(req.query.search || '').trim().slice(0, 100);
+    if (search) {
+      const re = { $regex: search.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), $options: 'i' };
+      query.$and.push({ $or: [{ incidentNumber: re }, { title: re }] });
+    }
+    const [incidents, total, open] = await Promise.all([
+      populateList(Incident.find(query)).populate('assignments.by', 'name').sort({ updatedAt: -1 }).limit(QUEUE_LIMIT),
+      Incident.countDocuments(base),
+      Incident.countDocuments({ $and: [base, { status: { $in: OPEN_FOR_CC } }] }),
+    ]);
+    const me = String(userId);
+    const rows = incidents.map((inc: any) => {
+      // When (and by whom) they were copied: the latest assignment that named them
+      const copiedIn = [...(inc.assignments || [])].reverse().find((a: any) => (a.intimatedUserIds || []).some((u: any) => String(u?._id ?? u) === me));
+      const shaped = shapeList([inc], req.user)[0];
+      return {
+        ...shaped,
+        copiedAt: copiedIn?.at ?? inc.assignedAt ?? inc.updatedAt,
+        copiedBy: copiedIn?.by?.name ?? null,
+      };
+    });
+    rows.sort((a: any, b: any) => +new Date(b.copiedAt) - +new Date(a.copiedAt));
+    sendSuccess(res, rows, 'Incidents copied to you', 200, { total, open });
+  } catch (error) {
+    next(error);
+  }
+};
+
 // ---------- Workflow actions ----------
 
 /**

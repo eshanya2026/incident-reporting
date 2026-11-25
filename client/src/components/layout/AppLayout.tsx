@@ -18,6 +18,7 @@ import {
   MessageSquareText,
   KeyRound,
   ChevronDown,
+  Forward,
   Maximize,
   Minimize,
 } from 'lucide-react';
@@ -31,6 +32,7 @@ import { hasAnyPermission, hasPermission } from '../../lib/rbac';
 import BrandLogo from '../ui/BrandLogo';
 import { useActivityTracker } from '../../lib/activityTracker';
 import NavMenu, { navPillClass } from './NavMenu';
+import { COPIED_SEEN_KEY } from '../../pages/CopiedToMePage';
 
 dayjs.extend(relativeTime);
 
@@ -115,10 +117,26 @@ export default function AppLayout() {
         myReports: hasPermission(user, 'incident.read_own')
           ? await count('/incidents', { mine: true, status: 'INFO_REQUESTED', limit: 200 })
           : 0,
+        ...(await (async () => {
+          // Copied (CC) on any incident: the menu item shows, with how many arrived since last looked
+          try {
+            const res: any = await api.get('/incidents/copied-to-me');
+            const list: any[] = res?.data || [];
+            let seenAt = 0;
+            try {
+              seenAt = Date.parse(localStorage.getItem(COPIED_SEEN_KEY) || '') || 0;
+            } catch {
+              seenAt = 0;
+            }
+            return { copiedTotal: list.length, copiedNew: list.filter((i) => Date.parse(i.copiedAt) > seenAt).length };
+          } catch {
+            return { copiedTotal: 0, copiedNew: 0 };
+          }
+        })()),
       };
     },
   });
-  const queueCounts = countsData ?? { triage: 0, review: 0, department: 0, myReports: 0 };
+  const queueCounts = countsData ?? { triage: 0, review: 0, department: 0, myReports: 0, copiedTotal: 0, copiedNew: 0 };
 
   const fetchNotifications = async () => {
     try {
@@ -199,6 +217,8 @@ export default function AppLayout() {
     count?: number;
     /** Shown inside a dropdown with the other items of the same group (when there are 2+). */
     group?: 'admin';
+    /** Shown only when true (on top of any permission). */
+    when?: boolean;
   }> = [
     { label: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
     { label: 'Report Incident', path: '/incidents/new', icon: PlusCircle, permission: 'incident.create' },
@@ -207,6 +227,7 @@ export default function AppLayout() {
     { label: 'Review & RCA Queue', path: '/review', icon: ClipboardCheck, permission: 'review_queue.view', count: queueCounts.review },
     { label: "My Department's Incidents", path: '/my-department', icon: Building2, permission: 'incident.read_assigned', count: queueCounts.department },
     { label: 'All Incidents', path: '/incidents', icon: FileSpreadsheet, permission: 'incident.read_all' },
+    { label: 'Copied to me', path: '/copied-to-me', icon: Forward, when: queueCounts.copiedTotal > 0, count: queueCounts.copiedNew },
     { label: 'CAPA', path: '/capas', icon: CheckSquare, permission: 'capa.read' },
     { label: 'Reports', path: '/reports', icon: BarChart3, anyPermissions: ['report.view_all', 'report.view_department'] },
     { label: 'AI Insights', path: '/insights', icon: Sparkles, anyPermissions: ['insights.view_all', 'insights.view_department'] },
@@ -218,6 +239,7 @@ export default function AppLayout() {
   ];
 
   const visibleNavItems = navItems.filter((item) => {
+    if (item.when === false) return false;
     if (item.permission) return hasPermission(user, item.permission);
     if (item.anyPermissions) return hasAnyPermission(user, item.anyPermissions);
     return true;

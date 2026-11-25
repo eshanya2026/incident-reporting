@@ -66,3 +66,7 @@ export const ROLE_CODES = {
 } as const;
 
 export type RoleCode = (typeof ROLE_CODES)[keyof typeof ROLE_CODES];
+
+/** Roles that do Quality's workflow steps (triage, review and close, RCA meeting): Quality, and Admin as a backup. */
+export const QUALITY_STEP_ROLES: string[] = [ROLE_CODES.QUALITY, ROLE_CODES.ADMIN];
+export const actsAsQuality = (roles: string[] = []): boolean => roles.some((r) => QUALITY_STEP_ROLES.includes(r));

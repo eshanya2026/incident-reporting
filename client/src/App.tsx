@@ -20,6 +20,7 @@ import WhatsappTemplatesPage from './pages/WhatsappTemplatesPage';
 import AuditLogPage from './pages/AuditLogPage';
 import ProfilePage from './pages/ProfilePage';
 import WhatsappDeliveryPage from './pages/WhatsappDeliveryPage';
+import CopiedToMePage from './pages/CopiedToMePage';
 import { useAuthStore } from './store/useAuthStore';
 import { api } from './lib/api';
 import { hasAnyPermission, homePath } from './lib/rbac';
@@ -190,6 +191,8 @@ export default function App() {
           />
           {/* Every signed-in user: own details and password */}
           <Route path="profile" element={<ProfilePage />} />
+          {/* Anyone Quality copied on an incident (no permission needed; the list is only theirs) */}
+          <Route path="copied-to-me" element={<CopiedToMePage />} />
           <Route
             path="whatsapp-delivery"
             element={

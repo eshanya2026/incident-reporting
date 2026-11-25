@@ -101,7 +101,14 @@ describe.each(WORKFLOW_ACTIONS)('%s', (action) => {
     expectFail(action, withIncident(validContext(action), { status }), 'INVALID_STATE');
   });
 
-  const wrongPeople = (Object.keys(PEOPLE) as Person[]).filter((p) => p !== ACTOR_FOR[action]);
+  // Admin stands in for Quality, so Quality steps also allow the admin
+  const allowed = ACTOR_FOR[action] === 'quality' ? ['quality', 'admin'] : [ACTOR_FOR[action]];
+  const wrongPeople = (Object.keys(PEOPLE) as Person[]).filter((p) => !allowed.includes(p));
+  if (allowed.includes('admin')) {
+    it('is allowed for an admin too (backup for Quality)', () => {
+      expect(checkTransition(action, { ...validContext(action), actor: PEOPLE.admin })).toEqual({ ok: true, to: rule.to });
+    });
+  }
   it.each(wrongPeople)('is refused for %s', (person) => {
     expectFail(action, { ...validContext(action), actor: PEOPLE[person] }, 'NOT_ALLOWED');
   });
@@ -314,9 +321,9 @@ describe('availableActions', () => {
     expect(availableActions(ctxFor(status, person))).toEqual(expected);
   });
 
-  it('Admin never has workflow actions', () => {
+  it('Admin has exactly the same workflow actions as Quality (backup for Quality), never the HOD or reporter steps', () => {
     for (const status of INCIDENT_STATUSES) {
-      expect(availableActions(ctxFor(status, 'admin'))).toEqual([]);
+      expect(availableActions(ctxFor(status, 'admin'))).toEqual(availableActions(ctxFor(status, 'quality')));
     }
   });
 });

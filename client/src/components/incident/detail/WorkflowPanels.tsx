@@ -233,7 +233,8 @@ export function SubmitClosurePanel({
  */
 export function RcaMeetingPanel({ incident }: { incident: any }) {
   const user = useAuthStore((s) => s.user);
-  const isQuality = (user?.roles || []).includes('QUALITY');
+  // Quality, or an Admin standing in for Quality
+  const isQuality = (user?.roles || []).some((r: string) => r === 'QUALITY' || r === 'ADMIN');
   const { run, busy, error } = useAction(incident._id);
   const meetingQuery = useQuery({
     queryKey: ['rca-meeting', incident._id],
