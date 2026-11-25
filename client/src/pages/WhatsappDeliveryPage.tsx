@@ -52,6 +52,7 @@ export const NOTIFICATION_LABELS: Record<string, string> = {
   INVOLVED_DEPARTMENT: 'Involved department',
   INTIMATED: 'Intimated (CC)',
   RCA_MEETING_SCHEDULED: 'RCA meeting scheduled',
+  INCIDENT_CLOSED: 'Incident closed',
   TEST: 'Test send',
   OTHER: 'Other',
 };

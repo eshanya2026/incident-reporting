@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import mongoose from 'mongoose';
 import request from 'supertest';
 import { inflateSync } from 'node:zlib';
@@ -18,6 +18,10 @@ import { AuditLog } from '../modules/audit/audit.model.js';
 import { releaseOldWrongPasswordLocks } from '../migrations/releaseOldLocks.js';
 import { createShortLink, attachLinkToMessage } from '../modules/links/shortLink.service.js';
 import { LinkEvent } from '../modules/links/shortLink.model.js';
+import { Notification } from '../modules/notifications/notification.model.js';
+import { RcaMeeting } from '../modules/rca/rcaMeeting.model.js';
+import { notifyWorkflowEvent } from '../modules/notifications/workflowNotifications.js';
+import { env } from '../config/env.js';
 
 // End-to-end checks of the promises the hospital relies on, through the real HTTP API with real
 // roles and real sign-ins: reporter confidentiality, who may create Admins, HOD hand-over, ended
@@ -570,5 +574,48 @@ describe.skipIf(!MONGO_URI)('Security and confidentiality (HTTP, MongoDB)', () =
     await releaseOldWrongPasswordLocks();
     expect((await User.findById(auto._id))!.status).toBe('ACTIVE');
     expect((await User.findById(byAdmin._id))!.status).toBe('LOCKED');
+  });
+
+  it('closing an incident tells everyone involved, in the app and on WhatsApp, once each', async () => {
+    // Everyone involved has a WhatsApp number; WATI is faked
+    const people = ['reporter', 'quality', 'hodA', 'hodB', 'intimated', 'nextHod', 'admin2'];
+    for (const [n, key] of people.entries()) await User.updateOne({ _id: ids[key] }, { whatsappNumber: `98765000${String(n).padStart(2, '0')}` });
+    const saved = { ...env };
+    Object.assign(env, { WHATSAPP_NOTIFICATIONS: true, WATI_API_ENDPOINT: 'http://wati.test', WATI_ACCESS_TOKEN: 'x', WATI_TEMPLATE_NAME: 'incident_alert' });
+    let sent = 0;
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ result: true, local_message_id: `close-${++sent}` }))));
+
+    // Ward B involved, an RCA Head, and an RCA meeting attended by Admin 2, the RCA Head and Quality
+    const incident = (await Incident.findById(openIncidentId))!;
+    incident.notifiedDepartmentIds = [new mongoose.Types.ObjectId(ids.deptB)];
+    incident.rcaHeadId = new mongoose.Types.ObjectId(ids.nextHod);
+    await RcaMeeting.create({
+      incidentId: incident._id,
+      scheduledBy: ids.nextHod,
+      meetingAt: new Date(),
+      location: 'Quality room',
+      attendeeIds: [ids.admin2, ids.nextHod, ids.quality, ids.hodA],
+    });
+
+    try {
+      await notifyWorkflowEvent('REVIEW_ACCEPT', incident, { userId: ids.quality } as any, 'Floor signage added.');
+
+      const msgs = await WhatsappMessage.find({ notificationKey: 'INCIDENT_CLOSED', incidentId: incident._id });
+      const to = msgs.map((m) => String(m.recipientUserId)).sort();
+      expect(to).toEqual(['reporter', 'hodA', 'hodB', 'intimated', 'nextHod', 'admin2'].map((k) => ids[k]).sort());
+      for (const m of msgs) {
+        expect(m.preview).toContain('Floor signage added.');
+        if (String(m.recipientUserId) !== ids.reporter) expectNoReporter(m.preview, 'closing WhatsApp');
+      }
+
+      const inApp = await Notification.find({ entityId: incident._id, type: { $in: ['INCIDENT_CLOSED', 'INCIDENT_REVIEW_ACCEPT'] } });
+      expect(inApp.map((n) => String(n.userId)).sort()).toEqual(['reporter', 'hodA', 'hodB', 'intimated', 'nextHod', 'admin2'].map((k) => ids[k]).sort());
+    } finally {
+      vi.unstubAllGlobals();
+      Object.assign(env, saved);
+      await RcaMeeting.deleteMany({ incidentId: incident._id });
+      await WhatsappMessage.deleteMany({ notificationKey: 'INCIDENT_CLOSED' });
+      await User.updateMany({ _id: { $in: people.map((k) => ids[k]) } }, { $unset: { whatsappNumber: 1 } });
+    }
   });
 });

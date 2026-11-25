@@ -8,7 +8,7 @@
 // This file is pure: definitions, defaults, validation and rendering. Loading the saved wording
 // lives in whatsappTemplate.service.ts.
 
-export type WhatsappTemplateKey = 'HOD_ASSIGNED' | 'REPORTER_INFO_REQUEST' | 'INVOLVED_DEPARTMENT' | 'INTIMATED' | 'RCA_MEETING_SCHEDULED';
+export type WhatsappTemplateKey = 'HOD_ASSIGNED' | 'REPORTER_INFO_REQUEST' | 'INVOLVED_DEPARTMENT' | 'INTIMATED' | 'RCA_MEETING_SCHEDULED' | 'INCIDENT_CLOSED';
 
 export interface TemplateVariable {
   key: string;
@@ -115,6 +115,23 @@ export const WHATSAPP_TEMPLATES: TemplateDefinition[] = [
       title: 'RCA Meeting Scheduled',
       message: 'An RCA meeting has been scheduled for this safety report.',
       details: ['Incident: {incident}', 'When: {meetingTime}', 'Where: {meetingPlace}'],
+    },
+  },
+  {
+    key: 'INCIDENT_CLOSED',
+    name: 'Incident closed',
+    sentTo: 'Everyone involved: the reporter, the HODs of the responsible and involved departments, the people intimated (CC), the RCA Head and the RCA meeting attendees',
+    sentWhen: 'Quality (or an Admin) accepts the CAPA and closes the incident',
+    sampleRecipient: 'Dr. Ramesh',
+    variables: [
+      ...INCIDENT_VARS,
+      { key: 'department', label: 'Responsible department', sample: 'Emergency' },
+      { key: 'remarks', label: 'Closing remarks', sample: 'Bed rail checks added to the nursing checklist.' },
+    ],
+    defaults: {
+      title: 'Incident Closed',
+      message: 'Quality has reviewed the action taken and closed this safety report. Thank you for your part in it.',
+      details: ['Incident: {incident}', 'Department: {department}', 'Closing remarks: {remarks}'],
     },
   },
 ];

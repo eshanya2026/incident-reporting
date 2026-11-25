@@ -9,6 +9,7 @@ import { renderMessage, sessionMessageText, singleLine, TemplateValues, Whatsapp
 import { loadTemplate } from './whatsappTemplate.service.js';
 import { User } from '../users/user.model.js';
 import { Department } from '../departments/department.model.js';
+import { RcaMeeting } from '../rca/rcaMeeting.model.js';
 import { env } from '../../config/env.js';
 import { logger } from '../../config/logger.js';
 
@@ -142,6 +143,8 @@ export const notifyWorkflowEvent = async (
         await notifyReporterByWhatsapp(incident, text);
       }
     }
+
+    if (event === 'REVIEW_ACCEPT') await notifyIncidentClosed(incident, actor, text);
   } catch (error) {
     // Notifications must never fail the workflow action that triggered them
     logger.error({ err: error }, `❌ Notifications for ${event} failed`);
@@ -290,6 +293,65 @@ const notifyIntimatedUsersByWhatsapp = async (
     incident,
     members.map((m) => ({ userId: m._id, whatsappNumber: m.whatsappNumber, name: m.name })),
     { leadDepartment: leadDeptName }
+  );
+};
+
+const idSet = (ids: Array<mongoose.Types.ObjectId | string | undefined | null>): string[] => [...new Set(ids.filter(Boolean).map(String))];
+
+/**
+ * Everyone who took part in an incident, for the closing message: the reporter, the responsible
+ * HOD, the HODs of the other involved departments, the people intimated (CC), the RCA Head and the
+ * RCA meeting attendees. One entry per person.
+ */
+export const closureRecipientIds = async (incident: IIncident): Promise<{ reporter: string; hod?: string; others: string[] }> => {
+  const involvedDepts = incident.notifiedDepartmentIds?.length
+    ? await Department.find({ _id: { $in: incident.notifiedDepartmentIds } }).select('hodUserId')
+    : [];
+  const meeting = incident.rcaHeadId || incident.rcaRequestedAt ? await RcaMeeting.findOne({ incidentId: incident._id }).select('attendeeIds') : null;
+
+  const reporter = String(incident.reportedBy);
+  const hod = hodOf(incident) ? String(hodOf(incident)) : undefined;
+  const others = idSet([
+    ...involvedDepts.map((d) => d.hodUserId),
+    ...(incident.intimatedUserIds || []),
+    incident.rcaHeadId,
+    ...(meeting?.attendeeIds || []),
+  ]).filter((id) => id !== reporter && id !== hod);
+  return { reporter, hod, others };
+};
+
+/**
+ * When Quality closes an incident: an in-app notice to everyone involved who is not already told
+ * by MESSAGES.REVIEW_ACCEPT (reporter and HOD are), and the "Incident closed" WhatsApp to all of
+ * them. The person who closed it is never messaged.
+ */
+const notifyIncidentClosed = async (incident: IIncident, actor: JwtPayload, text?: string): Promise<void> => {
+  const { reporter, hod, others } = await closureRecipientIds(incident);
+
+  if (others.length) {
+    await notifyUsers({
+      userIds: others.map((id) => new mongoose.Types.ObjectId(id)),
+      exceptUserId: actor.userId,
+      type: 'INCIDENT_CLOSED',
+      title: 'Incident closed',
+      message: `Quality closed ${ref(incident)}${withText(text)}`,
+      entityType: 'INCIDENT',
+      entityId: incident._id as mongoose.Types.ObjectId,
+    });
+  }
+
+  if (!whatsappEnabled()) return;
+
+  const ids = idSet([reporter, hod, ...others]).filter((id) => id !== String(actor.userId));
+  if (!ids.length) return;
+  const people = await User.find({ _id: { $in: ids }, status: 'ACTIVE' }).select('name whatsappNumber');
+  const dept = incident.departmentId ? await Department.findById(incident.departmentId).select('name') : null;
+
+  await sendTemplated(
+    'INCIDENT_CLOSED',
+    incident,
+    people.map((p) => ({ userId: p._id, whatsappNumber: p.whatsappNumber, name: p.name })),
+    { department: dept?.name, remarks: text?.trim() }
   );
 };
 
